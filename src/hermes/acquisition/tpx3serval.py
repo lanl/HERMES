@@ -6,6 +6,8 @@ import configparser
 import time
 from datetime import datetime
 
+from hermes.acquisition.models import Settings
+
 ###############################################################
 # Me make code output pretty!
 #--------------------------------------------------------------
