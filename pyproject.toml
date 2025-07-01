@@ -6,7 +6,7 @@ requires-python = ">=3.10,<4.0"
 license = { text = "MIT" }
 keywords = ["timepix","TPX3Cam","SPIDR"]
 authors = [{name = "Alexander M. Long", email = "alexlong@lanl.gov" },] 
-dependencies = [ "numpy", "scipy", "pandas", "matplotlib", "jupyterlab", "pyyaml", "pydantic", "loguru", "scikit-image", "requests"]
+dependencies = [ "numpy", "scipy", "pandas", "matplotlib", "jupyterlab", "pyyaml", "pydantic", "loguru", "scikit-image", "requests","pyepics"]
 
 [project.urls]
 homepage = "https://github.com/lanl/hermes"
@@ -89,6 +89,7 @@ pyyaml = ">=6.0.2,<7"
 pydantic = ">=2.11.3,<3"
 loguru = ">=0.7.2,<0.8"
 requests = "*"
+pyepics = "*"
 
 [tool.pixi.tasks]
 # PyPi packaging tasks
