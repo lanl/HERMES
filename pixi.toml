@@ -1,0 +1,18 @@
+[workspace]
+channels = ["conda-forge"]
+name = "hermes"
+platforms = ["linux-64"]
+version = "0.1.0"
+
+[tasks]
+
+
+[dependencies]
+python = ">=3.8"
+pydantic = ">=1.10.2"
+numpy = ">=1.24.1"
+pandas = ">=1.5.3"
+scikit-image = ">=0.18.3"
+matplotlib = ">=3.4.3"
+scipy = ">=1.7.0"
+requests = "*"
