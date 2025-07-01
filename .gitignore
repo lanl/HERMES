@@ -49,4 +49,5 @@ share/python-wheels/
 src/*.egg-info/
 .installed.cfg
 *.egg
-MANIFEST
+MANIFEST# pixi environments
+.pixi
