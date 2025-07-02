@@ -3,7 +3,7 @@ import logging
 import os
 
 # Create a custom logger
-logger = logging.getLogger('pyhermes_logger')
+logger = logging.getLogger('hermes_logger')
 
 # Set the default log level
 logger.setLevel(logging.DEBUG)
