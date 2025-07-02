@@ -39,17 +39,23 @@ def verify_working_dir(run_configs):
         run_configs (str): run configuration.
     """
     
-    working_dir = run_configs["WorkingDir"]['path_to_working_dir']                      # Experiment directory 
-    run_dir = working_dir + run_configs["WorkingDir"]['run_dir_name']                   # Setting the parent dir for the run
-    raw_file_dir = run_dir + run_configs["WorkingDir"]['path_to_raw_files']             # Setting the path for the tpx3 files
-    image_file_dir = run_dir + run_configs["WorkingDir"]['path_to_image_files']         # Setting the path for image files
-    preview_file_dir = run_dir + run_configs["WorkingDir"]['path_to_preview_files']     # Setting path for preview files
-    tpx3_log_files_dir = run_dir + run_configs["WorkingDir"]['path_to_log_files']       # Setting path for tpx3 log files
-    status_files_dir = run_dir + run_configs["WorkingDir"]['path_to_status_files']      # Setting path for status files
+    # Use the Pydantic model to parse and validate the run_configs dictionary
+    if not isinstance(run_configs, Settings):
+        # If run_configs is a dict, convert it to a Settings object
+        run_configs = Settings.parse_obj(run_configs)
 
-    print("Verifying dir:f{run_dir} and its sub-dirs")
+    working_dir = run_configs.WorkingDir.path_to_working_dir                                    # Experiment directory 
+    run_dir = os.path.join(working_dir, run_configs.WorkingDir.run_dir_name)                    # Setting the parent dir for the run
+    raw_file_dir = os.path.join(run_dir, run_configs.WorkingDir.path_to_raw_files)             # Setting the path for the tpx3 files
+    image_file_dir = os.path.join(run_dir, run_configs.WorkingDir.path_to_image_files)         # Setting the path for image files
+    preview_file_dir = os.path.join(run_dir, run_configs.WorkingDir.path_to_preview_files)     # Setting path for preview files
+    tpx3_log_files_dir = os.path.join(run_dir, run_configs.WorkingDir.path_to_log_files)       # Setting path for tpx3 log files
+    status_files_dir = os.path.join(run_dir, run_configs.WorkingDir.path_to_status_files)      # Setting path for status files
+    init_files_dir = os.path.join(run_dir, run_configs.WorkingDir.path_to_init_files)          # Setting path to save init files
+
+    print(f"Verifying dir:{run_dir} and its sub-dirs")
     # List of directories to check and create if they don't exist
-    directories = [run_dir, raw_file_dir, image_file_dir, preview_file_dir, tpx3_log_files_dir, status_files_dir]
+    directories = [run_dir, raw_file_dir, image_file_dir, preview_file_dir, tpx3_log_files_dir, status_files_dir, init_files_dir]
 
     for dir in directories:
         if not os.path.exists(dir):
@@ -99,13 +105,13 @@ def config_run(config_file='run_config.ini',run_name="dummy"):
 
         'WorkingDir': {
             'path_to_working_dir': config.get('WorkingDir', 'path_to_working_dir', fallback="./"),
-            'path_to_init_files': config.get('WorkingDir', 'path_to_init_files', fallback="initFiles/"),
             'run_dir_name': f"{run_name}/",
             'path_to_status_files': config.get('WorkingDir', 'path_to_status_files', fallback="statusFiles/"),
             'path_to_log_files': config.get('WorkingDir', 'path_to_log_files', fallback="tpx3Logs/"),
             'path_to_image_files': config.get('WorkingDir', 'path_to_image_files', fallback="imageFiles/"),
             'path_to_preview_files': config.get('WorkingDir', 'path_to_preview_files', fallback="previewFiles/"),
-            'path_to_raw_files': config.get('WorkingDir', 'path_to_raw_files', fallback="tpx3Files/")
+            'path_to_raw_files': config.get('WorkingDir', 'path_to_raw_files', fallback="tpx3Files/"),
+            'path_to_init_files': config.get('WorkingDir', 'path_to_init_files', fallback="initFiles/")
         },
         'ServerConfig': {
             'serverurl': config.get('ServerConfig', 'serverurl', fallback=None),
@@ -212,6 +218,16 @@ def set_and_load_server_destination(run_configs, verbose_level = 0):
     init_dest_file_path = working_dir + run_configs["WorkingDir"]['path_to_init_files']
     init_dest_file_name = run_configs["ServerConfig"]['destinations_file_name']
     
+    # Check if any files exists in the init_dest_file_path, if not, exit with error
+    if not os.path.isdir(init_dest_file_path) or not any(f.endswith('.json') for f in os.listdir(init_dest_file_path)):
+        print(f"No .json files found in {init_dest_file_path}. Exiting with error.")
+        sys.exit(1)
+        
+    # if it does have files, check if the init_dest_file_name exists, if not, exit with error
+    if not os.path.isfile(init_dest_file_path + init_dest_file_name):
+        print(f"File {init_dest_file_name} does not exist in {init_dest_file_path}. Exiting with error.")
+        sys.exit(1)
+ 
     run_dir = working_dir + run_configs["WorkingDir"]['run_dir_name']                       # Setting the parent dir for the run
     raw_file_dir = run_dir + run_configs["WorkingDir"]['path_to_raw_files']             # Setting the path for the tpx3 files
     image_file_dir = run_dir + run_configs["WorkingDir"]['path_to_image_files']         # Setting the path for image files
@@ -235,15 +251,25 @@ def set_and_load_server_destination(run_configs, verbose_level = 0):
             print(f"Dir for tpx3 files: {raw_file_dir}")
             print(f"Dir for image files: {image_file_dir}")
             print(f"Dir for preview files: {preview_file_dir}")
+    
+    # Convert relative paths to absolute paths for the file:// scheme
+    abs_raw_file_dir = os.path.abspath(raw_file_dir)
+    abs_image_file_dir = os.path.abspath(image_file_dir)
+    abs_preview_file_dir = os.path.abspath(preview_file_dir)
+    
+    if verbose_level >= 2:
+        print(f"Absolute dir for tpx3 files: {abs_raw_file_dir}")
+        print(f"Absolute dir for image files: {abs_image_file_dir}")
+        print(f"Absolute dir for preview files: {abs_preview_file_dir}")
             
-    destination_json_data['Raw'][0]['Base'] = "file:"+ raw_file_dir
+    destination_json_data['Raw'][0]['Base'] = "file:" + abs_raw_file_dir
     destination_json_data['Raw'][0]['FilePattern'] = run_configs["RunSettings"]['run_name'] + "_" + run_configs["RunSettings"]['run_number'] + "_%MdHms_"
     
-    destination_json_data['Image'][0]['Base'] = "file:"+ image_file_dir
+    destination_json_data['Image'][0]['Base'] = "file:" + abs_image_file_dir
     destination_json_data['Image'][0]['FilePattern'] = "ToT_"+run_configs["RunSettings"]['run_name'] + "_" + run_configs["RunSettings"]['run_number'] + "_%MdHms_"
     
     for channel in destination_json_data['Preview']['ImageChannels']:
-        channel['Base'] = "file:"+ preview_file_dir
+        channel['Base'] = "file:" + abs_preview_file_dir
         channel['FilePattern'] = run_configs["RunSettings"]['run_name'] + "_" + run_configs["RunSettings"]['run_number'] + "_%MdHms_"
     
     # Loading json data into camara
@@ -334,26 +360,26 @@ def load_pixelconfig(run_configs, verbose_level = 0):
 # Verification functions
 #--------------------------------------------------------------
  
-def check_request_status(status_code,verbose=False):
-    """
+def check_request_status(status_code, verbose=False):
+    """Check HTTP request status code and return meaningful error messages.
 
     Args:
-        status_code (_type_): _description_
+        status_code (int): HTTP status code to check
+        verbose (bool): Whether to print status messages
+        
+    Returns:
+        bool: True if successful (200), False otherwise
     """
     
-    # Example usage
-    # check_request_status(200)  # This will print "OK: The request has succeeded."
-    # check_request_status(404)  # This will print "Error: Not Found: The server has not found anything matching the request." and exit the program.
-
     if status_code == 200:
         if verbose:
             print(f"{bcolors.OKGREEN}OK: The request has succeeded.{bcolors.ENDC}")
-        status=True
+        status = True
     else:
         if status_code == 204:
             error_message = "No Content: The server has fulfilled the request, but there is no new information to send back."
         elif status_code == 302:
-            error_message = "Moved Temporarily: The server redirects the request."
+            error_message = "Moved Temporarily: The server redirects the request to the URI given in the Location header."
         elif status_code == 400:
             error_message = "Bad Request: The request had bad syntax or was impossible to fulfill."
         elif status_code == 401:
@@ -361,15 +387,15 @@ def check_request_status(status_code,verbose=False):
         elif status_code == 404:
             error_message = "Not Found: The server has not found anything matching the request."
         elif status_code == 409:
-            error_message = "Conflict: The request could not be completed due to a conflict."
+            error_message = "Conflict: The request could not be completed due to a conflict with the current state of the resource."
         elif status_code == 500:
-            error_message = "Internal Error: The server encountered an unexpected condition."
+            error_message = "Internal Error: The server encountered an unexpected condition that prevented it from fulfilling the request."
         elif status_code == 503:
             error_message = "Service Unavailable: The server is unable to handle the request due to temporary overload."
         else:
             error_message = f"Received unhandled status code: {status_code}"
         if verbose:
-            print(f"{bcolors.FAIL}Error: {error_message}{bcolors.ENDC}")
+            print(f"{bcolors.FAIL}Error ({status_code}): {error_message}{bcolors.ENDC}")
         status = False
         
     return status 
@@ -421,8 +447,32 @@ def log_info(run_config,http_string,verbose_level=0):
     server_get_response = requests.get(url=run_config['ServerConfig']['serverurl'] + http_string)
     if verbose_level >=2:
         print(server_get_response)
-    server_get_data = json.loads(server_get_response.text)
-    save_json_to_file(server_get_data,output_json_file)
+    
+    # Check if the request was successful using check_request_status function
+    if not check_request_status(server_get_response.status_code, verbose=True):
+        print(f"Failed to get response from endpoint: {http_string}")
+        return
+    
+    # Check if response contains content
+    if not server_get_response.text.strip():
+        print(f"Warning: Empty response from server for endpoint: {http_string}")
+        return
+    
+    try:
+        server_get_data = json.loads(server_get_response.text)
+        save_json_to_file(server_get_data,output_json_file)
+        if verbose_level >= 1:
+            print(f"Successfully logged data from endpoint: {http_string}")
+    except json.JSONDecodeError as e:
+        print(f"Warning: Failed to parse JSON response for endpoint: {http_string}")
+        print(f"JSON decode error: {e}")
+        print(f"Response text: {server_get_response.text}")
+        # Save the raw response as a text file instead
+        raw_output_file = output_json_file.replace('.json', '_raw.txt')
+        with open(raw_output_file, 'w') as f:
+            f.write(server_get_response.text)
+        print(f"Raw response saved to: {raw_output_file}")
+        return
     
     if verbose_level >= 1:
         print_closing_line_block()
