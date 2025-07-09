@@ -1,3 +1,18 @@
+/**
+ * @file tpx3SpidrUnpacker.cpp
+ * @brief Main entry point for the TPX3 SPIDR data unpacking application.
+ *
+ * This program reads a configuration file specified as a command-line argument,
+ * parses the configuration parameters, and processes TPX3 data files accordingly.
+ * It utilizes several HERMES-defined modules for data packet processing, diagnostics,
+ * photon reconstruction, and configuration management.
+ *
+ * Usage:
+ *   ./tpx3SpidrUnpacker <config_file_path>
+ *
+ * The program will exit with an error message if the configuration file cannot be read.
+ */
+
 #include <chrono>
 
 // HERMES defined functions 
