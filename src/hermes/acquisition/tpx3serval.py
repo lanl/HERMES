@@ -213,6 +213,10 @@ def load_dacfile_to_json(file_path, verbose_level = 0):
 
 def set_and_load_server_destination(run_configs, verbose_level = 0):
     
+    if verbose_level >= 1:
+        print_header_line_block()
+        print("Setting up server destination for TPX3Cam")        
+    
     # Setting up paths and names for initial dummy destinations config file
     working_dir = run_configs["WorkingDir"]['path_to_working_dir']+ run_configs["WorkingDir"]['run_dir_name']  # Experiment directory
     init_dest_file_path = working_dir + run_configs["WorkingDir"]['path_to_init_files']
@@ -237,7 +241,6 @@ def set_and_load_server_destination(run_configs, verbose_level = 0):
     path_to_json_file = init_dest_file_path + init_dest_file_name
     destination_json_data = load_json_file(path_to_json_file)
     if verbose_level >= 1:
-        print_header_line_block()
         print(f"Loading destination json file from:")
         print(path_to_json_file)
         if verbose_level >=2:
