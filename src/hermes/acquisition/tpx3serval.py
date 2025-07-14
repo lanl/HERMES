@@ -214,7 +214,7 @@ def load_dacfile_to_json(file_path, verbose_level = 0):
 def set_and_load_server_destination(run_configs, verbose_level = 0):
     
     # Setting up paths and names for initial dummy destinations config file
-    working_dir = run_configs["WorkingDir"]['path_to_working_dir']
+    working_dir = run_configs["WorkingDir"]['path_to_working_dir']+ run_configs["WorkingDir"]['run_dir_name']  # Experiment directory
     init_dest_file_path = working_dir + run_configs["WorkingDir"]['path_to_init_files']
     init_dest_file_name = run_configs["ServerConfig"]['destinations_file_name']
     
