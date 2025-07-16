@@ -48,12 +48,20 @@ class empirConfig:
         else:
 
             logger.info("No configuration file provided, using default parameters.")
-            # check if destination directory is provided, if not then use current directory
-            if not dest:
-                dest = os.getcwd()
-                logger.info(f"No destination directory provided, using current directory: {dest}")
+            
+            # check if destination directory is provided, if not exit with error
+            if dest is None:
+                logger.error("No destination directory provided. Please provide a destination directory.")
+                raise ValueError("No destination directory provided. Please provide a destination directory.")
+            
+            # If a destination directory is provided, check if it exists
             else:
-                logger.info(f"Using provided destination directory: {dest}")
+                if not os.path.exists(dest):
+                    logger.error(f"Destination directory does not exist: {dest}")
+                    raise FileNotFoundError(f"Destination directory does not exist: {dest}")
+                else:
+                    # If the destination directory exists, use it
+                    logger.info(f"Using provided destination directory: {dest}")
                 
                 # Sanitize the dest input
                 dest = os.path.abspath(os.path.normpath(dest))
