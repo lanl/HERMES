@@ -15,13 +15,10 @@ from .models import (
 )
 
 # Import core functions for EMPIR analysis
-from .core import (
+from .config import (
     empirConfig,
     zip_file,
     check_for_files,
-    process_pixels_to_photons,
-    process_photons_to_events,
-    process_event_files_to_image_stack
 )
 
 # Import export functions for EMPIR analysis
@@ -29,6 +26,13 @@ from .export import (
     export_pixel_activations,
     export_photons,
     read_exported_pixel_activations
+)
+
+# Import processing functions for EMPIR analysis
+from .process import (
+    process_pixels_to_photons,
+    process_photons_to_events,
+    process_event_files_to_image_stack
 )
 
 # Define package-level variables or functions if needed
