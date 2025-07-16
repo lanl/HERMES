@@ -12,16 +12,24 @@ class DirectoryStructure(BaseModel):
     export_file_dir: str = Field(..., description="Location of exported info files")
 
 class PixelToPhotonParams(BaseModel):
+    input_file: Optional[str] = Field(default=None, description="Path and name of the input TPX3 file")
+    output_file: Optional[str] = Field(default=None, description="Path and name of the output photon file")
+    log_file: Optional[str] = Field(default=None, description="Path to the log file")
     d_space: int = Field(default=10, description="Distance in space for pixel search [px]")
     d_time: float = Field(default=1e-6, description="Distance in time for pixel search [s]")
     min_number: int = Field(default=2, description="Minimum number of pixels in a photon event")
     use_tdc1: bool = Field(default=False, description="Use TDC1 as trigger input")
+    parameter_file: Optional[str] = Field(default=None, description="Path and name of a .json file where processing parameters are defined")
 
 class PhotonToEventParams(BaseModel):
+    input_file: Optional[str] = Field(default=None, description="Path and name of the input .empirphot file")
+    output_file: Optional[str] = Field(default=None, description="Path and name of the output event file")
+    log_file: Optional[str] = Field(default=None, description="Path to the log file")
     d_space: Optional[int] = Field(default=None, description="Distance in space for photon search [px]")
     d_time: Optional[float] = Field(default=None, description="Distance in time for photon search [s]")
     max_duration: Optional[float] = Field(default=None, description="Maximum duration to look for photons [s]")
     d_time_extF: Optional[float] = Field(default=None, description="Extents duration by multiple of time difference to last photon")
+    parameter_file: Optional[str] = Field(default=None, description="Path and name of a .json file where processing parameters are defined")
 
 class EventToImageParams(BaseModel):
     input_files: Optional[str] = Field(default=None, description="Comma separated list of files to process")
@@ -40,6 +48,7 @@ class EventToImageParams(BaseModel):
     psd_max: float = Field(default=100, description="Maximum PSD value")
     file_format: str = Field(default="tiff_w4", description='Format for the output file. Possibilities are: "tiff_w4" (default) or "tiff_w8"')
     parallel: bool = Field(default=True, description='Control parallel processing. Set "true" for on (default) and "false" for off')
+    parameter_file: Optional[str] = Field(default=None, description="Path and name of a .json file where processing parameters are defined")
     
 class PixelActivations(BaseModel):
     """
