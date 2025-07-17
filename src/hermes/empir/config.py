@@ -148,7 +148,12 @@ class Config(BaseModel):
 
         # Parse directory structure if present
         if config.has_section('directory_structure'):
+
+            if verbose_level >= 1:
+                logger.info(f"Found directory_structure section in: {config_file_path}")
+
             dest_dir = config.get('directory_structure', 'destination_dir', fallback=None)
+            
             if dest_dir:
                 dest_dir = os.path.abspath(os.path.normpath(dest_dir))
                 
@@ -174,11 +179,19 @@ class Config(BaseModel):
                 )
 
                 if verbose_level >= 1:
-                    logger.info(f"Configured DirectoryStructure from config file: {directories.model_dump()}")
+                    logger.info(f"Configured DirectoryStructure from config file: {config_file_path}")
+                    
+            else:
+                logger.warning(f"Directory structure section is incomplete in: {config_file_path}. Please ensure 'destination_dir' is set.")
+                
 
         # Parse pixel_to_photon parameters if present
         if config.has_section('pixel_to_photon'):
+            if verbose_level >= 1:
+                logger.info(f"Found pixel_to_photon section in: {config_file_path}")
+            
             pixel_to_photon_params = PixelToPhotonParams()
+            
             if config.has_option('pixel_to_photon', 'd_space'):
                 pixel_to_photon_params.d_space = config.getfloat('pixel_to_photon', 'd_space')
             if config.has_option('pixel_to_photon', 'd_time'):
@@ -189,11 +202,16 @@ class Config(BaseModel):
                 pixel_to_photon_params.use_tdc1 = config.getboolean('pixel_to_photon', 'use_tdc1')
 
             if verbose_level >= 1:
-                logger.info(f"Configured PixelToPhotonParams from config file: {pixel_to_photon_params.model_dump()}")
+                logger.info(f"Configured PixelToPhotonParams from config file: {config_file_path}")
 
         # Parse photon_to_event parameters if present
         if config.has_section('photon_to_event'):
+            
+            if verbose_level >= 1:
+                logger.info(f"Found photon_to_event section in: {config_file_path}")
+
             photon_to_event_params = PhotonToEventParams()
+            
             if config.has_option('photon_to_event', 'd_space'):
                 photon_to_event_params.d_space = config.getfloat('photon_to_event', 'd_space')
             if config.has_option('photon_to_event', 'd_time'):
@@ -204,11 +222,16 @@ class Config(BaseModel):
                 photon_to_event_params.d_time_extF = config.getfloat('photon_to_event', 'd_time_extF')
 
             if verbose_level >= 1:
-                logger.info(f"Configured PhotonToEventParams from config file: {photon_to_event_params.model_dump()}")
-        
+                logger.info(f"Configured PhotonToEventParams from config file: {config_file_path}")
+
         # Parse event_to_image parameters if present (optional)
         if config.has_section('event_to_image'):
+            
+            if verbose_level >= 1:
+                logger.info(f"Found event_to_image section in: {config_file_path}")
+            
             event_to_image_params = EventToImageParams()
+            
             if config.has_option('event_to_image', 'size_x'):
                 event_to_image_params.size_x = config.getint('event_to_image', 'size_x')
             if config.has_option('event_to_image', 'size_y'):
@@ -229,7 +252,7 @@ class Config(BaseModel):
                 event_to_image_params.psd_max = config.getfloat('event_to_image', 'psd_max')
 
             if verbose_level >= 1:
-                logger.info(f"Configured EventToImageParams from config file: {event_to_image_params.model_dump()}")
+                logger.info(f"Configured EventToImageParams from config file: {config_file_path}")
         else:
             if verbose_level >= 1:
                 logger.info("No [event_to_image] section found in config file, leaving as None")
@@ -240,8 +263,13 @@ class Config(BaseModel):
             pixel_to_photon_params=locals().get('pixel_to_photon_params', None),
             photon_to_event_params=locals().get('photon_to_event_params', None),
             event_to_image_params=locals().get('event_to_image_params', None),
+            config_file=os.path.abspath(config_file_path),
             verbose_level=verbose_level
         )
+        
+        # Call check_or_create_sub_dirs on the instance, not the class
+        if config.directories:
+            config.check_or_create_sub_dirs(create_sub_dirs=config.directories.create_subdirs, verbose_level=verbose_level)
         
         return config
 
@@ -300,17 +328,16 @@ class Config(BaseModel):
         # log the setting of the event to image parameters
         logger.info(f"Set EventToImageParams: {cls.event_to_image_params.model_dump()}")
 
-    @classmethod
-    def check_or_create_sub_dirs(cls, create_sub_dirs=False, verbose_level=None):
+    def check_or_create_sub_dirs(self, create_sub_dirs=False, verbose_level=None):
         """
         Check if the subdirectories exist, and create them if they don't.
         """
         if verbose_level is None:
-            verbose_level = cls.verbose_level
+            verbose_level = self.verbose_level
 
-        for dir_name in [cls.directories.log_file_dir, cls.directories.tpx3_file_dir,
-                         cls.directories.list_file_dir, cls.directories.event_file_dir,
-                         cls.directories.final_file_dir, cls.directories.export_file_dir]:
+        for dir_name in [self.directories.log_file_dir, self.directories.tpx3_file_dir,
+                         self.directories.list_file_dir, self.directories.event_file_dir,
+                         self.directories.final_file_dir, self.directories.export_file_dir]:
             if verbose_level >= 1:
                 logger.info(f"Checking directory: {dir_name}")
             if not os.path.exists(dir_name) and create_sub_dirs:
