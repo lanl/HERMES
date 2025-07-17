@@ -15,7 +15,7 @@ from loguru import logger
 ######################################################################################
 # Class for configuring the processing of tpx3 files using EMPIR binaries
 #-------------------------------------------------------------------------------------
-class EmpirConfig(BaseModel):
+class Config(BaseModel):
     """ A configure class for the processing of tpx3 files using EMPIR binaries from 
         Adrian S. Losko at TUM. This analysis code has the following structures. 
         File structures: 
@@ -125,23 +125,9 @@ class EmpirConfig(BaseModel):
             logger.info("Initialized empirConfig with default parameters")
             
         return config
-    
-    @classmethod
-    def update_init_file(cls, config_file: str, verbose_level: int = 0):
-        """
-        Create an empirConfig instance from a configuration file.
         
-        Args:
-            config_file (str): Path to configuration file
-            verbose_level (int): Verbosity level
-        """
-        # This will be validated by the root_validator
-        return cls(
-            config_file=config_file,
-            verbose_level=verbose_level,
-        )
-    
-    def configure_from_init_file(self, config_file_path: str):
+    @classmethod
+    def configure_from_init_file(cls, config_file_path: str, verbose_level: int = 0):
         """
         Configure the empirConfig instance from a configuration file using ConfigParser.
         
@@ -158,8 +144,8 @@ class EmpirConfig(BaseModel):
         logger.info(f"Reading configuration from: {config_file_path}")
         
         # Update the config_file field
-        self.config_file = config_file_path
-        
+        cls.config_file = config_file_path
+
         # Parse directory structure if present
         if config.has_section('directory_structure'):
             dest_dir = config.get('directory_structure', 'destination_dir', fallback=None)
@@ -176,7 +162,7 @@ class EmpirConfig(BaseModel):
                 create_subdirs = config.getboolean('directory_structure', 'create_subdirs', fallback=False)
                 
                 # Create DirectoryStructure
-                self.directories = DirectoryStructure(
+                directories = DirectoryStructure(
                     destination_dir=dest_dir,
                     create_subdirs=create_subdirs,
                     log_file_dir=os.path.join(dest_dir, log_dir),
@@ -186,130 +172,145 @@ class EmpirConfig(BaseModel):
                     final_file_dir=os.path.join(dest_dir, final_dir),
                     export_file_dir=os.path.join(dest_dir, export_dir)
                 )
-                
-                if self.verbose_level >= 1:
-                    logger.info(f"Configured DirectoryStructure from config file: {self.directories.model_dump()}")
-        
+
+                if verbose_level >= 1:
+                    logger.info(f"Configured DirectoryStructure from config file: {directories.model_dump()}")
+
         # Parse pixel_to_photon parameters if present
         if config.has_section('pixel_to_photon'):
-            self.pixel_to_photon_params = PixelToPhotonParams()
+            pixel_to_photon_params = PixelToPhotonParams()
             if config.has_option('pixel_to_photon', 'd_space'):
-                self.pixel_to_photon_params.d_space = config.getfloat('pixel_to_photon', 'd_space')
+                pixel_to_photon_params.d_space = config.getfloat('pixel_to_photon', 'd_space')
             if config.has_option('pixel_to_photon', 'd_time'):
-                self.pixel_to_photon_params.d_time = config.getfloat('pixel_to_photon', 'd_time')
+                pixel_to_photon_params.d_time = config.getfloat('pixel_to_photon', 'd_time')
             if config.has_option('pixel_to_photon', 'min_number'):
-                self.pixel_to_photon_params.min_number = config.getint('pixel_to_photon', 'min_number')
+                pixel_to_photon_params.min_number = config.getint('pixel_to_photon', 'min_number')
             if config.has_option('pixel_to_photon', 'use_tdc1'):
-                self.pixel_to_photon_params.use_tdc1 = config.getboolean('pixel_to_photon', 'use_tdc1')
-            
-            if self.verbose_level >= 1:
-                logger.info(f"Configured PixelToPhotonParams from config file: {self.pixel_to_photon_params.model_dump()}")
-        
+                pixel_to_photon_params.use_tdc1 = config.getboolean('pixel_to_photon', 'use_tdc1')
+
+            if verbose_level >= 1:
+                logger.info(f"Configured PixelToPhotonParams from config file: {pixel_to_photon_params.model_dump()}")
+
         # Parse photon_to_event parameters if present
         if config.has_section('photon_to_event'):
-            self.photon_to_event_params = PhotonToEventParams()
+            photon_to_event_params = PhotonToEventParams()
             if config.has_option('photon_to_event', 'd_space'):
-                self.photon_to_event_params.d_space = config.getfloat('photon_to_event', 'd_space')
+                photon_to_event_params.d_space = config.getfloat('photon_to_event', 'd_space')
             if config.has_option('photon_to_event', 'd_time'):
-                self.photon_to_event_params.d_time = config.getfloat('photon_to_event', 'd_time')
+                photon_to_event_params.d_time = config.getfloat('photon_to_event', 'd_time')
             if config.has_option('photon_to_event', 'max_duration'):
-                self.photon_to_event_params.max_duration = config.getfloat('photon_to_event', 'max_duration')
+                photon_to_event_params.max_duration = config.getfloat('photon_to_event', 'max_duration')
             if config.has_option('photon_to_event', 'd_time_extF'):
-                self.photon_to_event_params.d_time_extF = config.getfloat('photon_to_event', 'd_time_extF')
-            
-            if self.verbose_level >= 1:
-                logger.info(f"Configured PhotonToEventParams from config file: {self.photon_to_event_params.model_dump()}")
+                photon_to_event_params.d_time_extF = config.getfloat('photon_to_event', 'd_time_extF')
+
+            if verbose_level >= 1:
+                logger.info(f"Configured PhotonToEventParams from config file: {photon_to_event_params.model_dump()}")
         
         # Parse event_to_image parameters if present (optional)
         if config.has_section('event_to_image'):
-            self.event_to_image_params = EventToImageParams()
+            event_to_image_params = EventToImageParams()
             if config.has_option('event_to_image', 'size_x'):
-                self.event_to_image_params.size_x = config.getint('event_to_image', 'size_x')
+                event_to_image_params.size_x = config.getint('event_to_image', 'size_x')
             if config.has_option('event_to_image', 'size_y'):
-                self.event_to_image_params.size_y = config.getint('event_to_image', 'size_y')
+                event_to_image_params.size_y = config.getint('event_to_image', 'size_y')
             if config.has_option('event_to_image', 'nPhotons_min'):
-                self.event_to_image_params.nPhotons_min = config.getint('event_to_image', 'nPhotons_min')
+                event_to_image_params.nPhotons_min = config.getint('event_to_image', 'nPhotons_min')
             if config.has_option('event_to_image', 'nPhotons_max'):
-                self.event_to_image_params.nPhotons_max = config.getint('event_to_image', 'nPhotons_max')
+                event_to_image_params.nPhotons_max = config.getint('event_to_image', 'nPhotons_max')
             if config.has_option('event_to_image', 'time_extTrigger'):
-                self.event_to_image_params.time_extTrigger = config.getfloat('event_to_image', 'time_extTrigger')
+                event_to_image_params.time_extTrigger = config.getfloat('event_to_image', 'time_extTrigger')
             if config.has_option('event_to_image', 'time_res_s'):
-                self.event_to_image_params.time_res_s = config.getfloat('event_to_image', 'time_res_s')
+                event_to_image_params.time_res_s = config.getfloat('event_to_image', 'time_res_s')
             if config.has_option('event_to_image', 'time_limit'):
-                self.event_to_image_params.time_limit = config.getfloat('event_to_image', 'time_limit')
+                event_to_image_params.time_limit = config.getfloat('event_to_image', 'time_limit')
             if config.has_option('event_to_image', 'psd_min'):
-                self.event_to_image_params.psd_min = config.getfloat('event_to_image', 'psd_min')
+                event_to_image_params.psd_min = config.getfloat('event_to_image', 'psd_min')
             if config.has_option('event_to_image', 'psd_max'):
-                self.event_to_image_params.psd_max = config.getfloat('event_to_image', 'psd_max')
-            
-            if self.verbose_level >= 1:
-                logger.info(f"Configured EventToImageParams from config file: {self.event_to_image_params.model_dump()}")
+                event_to_image_params.psd_max = config.getfloat('event_to_image', 'psd_max')
+
+            if verbose_level >= 1:
+                logger.info(f"Configured EventToImageParams from config file: {event_to_image_params.model_dump()}")
         else:
-            if self.verbose_level >= 1:
+            if verbose_level >= 1:
                 logger.info("No [event_to_image] section found in config file, leaving as None")
-    
-    def set_pixel_to_photon_params(self, d_space=None, d_time=None, min_number=None, use_tdc1=None):
+                
+        # Create the empirConfig instance, passing only parameters that were parsed (others remain None)
+        config = cls(
+            directories=locals().get('directories', None),
+            pixel_to_photon_params=locals().get('pixel_to_photon_params', None),
+            photon_to_event_params=locals().get('photon_to_event_params', None),
+            event_to_image_params=locals().get('event_to_image_params', None),
+            verbose_level=verbose_level
+        )
+        
+        return config
+
+    @classmethod
+    def set_pixel_to_photon_params(cls, d_space=None, d_time=None, min_number=None, use_tdc1=None):
         """Update pixel to photon parameters"""
         if d_space is not None: 
-            self.pixel_to_photon_params.d_space = d_space
+            cls.pixel_to_photon_params.d_space = d_space
         if d_time is not None: 
-            self.pixel_to_photon_params.d_time = d_time
+            cls.pixel_to_photon_params.d_time = d_time
         if min_number is not None: 
-            self.pixel_to_photon_params.min_number = min_number
+            cls.pixel_to_photon_params.min_number = min_number
         if use_tdc1 is not None: 
-            self.pixel_to_photon_params.use_tdc1 = use_tdc1
-        
-        # log the setting of the pixel to photon parameters
-        logger.info(f"Set PixelToPhotonParams: {self.pixel_to_photon_params.model_dump()}")
+            cls.pixel_to_photon_params.use_tdc1 = use_tdc1
 
-    def set_photon_to_event_params(self, d_space=None, d_time=None, max_duration=None, d_time_extF=None):
+        # log the setting of the pixel to photon parameters
+        logger.info(f"Set PixelToPhotonParams: {cls.pixel_to_photon_params.model_dump()}")
+
+    @classmethod
+    def set_photon_to_event_params(cls, d_space=None, d_time=None, max_duration=None, d_time_extF=None):
         """Update photon to event parameters"""
         if d_space is not None: 
-            self.photon_to_event_params.d_space = d_space
+            cls.photon_to_event_params.d_space = d_space
         if d_time is not None: 
-            self.photon_to_event_params.d_time = d_time
+            cls.photon_to_event_params.d_time = d_time
         if max_duration is not None: 
-            self.photon_to_event_params.max_duration = max_duration
+            cls.photon_to_event_params.max_duration = max_duration
         if d_time_extF is not None: 
-            self.photon_to_event_params.d_time_extF = d_time_extF
-        
-        # log the setting of the photon to event parameters
-        logger.info(f"Set PhotonToEventParams: {self.photon_to_event_params.model_dump()}")
+            cls.photon_to_event_params.d_time_extF = d_time_extF
 
-    def set_event_to_image_params(self, size_x=None, size_y=None, nPhotons_min=None, nPhotons_max=None, time_extTrigger=None, time_res_s=None, time_limit=None, psd_min=None, psd_max=None):
+        # log the setting of the photon to event parameters
+        logger.info(f"Set PhotonToEventParams: {cls.photon_to_event_params.model_dump()}")
+
+    @classmethod
+    def set_event_to_image_params(cls, size_x=None, size_y=None, nPhotons_min=None, nPhotons_max=None, time_extTrigger=None, time_res_s=None, time_limit=None, psd_min=None, psd_max=None):
         """Update event to image parameters"""
         if size_x is not None: 
-            self.event_to_image_params.size_x = size_x
+            cls.event_to_image_params.size_x = size_x
         if size_y is not None: 
-            self.event_to_image_params.size_y = size_y
+            cls.event_to_image_params.size_y = size_y
         if nPhotons_min is not None: 
-            self.event_to_image_params.nPhotons_min = nPhotons_min
+            cls.event_to_image_params.nPhotons_min = nPhotons_min
         if nPhotons_max is not None: 
-            self.event_to_image_params.nPhotons_max = nPhotons_max
+            cls.event_to_image_params.nPhotons_max = nPhotons_max
         if time_extTrigger is not None: 
-            self.event_to_image_params.time_extTrigger = time_extTrigger
+            cls.event_to_image_params.time_extTrigger = time_extTrigger
         if time_res_s is not None: 
-            self.event_to_image_params.time_res_s = time_res_s
+            cls.event_to_image_params.time_res_s = time_res_s
         if time_limit is not None: 
-            self.event_to_image_params.time_limit = time_limit
+            cls.event_to_image_params.time_limit = time_limit
         if psd_min is not None: 
-            self.event_to_image_params.psd_min = psd_min
+            cls.event_to_image_params.psd_min = psd_min
         if psd_max is not None: 
-            self.event_to_image_params.psd_max = psd_max
-        
-        # log the setting of the event to image parameters
-        logger.info(f"Set EventToImageParams: {self.event_to_image_params.model_dump()}")
+            cls.event_to_image_params.psd_max = psd_max
 
-    def check_or_create_sub_dirs(self, create_sub_dirs=False, verbose_level=None):
+        # log the setting of the event to image parameters
+        logger.info(f"Set EventToImageParams: {cls.event_to_image_params.model_dump()}")
+
+    @classmethod
+    def check_or_create_sub_dirs(cls, create_sub_dirs=False, verbose_level=None):
         """
         Check if the subdirectories exist, and create them if they don't.
         """
         if verbose_level is None:
-            verbose_level = self.verbose_level
-            
-        for dir_name in [self.directories.log_file_dir, self.directories.tpx3_file_dir, 
-                        self.directories.list_file_dir, self.directories.event_file_dir, 
-                        self.directories.final_file_dir, self.directories.export_file_dir]:
+            verbose_level = cls.verbose_level
+
+        for dir_name in [cls.directories.log_file_dir, cls.directories.tpx3_file_dir,
+                         cls.directories.list_file_dir, cls.directories.event_file_dir,
+                         cls.directories.final_file_dir, cls.directories.export_file_dir]:
             if verbose_level >= 1:
                 logger.info(f"Checking directory: {dir_name}")
             if not os.path.exists(dir_name) and create_sub_dirs:
@@ -321,10 +322,9 @@ class EmpirConfig(BaseModel):
             else:
                 if verbose_level >= 1:
                     logger.info(f"Found {dir_name}")
-                    
+
     def model_dump_json(self, indent=4):
         """Return the configuration as a JSON string."""
-        import json
         return json.dumps(self.model_dump(), indent=indent)
 
 
