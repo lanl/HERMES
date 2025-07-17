@@ -1,15 +1,13 @@
 
-import os, shutil, glob
-import subprocess
+import os, glob
 import zipfile
-import struct
 import configparser
+import json
+from typing import Optional
 
 # using pydantic models for configuration of empir runs
-from .models import PixelToPhotonParams, PhotonToEventParams, EventToImageParams, DirectoryStructure
-
-# Import logger for empir functions
-#from ..utils.logger import logger
+from pydantic import BaseModel, Field, field_validator, model_validator
+from hermes.empir.models import PixelToPhotonParams, PhotonToEventParams, EventToImageParams, DirectoryStructure
 
 from loguru import logger
 
@@ -17,7 +15,7 @@ from loguru import logger
 ######################################################################################
 # Class for configuring the processing of tpx3 files using EMPIR binaries
 #-------------------------------------------------------------------------------------
-class empirConfig:
+class EmpirConfig(BaseModel):
     """ A configure class for the processing of tpx3 files using EMPIR binaries from 
         Adrian S. Losko at TUM. This analysis code has the following structures. 
         File structures: 
@@ -31,68 +29,119 @@ class empirConfig:
         separate export directory
             {dest}/export/      <- Exported pixel, photon, and event information is stored here.
     """
-    def __init__(self, config_file=None, dest=None, verbose_level=0):
-
-        # Check if a configuration file is provided
-        if config_file:
-            logger.info(f"Configuring empirConfig from file: {config_file}")
+    # Configuration options
+    config_file: Optional[str] = Field(default=None, description="Path to configuration file")
+    verbose_level: int = Field(default=0, ge=0, le=3, description="Verbosity level (0-3)")
+    
+    # Directory structure for the processing
+    directories: Optional[DirectoryStructure] = Field(default=None) 
+    
+    # Pixel to photon, photon to event, and event to image parameters
+    pixel_to_photon_params: Optional[PixelToPhotonParams] = Field(default=None) 
+    photon_to_event_params: Optional[PhotonToEventParams] = Field(default=None) 
+    event_to_image_params: Optional[EventToImageParams] = Field(default=None)
+    
+    class Config:
+        # Allow arbitrary types for compatibility with existing code
+        arbitrary_types_allowed = True
+        # Validate assignment to catch issues early
+        validate_assignment = True
+        
+    @model_validator(mode='after')
+    def validate_config(self):
+        """Model validator to handle initialization logic"""
+        if self.config_file:
+            if self.verbose_level >= 1: 
+                logger.info(f"Configuring empirConfig from file: {self.config_file}")
             
             # Check if the configuration file exists
-            if not os.path.exists(config_file):
-                logger.error(f"Configuration file does not exist: {config_file}")
-                raise FileNotFoundError(f"Configuration file does not exist: {config_file}")
-            else:
-                self.configure_from_file(config_file)
-
-        # If no config file is provided, this use default parameters and destination directory
-        else:
-
-            logger.info("No configuration file provided, using default parameters.")
-            
-            # check if destination directory is provided, if not exit with error
-            if dest is None:
-                logger.error("No destination directory provided. Please provide a destination directory.")
-                raise ValueError("No destination directory provided. Please provide a destination directory.")
-            
-            # If a destination directory is provided, check if it exists
-            else:
-                if not os.path.exists(dest):
-                    logger.error(f"Destination directory does not exist: {dest}")
-                    raise FileNotFoundError(f"Destination directory does not exist: {dest}")
-                else:
-                    # If the destination directory exists, use it
-                    logger.info(f"Using provided destination directory: {dest}")
+            if not os.path.exists(self.config_file):
+                logger.error(f"Configuration file does not exist: {self.config_file}")
+                raise FileNotFoundError(f"Configuration file does not exist: {self.config_file}")
                 
-                # Sanitize the dest input
-                dest = os.path.abspath(os.path.normpath(dest))
+            # TODO: Add configuration file parsing logic here
+            # For now, we'll skip this and use defaults
+            
+        return self
+    
+    @field_validator('directories', mode='after')
+    @classmethod
+    def validate_directories(cls, v):
+        """Validate DirectoryStructure after instantiation"""
+        if not isinstance(v, DirectoryStructure):
+            raise ValueError("directories must be a DirectoryStructure instance")
+        return v
+    
+    @classmethod
+    def configure_from_destination(cls, dest: str, verbose_level: int = 0):
+        """
+        Create an empirConfig instance from a destination directory.
         
+        Args:
+            dest (str): Destination directory path
+            verbose_level (int): Verbosity level
+            **kwargs: Additional keyword arguments
+        """
         
-            # Initialize directory structure using Pydantic model
-            self.directories = DirectoryStructure(
-                destination_dir=f"{dest}",
-                log_file_dir=f"{dest}/logFiles/",
-                tpx3_file_dir=f"{dest}/tpx3Files/",
-                list_file_dir=f"{dest}/listFiles/",
-                event_file_dir=f"{dest}/eventFiles/",
-                final_file_dir=f"{dest}/final/",
-                export_file_dir=f"{dest}/exportFiles/"
-            )
+        # Check if destination directory is provided
+        if dest is None:
+            logger.error("No destination directory provided. Please provide a destination directory.")
+            raise ValueError("No destination directory provided. Please provide a destination directory.")
         
-            # log the initialization of the directory structure
-            logger.info(f"Initialized DirectoryStructure: {self.directories.model_dump()}")
+        # If a destination directory is provided, check if it exists
+        if not os.path.exists(dest):
+            logger.error(f"Destination directory does not exist: {dest}")
+            raise FileNotFoundError(f"Destination directory does not exist: {dest}")
         
-            # Initialize parameters using Pydantic models
-            self.pixel_to_photon_params = PixelToPhotonParams()
-            self.photon_to_event_params = PhotonToEventParams()
-            self.event_to_image_params = EventToImageParams()
+        # Sanitize the dest input
+        dest = os.path.abspath(os.path.normpath(dest))
         
-            # log the initialization of the parameters
+        if verbose_level >= 1: 
+            logger.info(f"Using provided destination directory: {dest}")
+        
+        # Initialize directory structure
+        directories = DirectoryStructure(
+            destination_dir=f"{dest}",
+            create_subdirs=False,
+            log_file_dir=f"{dest}/logFiles/",
+            tpx3_file_dir=f"{dest}/tpx3Files/",
+            list_file_dir=f"{dest}/listFiles/",
+            event_file_dir=f"{dest}/eventFiles/",
+            final_file_dir=f"{dest}/final/",
+            export_file_dir=f"{dest}/exportFiles/"
+        )
+        
+        # Log the initialization of the directory structure
+        if verbose_level >= 1: 
+            logger.info(f"Initialized DirectoryStructure: {directories.model_dump()}")
+        
+        # Create the empirConfig instance
+        config = cls(
+            directories=directories,
+            verbose_level=verbose_level,
+        )
+        
+        if verbose_level >= 1: 
             logger.info("Initialized empirConfig with default parameters")
+            
+        return config
+    
+    @classmethod
+    def update_init_file(cls, config_file: str, verbose_level: int = 0):
+        """
+        Create an empirConfig instance from a configuration file.
         
-        # Check or create subdirectories
-        #self.check_or_create_sub_dirs()
-        
-    def configure_from_file(self, config_file_path):
+        Args:
+            config_file (str): Path to configuration file
+            verbose_level (int): Verbosity level
+        """
+        # This will be validated by the root_validator
+        return cls(
+            config_file=config_file,
+            verbose_level=verbose_level,
+        )
+    
+    def configure_from_init_file(self, config_file_path: str):
         """
         Configure the empirConfig instance from a configuration file using ConfigParser.
         
@@ -107,55 +156,176 @@ class empirConfig:
         config.read(config_file_path)
         
         logger.info(f"Reading configuration from: {config_file_path}")
+        
+        # Update the config_file field
+        self.config_file = config_file_path
+        
+        # Parse directory structure if present
+        if config.has_section('directory_structure'):
+            dest_dir = config.get('directory_structure', 'destination_dir', fallback=None)
+            if dest_dir:
+                dest_dir = os.path.abspath(os.path.normpath(dest_dir))
+                
+                # Build directory paths
+                log_dir = config.get('directory_structure', 'log_file_dir', fallback='logFiles')
+                tpx3_dir = config.get('directory_structure', 'tpx3_file_dir', fallback='tpx3Files')
+                list_dir = config.get('directory_structure', 'list_file_dir', fallback='listFiles')
+                event_dir = config.get('directory_structure', 'event_file_dir', fallback='eventFiles')
+                final_dir = config.get('directory_structure', 'final_file_dir', fallback='final')
+                export_dir = config.get('directory_structure', 'export_file_dir', fallback='exportFiles')
+                create_subdirs = config.getboolean('directory_structure', 'create_subdirs', fallback=False)
+                
+                # Create DirectoryStructure
+                self.directories = DirectoryStructure(
+                    destination_dir=dest_dir,
+                    create_subdirs=create_subdirs,
+                    log_file_dir=os.path.join(dest_dir, log_dir),
+                    tpx3_file_dir=os.path.join(dest_dir, tpx3_dir),
+                    list_file_dir=os.path.join(dest_dir, list_dir),
+                    event_file_dir=os.path.join(dest_dir, event_dir),
+                    final_file_dir=os.path.join(dest_dir, final_dir),
+                    export_file_dir=os.path.join(dest_dir, export_dir)
+                )
+                
+                if self.verbose_level >= 1:
+                    logger.info(f"Configured DirectoryStructure from config file: {self.directories.model_dump()}")
+        
+        # Parse pixel_to_photon parameters if present
+        if config.has_section('pixel_to_photon'):
+            self.pixel_to_photon_params = PixelToPhotonParams()
+            if config.has_option('pixel_to_photon', 'd_space'):
+                self.pixel_to_photon_params.d_space = config.getfloat('pixel_to_photon', 'd_space')
+            if config.has_option('pixel_to_photon', 'd_time'):
+                self.pixel_to_photon_params.d_time = config.getfloat('pixel_to_photon', 'd_time')
+            if config.has_option('pixel_to_photon', 'min_number'):
+                self.pixel_to_photon_params.min_number = config.getint('pixel_to_photon', 'min_number')
+            if config.has_option('pixel_to_photon', 'use_tdc1'):
+                self.pixel_to_photon_params.use_tdc1 = config.getboolean('pixel_to_photon', 'use_tdc1')
+            
+            if self.verbose_level >= 1:
+                logger.info(f"Configured PixelToPhotonParams from config file: {self.pixel_to_photon_params.model_dump()}")
+        
+        # Parse photon_to_event parameters if present
+        if config.has_section('photon_to_event'):
+            self.photon_to_event_params = PhotonToEventParams()
+            if config.has_option('photon_to_event', 'd_space'):
+                self.photon_to_event_params.d_space = config.getfloat('photon_to_event', 'd_space')
+            if config.has_option('photon_to_event', 'd_time'):
+                self.photon_to_event_params.d_time = config.getfloat('photon_to_event', 'd_time')
+            if config.has_option('photon_to_event', 'max_duration'):
+                self.photon_to_event_params.max_duration = config.getfloat('photon_to_event', 'max_duration')
+            if config.has_option('photon_to_event', 'd_time_extF'):
+                self.photon_to_event_params.d_time_extF = config.getfloat('photon_to_event', 'd_time_extF')
+            
+            if self.verbose_level >= 1:
+                logger.info(f"Configured PhotonToEventParams from config file: {self.photon_to_event_params.model_dump()}")
+        
+        # Parse event_to_image parameters if present (optional)
+        if config.has_section('event_to_image'):
+            self.event_to_image_params = EventToImageParams()
+            if config.has_option('event_to_image', 'size_x'):
+                self.event_to_image_params.size_x = config.getint('event_to_image', 'size_x')
+            if config.has_option('event_to_image', 'size_y'):
+                self.event_to_image_params.size_y = config.getint('event_to_image', 'size_y')
+            if config.has_option('event_to_image', 'nPhotons_min'):
+                self.event_to_image_params.nPhotons_min = config.getint('event_to_image', 'nPhotons_min')
+            if config.has_option('event_to_image', 'nPhotons_max'):
+                self.event_to_image_params.nPhotons_max = config.getint('event_to_image', 'nPhotons_max')
+            if config.has_option('event_to_image', 'time_extTrigger'):
+                self.event_to_image_params.time_extTrigger = config.getfloat('event_to_image', 'time_extTrigger')
+            if config.has_option('event_to_image', 'time_res_s'):
+                self.event_to_image_params.time_res_s = config.getfloat('event_to_image', 'time_res_s')
+            if config.has_option('event_to_image', 'time_limit'):
+                self.event_to_image_params.time_limit = config.getfloat('event_to_image', 'time_limit')
+            if config.has_option('event_to_image', 'psd_min'):
+                self.event_to_image_params.psd_min = config.getfloat('event_to_image', 'psd_min')
+            if config.has_option('event_to_image', 'psd_max'):
+                self.event_to_image_params.psd_max = config.getfloat('event_to_image', 'psd_max')
+            
+            if self.verbose_level >= 1:
+                logger.info(f"Configured EventToImageParams from config file: {self.event_to_image_params.model_dump()}")
+        else:
+            if self.verbose_level >= 1:
+                logger.info("No [event_to_image] section found in config file, leaving as None")
     
     def set_pixel_to_photon_params(self, d_space=None, d_time=None, min_number=None, use_tdc1=None):
-        if d_space is not None: self.pixel_to_photon_params.d_space = d_space
-        if d_time is not None: self.pixel_to_photon_params.d_time = d_time
-        if min_number is not None: self.pixel_to_photon_params.min_number = min_number
-        if use_tdc1 is not None: self.pixel_to_photon_params.use_tdc1 = use_tdc1
+        """Update pixel to photon parameters"""
+        if d_space is not None: 
+            self.pixel_to_photon_params.d_space = d_space
+        if d_time is not None: 
+            self.pixel_to_photon_params.d_time = d_time
+        if min_number is not None: 
+            self.pixel_to_photon_params.min_number = min_number
+        if use_tdc1 is not None: 
+            self.pixel_to_photon_params.use_tdc1 = use_tdc1
         
         # log the setting of the pixel to photon parameters
         logger.info(f"Set PixelToPhotonParams: {self.pixel_to_photon_params.model_dump()}")
 
     def set_photon_to_event_params(self, d_space=None, d_time=None, max_duration=None, d_time_extF=None):
-        if d_space is not None: self.photon_to_event_params.d_space = d_space
-        if d_time is not None: self.photon_to_event_params.d_time = d_time
-        if max_duration is not None: self.photon_to_event_params.max_duration = max_duration
-        if d_time_extF is not None: self.photon_to_event_params.d_time_extF = d_time_extF
+        """Update photon to event parameters"""
+        if d_space is not None: 
+            self.photon_to_event_params.d_space = d_space
+        if d_time is not None: 
+            self.photon_to_event_params.d_time = d_time
+        if max_duration is not None: 
+            self.photon_to_event_params.max_duration = max_duration
+        if d_time_extF is not None: 
+            self.photon_to_event_params.d_time_extF = d_time_extF
         
         # log the setting of the photon to event parameters
         logger.info(f"Set PhotonToEventParams: {self.photon_to_event_params.model_dump()}")
 
     def set_event_to_image_params(self, size_x=None, size_y=None, nPhotons_min=None, nPhotons_max=None, time_extTrigger=None, time_res_s=None, time_limit=None, psd_min=None, psd_max=None):
-        if size_x is not None: self.event_to_image_params.size_x = size_x
-        if size_y is not None: self.event_to_image_params.size_y = size_y
-        if nPhotons_min is not None: self.event_to_image_params.nPhotons_min = nPhotons_min
-        if nPhotons_max is not None: self.event_to_image_params.nPhotons_max = nPhotons_max
-        if time_extTrigger is not None: self.event_to_image_params.time_extTrigger = time_extTrigger
-        if time_res_s is not None: self.event_to_image_params.time_res_s = time_res_s
-        if time_limit is not None: self.event_to_image_params.time_limit = time_limit
-        if psd_min is not None: self.event_to_image_params.psd_min = psd_min
-        if psd_max is not None: self.event_to_image_params.psd_max = psd_max
+        """Update event to image parameters"""
+        if size_x is not None: 
+            self.event_to_image_params.size_x = size_x
+        if size_y is not None: 
+            self.event_to_image_params.size_y = size_y
+        if nPhotons_min is not None: 
+            self.event_to_image_params.nPhotons_min = nPhotons_min
+        if nPhotons_max is not None: 
+            self.event_to_image_params.nPhotons_max = nPhotons_max
+        if time_extTrigger is not None: 
+            self.event_to_image_params.time_extTrigger = time_extTrigger
+        if time_res_s is not None: 
+            self.event_to_image_params.time_res_s = time_res_s
+        if time_limit is not None: 
+            self.event_to_image_params.time_limit = time_limit
+        if psd_min is not None: 
+            self.event_to_image_params.psd_min = psd_min
+        if psd_max is not None: 
+            self.event_to_image_params.psd_max = psd_max
         
         # log the setting of the event to image parameters
         logger.info(f"Set EventToImageParams: {self.event_to_image_params.model_dump()}")
 
-    def check_or_create_sub_dirs(self,create_sub_dirs=False,verbose_level=0):
+    def check_or_create_sub_dirs(self, create_sub_dirs=False, verbose_level=None):
         """
         Check if the subdirectories exist, and create them if they don't.
         """
-        for dir_name in [self.directories.log_file_dir, self.directories.tpx3_file_dir, self.directories.list_file_dir, self.directories.event_file_dir, self.directories.final_file_dir, self.directories.export_file_dir]:
-            if(verbose_level>=1):
+        if verbose_level is None:
+            verbose_level = self.verbose_level
+            
+        for dir_name in [self.directories.log_file_dir, self.directories.tpx3_file_dir, 
+                        self.directories.list_file_dir, self.directories.event_file_dir, 
+                        self.directories.final_file_dir, self.directories.export_file_dir]:
+            if verbose_level >= 1:
                 logger.info(f"Checking directory: {dir_name}")
-            if (not os.path.exists(dir_name) and create_sub_dirs == True):
+            if not os.path.exists(dir_name) and create_sub_dirs:
                 logger.warning(f"Could not find {dir_name}... now creating {dir_name}")
                 os.makedirs(dir_name)
-            elif not os.path.exists(dir_name) and create_sub_dirs == False:
-                logger.error(f"Could not find {dir_name}. Please create this directory or set create_sub_dirs=True in the empirConfig constructor.")
-                raise FileNotFoundError(f"Could not find {dir_name}. Please create this directory or set create_sub_dirs=True in the empirConfig constructor.")
+            elif not os.path.exists(dir_name) and not create_sub_dirs:
+                logger.error(f"Could not find {dir_name}. Please create this directory or set create_sub_dirs=True.")
+                raise FileNotFoundError(f"Could not find {dir_name}. Please create this directory or set create_sub_dirs=True.")
             else:
-                if(verbose_level>=1):
+                if verbose_level >= 1:
                     logger.info(f"Found {dir_name}")
+                    
+    def model_dump_json(self, indent=4):
+        """Return the configuration as a JSON string."""
+        import json
+        return json.dumps(self.model_dump(), indent=indent)
 
 
 ######################################################################################
