@@ -7,15 +7,15 @@ from typing import Optional
 
 # using pydantic models for configuration of empir runs
 from pydantic import BaseModel, Field, field_validator, model_validator
-from hermes.empir.models import PixelToPhotonParams, PhotonToEventParams, EventToImageParams, DirectoryStructure
-
-from loguru import logger
+from hermes.empir.models import ProcessingParameters, DirectoryStructure
+from hermes.empir.logger import empir_logger as logger
+from hermes.empir.logger import configure_logger
 
 
 ######################################################################################
 # Class for configuring the processing of tpx3 files using EMPIR binaries
 #-------------------------------------------------------------------------------------
-class Config(BaseModel):
+class Configuration(BaseModel):
     """ A configure class for the processing of tpx3 files using EMPIR binaries from 
         Adrian S. Losko at TUM. This analysis code has the following structures. 
         File structures: 
@@ -29,59 +29,47 @@ class Config(BaseModel):
         separate export directory
             {dest}/export/      <- Exported pixel, photon, and event information is stored here.
     """
-    # Configuration options
-    config_file: Optional[str] = Field(default=None, description="Path to configuration file")
-    verbose_level: int = Field(default=0, ge=0, le=3, description="Verbosity level (0-3)")
     
-    # Directory structure for the processing
-    directories: Optional[DirectoryStructure] = Field(default=None) 
     
-    # Pixel to photon, photon to event, and event to image parameters
-    pixel_to_photon_params: Optional[PixelToPhotonParams] = Field(default=None) 
-    photon_to_event_params: Optional[PhotonToEventParams] = Field(default=None) 
-    event_to_image_params: Optional[EventToImageParams] = Field(default=None)
+    empir_parameters: ProcessingParameters = Field(default_factory=ProcessingParameters, description="Parameters for the EMPIR processing")
     
-    class Config:
+    model_config = {
         # Allow arbitrary types for compatibility with existing code
-        arbitrary_types_allowed = True
+        "arbitrary_types_allowed": True,
         # Validate assignment to catch issues early
-        validate_assignment = True
-        
+        "validate_assignment": True,
+    }
+    
     @model_validator(mode='after')
-    def validate_config(self):
-        """Model validator to handle initialization logic"""
-        if self.config_file:
-            if self.verbose_level >= 1: 
-                logger.info(f"Configuring empirConfig from file: {self.config_file}")
-            
-            # Check if the configuration file exists
-            if not os.path.exists(self.config_file):
-                logger.error(f"Configuration file does not exist: {self.config_file}")
-                raise FileNotFoundError(f"Configuration file does not exist: {self.config_file}")
-                
-            # TODO: Add configuration file parsing logic here
-            # For now, we'll skip this and use defaults
-            
+    def setup_logger(self):
+        """Initialize logger after model creation with file logging in current directory."""
+        import os
+        from hermes.empir.logger import configure_logger
+        # Set up logging with hermes.log in current working directory
+        log_file_path = os.path.join(os.getcwd(), "hermes.log")
+        configure_logger(log_file_path=log_file_path, verbose_level=0)  # File logging from start
+        
+        # Add separator for new Configuration instance
+        logger.info("-" * 80)
+        logger.debug("Configuration instance initialized")
+        logger.info("-" * 80)
         return self
-    
-    @field_validator('directories', mode='after')
-    @classmethod
-    def validate_directories(cls, v):
-        """Validate DirectoryStructure after instantiation"""
-        if not isinstance(v, DirectoryStructure):
-            raise ValueError("directories must be a DirectoryStructure instance")
-        return v
-    
-    @classmethod
-    def configure_from_destination(cls, dest: str, verbose_level: int = 0):
+        
+
+    def configure_from_destination(self, dest: str, verbose_level: int = 0):
         """
-        Create an empirConfig instance from a destination directory.
+        Update this Configuration instance's empir_parameters from a destination directory.
         
         Args:
             dest (str): Destination directory path
             verbose_level (int): Verbosity level
-            **kwargs: Additional keyword arguments
         """
+        
+        # Update console verbosity level while keeping file logging in current directory
+        import os
+        from hermes.empir.logger import configure_logger
+        log_file_path = os.path.join(os.getcwd(), "hermes.log")
+        configure_logger(log_file_path=log_file_path, verbose_level=verbose_level)
         
         # Check if destination directory is provided
         if dest is None:
@@ -98,6 +86,7 @@ class Config(BaseModel):
         
         if verbose_level >= 1: 
             logger.info(f"Using provided destination directory: {dest}")
+            logger.info(f"Logging to file: {log_file_path}")
         
         # Initialize directory structure
         directories = DirectoryStructure(
@@ -113,19 +102,38 @@ class Config(BaseModel):
         
         # Log the initialization of the directory structure
         if verbose_level >= 1: 
-            logger.info(f"Initialized DirectoryStructure: {directories.model_dump()}")
-        
-        # Create the empirConfig instance
-        config = cls(
-            directories=directories,
-            verbose_level=verbose_level,
-        )
+            logger.debug(f"Initialized DirectoryStructure: {directories.model_dump()}")
+
+        # Update the existing empir_parameters
+        self.empir_parameters.verbose_level = verbose_level
+        self.empir_parameters.directories = directories
         
         if verbose_level >= 1: 
-            logger.info("Initialized empirConfig with default parameters")
-            
-        return config
+            logger.info("Updated Configuration empir_parameters from destination directory")
+    
+
+    @classmethod
+    def from_destination(cls, dest: str, verbose_level: int = 0):
+        """
+        Create a new Configuration instance from a destination directory.
         
+        Args:
+            dest (str): Destination directory path
+            verbose_level (int): Verbosity level
+            
+        Returns:
+            Configuration: A new Configuration instance
+        """
+        # Create a new Configuration instance
+        config = cls()
+        
+        # Configure it from the destination
+        config.configure_from_destination(dest, verbose_level)
+        
+        return config
+
+        
+    '''
     @classmethod
     def configure_from_init_file(cls, config_file_path: str, verbose_level: int = 0):
         """
@@ -272,72 +280,85 @@ class Config(BaseModel):
             config.check_or_create_sub_dirs(create_sub_dirs=config.directories.create_subdirs, verbose_level=verbose_level)
         
         return config
-
+    '''
+    
     @classmethod
-    def set_pixel_to_photon_params(cls, d_space=None, d_time=None, min_number=None, use_tdc1=None):
-        """Update pixel to photon parameters"""
+    def set_pixel_to_photon_params(cls, instance, d_space=None, d_time=None, min_number=None, use_tdc1=None):
+        """Update pixel to photon parameters on an instance"""
+        if instance.empir_parameters.pixel_to_photon_params is None:
+            from hermes.empir.models import PixelToPhotonParams
+            instance.empir_parameters.pixel_to_photon_params = PixelToPhotonParams()
+            
         if d_space is not None: 
-            cls.pixel_to_photon_params.d_space = d_space
+            instance.empir_parameters.pixel_to_photon_params.d_space = d_space
         if d_time is not None: 
-            cls.pixel_to_photon_params.d_time = d_time
+            instance.empir_parameters.pixel_to_photon_params.d_time = d_time
         if min_number is not None: 
-            cls.pixel_to_photon_params.min_number = min_number
+            instance.empir_parameters.pixel_to_photon_params.min_number = min_number
         if use_tdc1 is not None: 
-            cls.pixel_to_photon_params.use_tdc1 = use_tdc1
+            instance.empir_parameters.pixel_to_photon_params.use_tdc1 = use_tdc1
 
         # log the setting of the pixel to photon parameters
-        logger.info(f"Set PixelToPhotonParams: {cls.pixel_to_photon_params.model_dump()}")
+        logger.info(f"Set PixelToPhotonParams: {instance.empir_parameters.pixel_to_photon_params.model_dump()}")
 
     @classmethod
-    def set_photon_to_event_params(cls, d_space=None, d_time=None, max_duration=None, d_time_extF=None):
-        """Update photon to event parameters"""
+    def set_photon_to_event_params(cls, instance, d_space=None, d_time=None, max_duration=None, d_time_extF=None):
+        """Update photon to event parameters on an instance"""
+        if instance.empir_parameters.photon_to_event_params is None:
+            from hermes.empir.models import PhotonToEventParams
+            instance.empir_parameters.photon_to_event_params = PhotonToEventParams()
+            
         if d_space is not None: 
-            cls.photon_to_event_params.d_space = d_space
+            instance.empir_parameters.photon_to_event_params.d_space = d_space
         if d_time is not None: 
-            cls.photon_to_event_params.d_time = d_time
+            instance.empir_parameters.photon_to_event_params.d_time = d_time
         if max_duration is not None: 
-            cls.photon_to_event_params.max_duration = max_duration
+            instance.empir_parameters.photon_to_event_params.max_duration = max_duration
         if d_time_extF is not None: 
-            cls.photon_to_event_params.d_time_extF = d_time_extF
+            instance.empir_parameters.photon_to_event_params.d_time_extF = d_time_extF
 
         # log the setting of the photon to event parameters
-        logger.info(f"Set PhotonToEventParams: {cls.photon_to_event_params.model_dump()}")
+        logger.info(f"Set PhotonToEventParams: {instance.empir_parameters.photon_to_event_params.model_dump()}")
 
     @classmethod
-    def set_event_to_image_params(cls, size_x=None, size_y=None, nPhotons_min=None, nPhotons_max=None, time_extTrigger=None, time_res_s=None, time_limit=None, psd_min=None, psd_max=None):
-        """Update event to image parameters"""
+    def set_event_to_image_params(cls, instance, size_x=None, size_y=None, nPhotons_min=None, nPhotons_max=None, time_extTrigger=None, time_res_s=None, time_limit=None, psd_min=None, psd_max=None):
+        """Update event to image parameters on an instance"""
+        if instance.empir_parameters.event_to_image_params is None:
+            from hermes.empir.models import EventToImageParams
+            instance.empir_parameters.event_to_image_params = EventToImageParams()
+            
         if size_x is not None: 
-            cls.event_to_image_params.size_x = size_x
+            instance.empir_parameters.event_to_image_params.size_x = size_x
         if size_y is not None: 
-            cls.event_to_image_params.size_y = size_y
+            instance.empir_parameters.event_to_image_params.size_y = size_y
         if nPhotons_min is not None: 
-            cls.event_to_image_params.nPhotons_min = nPhotons_min
+            instance.empir_parameters.event_to_image_params.nPhotons_min = nPhotons_min
         if nPhotons_max is not None: 
-            cls.event_to_image_params.nPhotons_max = nPhotons_max
+            instance.empir_parameters.event_to_image_params.nPhotons_max = nPhotons_max
         if time_extTrigger is not None: 
-            cls.event_to_image_params.time_extTrigger = time_extTrigger
+            instance.empir_parameters.event_to_image_params.time_extTrigger = time_extTrigger
         if time_res_s is not None: 
-            cls.event_to_image_params.time_res_s = time_res_s
+            instance.empir_parameters.event_to_image_params.time_res_s = time_res_s
         if time_limit is not None: 
-            cls.event_to_image_params.time_limit = time_limit
+            instance.empir_parameters.event_to_image_params.time_limit = time_limit
         if psd_min is not None: 
-            cls.event_to_image_params.psd_min = psd_min
+            instance.empir_parameters.event_to_image_params.psd_min = psd_min
         if psd_max is not None: 
-            cls.event_to_image_params.psd_max = psd_max
+            instance.empir_parameters.event_to_image_params.psd_max = psd_max
 
         # log the setting of the event to image parameters
-        logger.info(f"Set EventToImageParams: {cls.event_to_image_params.model_dump()}")
+        logger.info(f"Set EventToImageParams: {instance.empir_parameters.event_to_image_params.model_dump()}")
 
     def check_or_create_sub_dirs(self, create_sub_dirs=False, verbose_level=None):
         """
         Check if the subdirectories exist, and create them if they don't.
         """
         if verbose_level is None:
-            verbose_level = self.verbose_level
+            verbose_level = self.empir_parameters.verbose_level
 
-        for dir_name in [self.directories.log_file_dir, self.directories.tpx3_file_dir,
-                         self.directories.list_file_dir, self.directories.event_file_dir,
-                         self.directories.final_file_dir, self.directories.export_file_dir]:
+        for dir_name in [self.empir_parameters.directories.log_file_dir, self.empir_parameters.directories.tpx3_file_dir,
+                         self.empir_parameters.directories.list_file_dir, self.empir_parameters.directories.event_file_dir,
+                         self.empir_parameters.directories.final_file_dir, self.empir_parameters.directories.export_file_dir]:
             if verbose_level >= 1:
                 logger.info(f"Checking directory: {dir_name}")
             if not os.path.exists(dir_name) and create_sub_dirs:
