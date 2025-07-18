@@ -7,7 +7,7 @@ from typing import Optional
 
 # using pydantic models for configuration of empir runs
 from pydantic import BaseModel, Field, field_validator, model_validator
-from hermes.empir.models import ProcessingParameters, DirectoryStructure
+from hermes.empir.models import ProcessingParameters, DirectoryStructure, PixelToPhotonParams, PhotonToEventParams, EventToImageParams
 from hermes.empir.logger import empir_logger as logger
 from hermes.empir.logger import configure_logger
 
@@ -43,8 +43,6 @@ class Configuration(BaseModel):
     @model_validator(mode='after')
     def setup_logger(self):
         """Initialize logger after model creation with file logging in current directory."""
-        import os
-        from hermes.empir.logger import configure_logger
         # Set up logging with hermes.log in current working directory
         log_file_path = os.path.join(os.getcwd(), "hermes.log")
         configure_logger(log_file_path=log_file_path, verbose_level=0)  # File logging from start
@@ -66,8 +64,6 @@ class Configuration(BaseModel):
         """
         
         # Update console verbosity level while keeping file logging in current directory
-        import os
-        from hermes.empir.logger import configure_logger
         log_file_path = os.path.join(os.getcwd(), "hermes.log")
         configure_logger(log_file_path=log_file_path, verbose_level=verbose_level)
         
@@ -110,10 +106,9 @@ class Configuration(BaseModel):
         
         if verbose_level >= 1: 
             logger.info("Updated Configuration empir_parameters from destination directory")
-    
 
     @classmethod
-    def from_destination(cls, dest: str, verbose_level: int = 0):
+    def new_config_from_destination(cls, dest: str, verbose_level: int = 0):
         """
         Create a new Configuration instance from a destination directory.
         
@@ -132,16 +127,20 @@ class Configuration(BaseModel):
         
         return config
 
-        
-    '''
-    @classmethod
-    def configure_from_init_file(cls, config_file_path: str, verbose_level: int = 0):
+    def configure_from_init_file(self, config_file_path: str, verbose_level: int = 0):
         """
-        Configure the empirConfig instance from a configuration file using ConfigParser.
+        Configure this Configuration instance from a configuration file using ConfigParser.
         
         Args:
             config_file_path (str): Path to the configuration file
+            verbose_level (int): Verbosity level
         """
+        
+        # Update console verbosity level while keeping file logging in current directory
+        log_file_path = os.path.join(os.getcwd(), "hermes.log")
+        configure_logger(log_file_path=log_file_path, verbose_level=verbose_level)
+        
+        # Check if config file exists
         if not os.path.exists(config_file_path):
             logger.error(f"Configuration file does not exist: {config_file_path}")
             raise FileNotFoundError(f"Configuration file does not exist: {config_file_path}")
@@ -151,12 +150,9 @@ class Configuration(BaseModel):
         
         logger.info(f"Reading configuration from: {config_file_path}")
         
-        # Update the config_file field
-        cls.config_file = config_file_path
-
         # Parse directory structure if present
+        directories = None
         if config.has_section('directory_structure'):
-
             if verbose_level >= 1:
                 logger.info(f"Found directory_structure section in: {config_file_path}")
 
@@ -191,15 +187,21 @@ class Configuration(BaseModel):
                     
             else:
                 logger.warning(f"Directory structure section is incomplete in: {config_file_path}. Please ensure 'destination_dir' is set.")
-                
 
         # Parse pixel_to_photon parameters if present
+        pixel_to_photon_params = None
         if config.has_section('pixel_to_photon'):
             if verbose_level >= 1:
                 logger.info(f"Found pixel_to_photon section in: {config_file_path}")
             
             pixel_to_photon_params = PixelToPhotonParams()
             
+            if config.has_option('pixel_to_photon', 'input_file'):
+                pixel_to_photon_params.input_file_name = config.get('pixel_to_photon', 'input_file')
+            if config.has_option('pixel_to_photon', 'output_file'):
+                pixel_to_photon_params.output_file_name = config.get('pixel_to_photon', 'output_file')
+            if config.has_option('pixel_to_photon', 'log_file'):
+                pixel_to_photon_params.log_file_name = config.get('pixel_to_photon', 'log_file')
             if config.has_option('pixel_to_photon', 'd_space'):
                 pixel_to_photon_params.d_space = config.getfloat('pixel_to_photon', 'd_space')
             if config.has_option('pixel_to_photon', 'd_time'):
@@ -208,18 +210,28 @@ class Configuration(BaseModel):
                 pixel_to_photon_params.min_number = config.getint('pixel_to_photon', 'min_number')
             if config.has_option('pixel_to_photon', 'use_tdc1'):
                 pixel_to_photon_params.use_tdc1 = config.getboolean('pixel_to_photon', 'use_tdc1')
+            if config.has_option('pixel_to_photon', 'parameter_file'):
+                pixel_to_photon_params.parameter_file = config.get('pixel_to_photon', 'parameter_file')
 
+            # Log the configuration of pixel_to_photon_params
+            # TODO: Add a logging funtion in logger.py to record (and update) a passed .json file
+            
+            # Log configuration is complete
             if verbose_level >= 1:
                 logger.info(f"Configured PixelToPhotonParams from config file: {config_file_path}")
 
         # Parse photon_to_event parameters if present
+        photon_to_event_params = None
         if config.has_section('photon_to_event'):
-            
             if verbose_level >= 1:
                 logger.info(f"Found photon_to_event section in: {config_file_path}")
 
             photon_to_event_params = PhotonToEventParams()
             
+            if config.has_option('photon_to_event', 'input_file'):
+                photon_to_event_params.input_file = config.get('photon_to_event', 'input_file')
+            if config.has_option('photon_to_event', 'output_file'):
+                photon_to_event_params.output_file = config.get('photon_to_event', 'output_file')
             if config.has_option('photon_to_event', 'd_space'):
                 photon_to_event_params.d_space = config.getfloat('photon_to_event', 'd_space')
             if config.has_option('photon_to_event', 'd_time'):
@@ -228,13 +240,19 @@ class Configuration(BaseModel):
                 photon_to_event_params.max_duration = config.getfloat('photon_to_event', 'max_duration')
             if config.has_option('photon_to_event', 'd_time_extF'):
                 photon_to_event_params.d_time_extF = config.getfloat('photon_to_event', 'd_time_extF')
+            if config.has_option('photon_to_event', 'parameter_file'):
+                photon_to_event_params.parameter_file = config.get('photon_to_event', 'parameter_file')
+                
+            # Log the configuration of photon_to_event_params
+            # TODO: Add a logging function in logger.py to record (and update) a passed .json file
 
+            # Log configuration is complete
             if verbose_level >= 1:
                 logger.info(f"Configured PhotonToEventParams from config file: {config_file_path}")
 
         # Parse event_to_image parameters if present (optional)
+        event_to_image_params = None
         if config.has_section('event_to_image'):
-            
             if verbose_level >= 1:
                 logger.info(f"Found event_to_image section in: {config_file_path}")
             
@@ -258,35 +276,62 @@ class Configuration(BaseModel):
                 event_to_image_params.psd_min = config.getfloat('event_to_image', 'psd_min')
             if config.has_option('event_to_image', 'psd_max'):
                 event_to_image_params.psd_max = config.getfloat('event_to_image', 'psd_max')
+            if config.has_option('event_to_image', 'parameter_file'):
+                event_to_image_params.parameter_file = config.get('event_to_image', 'parameter_file')
 
+            # Log the configuration of event_to_image_params
+            # TODO: Add a logging function in logger.py to record (and update) a passed .json file
+
+            # Log configuration is complete
             if verbose_level >= 1:
                 logger.info(f"Configured EventToImageParams from config file: {config_file_path}")
         else:
             if verbose_level >= 1:
                 logger.info("No [event_to_image] section found in config file, leaving as None")
-                
-        # Create the empirConfig instance, passing only parameters that were parsed (others remain None)
-        config = cls(
-            directories=locals().get('directories', None),
-            pixel_to_photon_params=locals().get('pixel_to_photon_params', None),
-            photon_to_event_params=locals().get('photon_to_event_params', None),
-            event_to_image_params=locals().get('event_to_image_params', None),
-            config_file=os.path.abspath(config_file_path),
-            verbose_level=verbose_level
-        )
         
-        # Call check_or_create_sub_dirs on the instance, not the class
-        if config.directories:
-            config.check_or_create_sub_dirs(create_sub_dirs=config.directories.create_subdirs, verbose_level=verbose_level)
+        # Update the existing empir_parameters
+        self.empir_parameters.verbose_level = verbose_level
+        if directories:
+            self.empir_parameters.directories = directories
+        if pixel_to_photon_params:
+            self.empir_parameters.pixel_to_photon_params = pixel_to_photon_params
+        if photon_to_event_params:
+            self.empir_parameters.photon_to_event_params = photon_to_event_params
+        if event_to_image_params:
+            self.empir_parameters.event_to_image_params = event_to_image_params
+        
+        # Check or create subdirectories if requested
+        if directories and directories.create_subdirs:
+            self.check_or_create_sub_dirs(create_sub_dirs=True, verbose_level=verbose_level)
+        
+        # Log the completion of configuration
+        if verbose_level >= 1:
+            logger.info("Updated Configuration empir_parameters from config file")
+
+    @classmethod  
+    def new_config_from_config_file(cls, config_file_path: str, verbose_level: int = 0):
+        """
+        Create a new Configuration instance from a configuration file using ConfigParser.
+        
+        Args:
+            config_file_path (str): Path to the configuration file
+            verbose_level (int): Verbosity level
+            
+        Returns:
+            Configuration: A new Configuration instance
+        """
+        # Create a new Configuration instance
+        config = cls()
+        
+        # Configure it from the config file
+        config.configure_from_config_file(config_file_path, verbose_level)
         
         return config
-    '''
     
     @classmethod
     def set_pixel_to_photon_params(cls, instance, d_space=None, d_time=None, min_number=None, use_tdc1=None):
         """Update pixel to photon parameters on an instance"""
         if instance.empir_parameters.pixel_to_photon_params is None:
-            from hermes.empir.models import PixelToPhotonParams
             instance.empir_parameters.pixel_to_photon_params = PixelToPhotonParams()
             
         if d_space is not None: 
@@ -305,7 +350,6 @@ class Configuration(BaseModel):
     def set_photon_to_event_params(cls, instance, d_space=None, d_time=None, max_duration=None, d_time_extF=None):
         """Update photon to event parameters on an instance"""
         if instance.empir_parameters.photon_to_event_params is None:
-            from hermes.empir.models import PhotonToEventParams
             instance.empir_parameters.photon_to_event_params = PhotonToEventParams()
             
         if d_space is not None: 
@@ -324,7 +368,6 @@ class Configuration(BaseModel):
     def set_event_to_image_params(cls, instance, size_x=None, size_y=None, nPhotons_min=None, nPhotons_max=None, time_extTrigger=None, time_res_s=None, time_limit=None, psd_min=None, psd_max=None):
         """Update event to image parameters on an instance"""
         if instance.empir_parameters.event_to_image_params is None:
-            from hermes.empir.models import EventToImageParams
             instance.empir_parameters.event_to_image_params = EventToImageParams()
             
         if size_x is not None: 
