@@ -266,7 +266,7 @@ void writeRawSignals(const configParameters& configParams, std::ofstream& rawSig
  * @param signalData    HERMES defined structure that contain raw data info from data packets.
  * @return nothing
  */
-void processTDCPacket(uint16_t bufferNumber, unsigned long long dataPacket, signalData &signalData) {
+void processTDCPacket_old(uint16_t bufferNumber, unsigned long long dataPacket, signalData &signalData) {
     // Logic for TDC packet
 
 	// Unpack dataPacket
@@ -282,6 +282,37 @@ void processTDCPacket(uint16_t bufferNumber, unsigned long long dataPacket, sign
 	signalData.yPixel = 0;
 	signalData.ToaFinal = coarseTime*25*nanoSecondsToSeconds + trigTimeFine*timeUnit*nanoSecondsToSeconds;
 	signalData.TotFinal = 0;
+}
+
+
+/**
+ * @brief Takes a TDC data packet from a tpx3 file, processes it, and updates the corresponding signal data structure. 
+ *
+ * This function takes the data packet pass through unsigned long long dataPacket and processes the timing of 
+ * the TDC trigger. It then update the corresponding signalData structure, which is passed by reference. 
+ * 
+ * @param dataPacket    64 byte data packet that contains raw timing info
+ * @param signalData    HERMES defined structure that contain raw data info from data packets.
+ * @return nothing
+ */
+void processTDCPacket(uint16_t bufferNumber, unsigned long long dataPacket, signalData &signalData) {
+    // Extract according to manual specification
+    uint64_t timestamp = (dataPacket >> 9) & 0x7FFFFFFFF;  // Bits 43-9 (35 bits)
+    uint8_t stamp = (dataPacket >> 5) & 0xF;               // Bits 8-5 (4 bits)
+    
+    // Calculate time according to manual
+    double timestampNs = timestamp * 3.125;  // 320MHz -> nanoseconds
+    double stampNs = (stamp != 0) ? stamp * 0.260 : 0.0;  // 260 ps -> nanoseconds
+    
+    double finalTimestampNs = timestampNs + stampNs;
+    
+    // Set info in signalData 
+    signalData.bufferNumber = bufferNumber;
+    signalData.signalType = 1;
+    signalData.xPixel = 0;
+    signalData.yPixel = 0;
+    signalData.ToaFinal = finalTimestampNs * nanoSecondsToSeconds;  // Convert to seconds
+    signalData.TotFinal = 0;
 }
 
 
