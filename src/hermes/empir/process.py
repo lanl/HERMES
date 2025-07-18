@@ -6,7 +6,7 @@ import pandas as pd
 from hermes.empir.models import DirectoryStructure
 
 # Import logger for empir functions
-from loguru import logger
+from hermes.empir.logger import empir_logger as logger
 
 #-------------------------------------------------------------------------------------
 def read_exported_pixel_activations(directories: DirectoryStructure, file_name: str):
