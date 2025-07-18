@@ -1,6 +1,6 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import Optional, List
-import struct
+import os
 
 class DirectoryStructure(BaseModel):
     destination_dir: str = Field(..., description="Location of run directory")
@@ -11,7 +11,18 @@ class DirectoryStructure(BaseModel):
     event_file_dir: str = Field(..., description="Location of event files")
     final_file_dir: str = Field(..., description="Location of final image files")
     export_file_dir: str = Field(..., description="Location of exported info files")
-
+    
+    @model_validator(mode='after')
+    def validate_directories(self):
+        """Validate that all directory paths exist or can be created"""
+        # Validate destination directory exists
+        if not os.path.exists(self.destination_dir):
+            raise ValueError(f"Destination directory does not exist: {self.destination_dir}")
+        if not os.path.isdir(self.destination_dir):
+            raise ValueError(f"Destination path is not a directory: {self.destination_dir}")
+        
+        return self
+    
 class PixelToPhotonParams(BaseModel):
     input_file_name: Optional[str] = Field(default=None, description="Name of the input TPX3 file")
     output_file_name: Optional[str] = Field(default=None, description="Name of the output photon file")
@@ -48,6 +59,23 @@ class EventToImageParams(BaseModel):
     file_format: str = Field(default="tiff_w4", description='Format for the output file. Possibilities are: "tiff_w4" (default) or "tiff_w8"')
     parallel: bool = Field(default=True, description='Control parallel processing. Set "true" for on (default) and "false" for off')
     parameter_file: Optional[str] = Field(default=None, description="Path and name of a .json file where processing parameters are defined")
+
+
+class ProcessingParameters(BaseModel):
+    """
+    Class used to represent the configuration for the empir_export_pixelActivations function.
+    """
+    # Configuration options
+    config_file: Optional[str] = Field(default=None, description="Path to configuration file")
+    verbose_level: int = Field(default=0, ge=0, le=3, description="Verbosity level (0-3)")
+    
+    # Directory structure for the processing
+    directories: Optional[DirectoryStructure] = Field(default=None) 
+    
+    # Pixel to photon, photon to event, and event to image parameters
+    pixel_to_photon_params: Optional[PixelToPhotonParams] = Field(default=None) 
+    photon_to_event_params: Optional[PhotonToEventParams] = Field(default=None) 
+    event_to_image_params: Optional[EventToImageParams] = Field(default=None)
     
 class PixelActivations(BaseModel):
     """
