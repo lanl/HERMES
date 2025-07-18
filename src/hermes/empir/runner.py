@@ -1,7 +1,6 @@
 import os, subprocess
 from hermes.empir.models import PixelToPhotonParams, PhotonToEventParams, EventToImageParams, DirectoryStructure
-
-from loguru import logger
+from hermes.empir.logger import empir_logger as logger
 
 
 #-------------------------------------------------------------------------------------
