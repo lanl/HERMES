@@ -4,7 +4,7 @@ from hermes.empir.logger import empir_logger as logger
 from pydantic import BaseModel, model_validator
 
 
-class Runner(BaseModel):
+class EmpirRunner(BaseModel):
     """ A class for running EMPIR processing steps. """
 
     @model_validator(mode='after')
@@ -20,33 +20,35 @@ class Runner(BaseModel):
             if not shutil.which(binary):
                 raise EnvironmentError(f"Required EMPIR binary '{binary}' not found in PATH.")
             else:
-                logger.info(f"Found EMPIR binary: {binary} here {shutil.which(binary)}")
+                logger.debug(f"Found EMPIR binary: {binary} here {shutil.which(binary)}")
         
         return self
         
     @staticmethod
-    def pixels_to_photons(params: PixelToPhotonParams, directories: DirectoryStructure, tpx3_file_name=""):
-        """ Runs empir_pixel2photon_tpx3spidr with the user-defined parameters. Input and output files are specified by the user.
+    def pixels_to_photons(input_file = "", output_file = "",d_space=0.0,d_time = 0.0, min_number=0, use_tdc1=False,log_file=""):
+        """ Runs empir_pixel2photon_tpx3spidr with the user-defined parameters. 
     
         Note: You need to have the EMPIR binaries installed and in your PATH to use this function.
 
         Args:
-            params (PixelToPhotonParams): Parameters for empir_pixel2photon_tpx3spidr.
-            directories (DirectoryStructure): Directory structure for input, output, and log files.
-            tpx3_file_name (str): Name of the .tpx3 input file. If not provided, then exit the function.
+            input_file (str): Path to the input .tpx3 file.
+            output_file (str): Path to the output .empirphot file.
+            d_space (float): Spatial dispersion parameter.
+            d_time (float): Temporal dispersion parameter.
+            min_number (int): Minimum number of photons.
+            use_tdc1 (bool): Whether to use TDC1.
         """
-        
-        if tpx3_file_name == "":
+
+        if input_file == "":
             logger.error("No tpx3 file provided")
             return
         
         # Create input and output file names
-        input_file = os.path.join(directories.tpx3_file_dir, tpx3_file_name)
         log_file_name = tpx3_file_name.split(".")[0] + ".pixel2photon"
         log_file = os.path.join(directories.log_file_dir, log_file_name)
-        list_file_name = tpx3_file_name.replace('.tpx3', '.empirphot')
+        list_file_name = input_file.replace('.tpx3', '.empirphot')
         output_file = os.path.join(directories.list_file_dir, list_file_name)
-        tdc_option = "-T" if params.use_tdc1 else ""
+        tdc_option = "-T" if use_tdc1 else ""
 
         # Prepare the subprocess command for running "empir_pixel2photon_tpx3spidr"
         pixels_to_photons_command = [
