@@ -2,52 +2,38 @@ import os
 import numpy as np
 import pandas as pd
 
-# using pydantic models for configuration of empir runs
-from hermes.empir.models import DirectoryStructure
-
-# Import logger for empir functions
+from hermes.empir.models import ProcessingParameters
+from hermes.empir.runner import EmpirRunner
 from hermes.empir.logger import empir_logger as logger
 
-#-------------------------------------------------------------------------------------
-def read_exported_pixel_activations(directories: DirectoryStructure, file_name: str):
-    """ Reads a binary file from empir_export_pixelActivations and returns a pandas DataFrame of pixel activations.
-
-    NOTE: The information of each event is contained in 5 consecutive doubles: 
-        - x coordinate in pixels on the imaging chip
-        - y coordinate in pixels on the imaging chip
-        - absolute time in seconds
-        - time over threshold in arbitrary units
-        - time relative to the last trigger (nan if the event occured before the first trigger)
-
-    Args:
-        directories (DirectoryStructure): Directory structure for input, output, and log files.
-        file_name (str): The name of the binary file containing pixel activation data.
-
-    Returns:
-        pd.DataFrame: A DataFrame containing the pixel activation data.
+class EmpirProcessor:
+    
     """
-    # Check if the export directory exists
-    if not os.path.exists(directories.export_file_dir):
-        logger.error(f"Export directory does not exist: {directories.export_file_dir}")
-        return pd.DataFrame()
+    Class used to represent the EMPIR processing functionality.
     
-    file_path = os.path.join(directories.export_file_dir, file_name)
+    This class provides methods to process pixel data and export results.
+    It requires the EMPIR binaries to be installed and available in the system PATH.
+    """
     
-    # Check if the file exists
-    if not os.path.exists(file_path):
-        logger.error(f"File does not exist: {file_path}")
-        return pd.DataFrame()
+    # Create an instance of Runner to check for EMPIR binaries
+    runner = EmpirRunner()
+    
+    @staticmethod
+    def process_pixels_to_photons(params: ProcessingParameters, batch_mode=False, verbose_level=0):
+        """ Process pixel data using EMPIR binaries based on the provided parameters. """
+        
+        # Check if input and output directories exist
+        if not os.path.exists(params.directories.tpx3_file_dir):
+            logger.error(f"Input directory does not exist: {params.directories.tpx3_file_dir}")
+            return
+        if not os.path.exists(params.directories.output_file_dir):
+            logger.error(f"Output directory does not exist: {params.directories.output_file_dir}")
+            return
+        
+        # Example processing logic (to be implemented)
+        logger.info("Processing pixel data with EMPIR binaries...")
 
-    # Read the binary file using numpy
-    try:
-        data = np.fromfile(file_path, dtype=np.float64)
-        data = data.reshape(-1, 5)  # Each event is 5 doubles
+        # if batch_mode is False, run single file from config
+        if not batch_mode:
+            EmpirRunner.pixels_to_photons(params.pixel_to_photon_params, params.directories)
 
-        # Convert the numpy array to a pandas DataFrame
-        df = pd.DataFrame(data, columns=[
-            'x', 'y', 'absolute_time', 'time_over_threshold', 'time_relative_to_trigger'
-        ])
-        return df
-    except Exception as e:
-        logger.error(f"Error reading file {file_path}: {e}")
-        return pd.DataFrame()
