@@ -30,9 +30,9 @@ class Configuration(BaseModel):
             {dest}/export/      <- Exported pixel, photon, and event information is stored here.
     """
     
-    
     empir_parameters: ProcessingParameters = Field(default_factory=ProcessingParameters, description="Parameters for the EMPIR processing")
-    
+    empir_log_file_name: Optional[str] = Field(default=None, description="Name of the log file for EMPIR processing with HERMES")
+
     model_config = {
         # Allow arbitrary types for compatibility with existing code
         "arbitrary_types_allowed": True,
@@ -43,10 +43,14 @@ class Configuration(BaseModel):
     @model_validator(mode='after')
     def setup_logger(self):
         """Initialize logger after model creation with file logging in current directory."""
-        # Set up logging with hermes.log in current working directory
-        log_file_path = os.path.join(os.getcwd(), "hermes.log")
+        # Set up logging with hermes_empir.log in current working directory
+        if self.empir_log_file_name is None:
+            log_file_path = os.path.join(os.getcwd(), "hermes_empir.log")
+        else:
+            log_file_path = self.empir_log_file_name
+            
         configure_logger(log_file_path=log_file_path, verbose_level=0)  # File logging from start
-        
+
         # Add separator for new Configuration instance
         logger.info("-" * 80)
         logger.debug("Configuration instance initialized")
@@ -54,7 +58,7 @@ class Configuration(BaseModel):
         return self
         
 
-    def configure_from_destination(self, dest: str, verbose_level: int = 0):
+    def configure_from_destination(self, dest: str, create_sub_dirs: bool = False, verbose_level: int = 0):
         """
         Update this Configuration instance's empir_parameters from a destination directory.
         
@@ -64,7 +68,12 @@ class Configuration(BaseModel):
         """
         
         # Update console verbosity level while keeping file logging in current directory
-        log_file_path = os.path.join(os.getcwd(), "hermes.log")
+        # Set up logging with hermes_empir.log in current working directory
+        if self.empir_log_file_name is None:
+            log_file_path = os.path.join(os.getcwd(), "hermes_empir.log")
+        else:
+            log_file_path = self.empir_log_file_name 
+            
         configure_logger(log_file_path=log_file_path, verbose_level=verbose_level)
         
         # Check if destination directory is provided
@@ -87,7 +96,7 @@ class Configuration(BaseModel):
         # Initialize directory structure
         directories = DirectoryStructure(
             destination_dir=f"{dest}",
-            create_subdirs=False,
+            create_subdirs=create_sub_dirs,
             log_file_dir=f"{dest}/logFiles/",
             tpx3_file_dir=f"{dest}/tpx3Files/",
             list_file_dir=f"{dest}/listFiles/",
@@ -103,6 +112,10 @@ class Configuration(BaseModel):
         # Update the existing empir_parameters
         self.empir_parameters.verbose_level = verbose_level
         self.empir_parameters.directories = directories
+        
+        # Check or create subdirectories if requested
+        if directories and directories.create_subdirs:
+            self.check_or_create_sub_dirs(create_sub_dirs=True, verbose_level=verbose_level)
         
         if verbose_level >= 1: 
             logger.info("Updated Configuration empir_parameters from destination directory")
@@ -299,6 +312,10 @@ class Configuration(BaseModel):
             self.empir_parameters.photon_to_event_params = photon_to_event_params
         if event_to_image_params:
             self.empir_parameters.event_to_image_params = event_to_image_params
+        
+        # Log the initialization of the directory structure
+        if verbose_level >= 1: 
+            logger.debug(f"Initialized DirectoryStructure: {directories.model_dump()}")
         
         # Check or create subdirectories if requested
         if directories and directories.create_subdirs:
