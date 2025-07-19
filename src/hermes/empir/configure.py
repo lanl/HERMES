@@ -54,7 +54,6 @@ class Configuration(BaseModel):
         # Add separator for new Configuration instance
         logger.info("-" * 80)
         logger.debug("Configuration instance initialized")
-        logger.info("-" * 80)
         return self
         
 
@@ -118,7 +117,7 @@ class Configuration(BaseModel):
             self.check_or_create_sub_dirs(create_sub_dirs=True, verbose_level=verbose_level)
         
         if verbose_level >= 1: 
-            logger.info("Updated Configuration empir_parameters from destination directory")
+            logger.info("Updated Configuration empir_parameters given a destination directory")
 
     @classmethod
     def new_config_from_destination(cls, dest: str, verbose_level: int = 0):
@@ -419,8 +418,8 @@ class Configuration(BaseModel):
         for dir_name in [self.empir_parameters.directories.log_file_dir, self.empir_parameters.directories.tpx3_file_dir,
                          self.empir_parameters.directories.list_file_dir, self.empir_parameters.directories.event_file_dir,
                          self.empir_parameters.directories.final_file_dir, self.empir_parameters.directories.export_file_dir]:
-            if verbose_level >= 1:
-                logger.info(f"Checking directory: {dir_name}")
+            if verbose_level >= 2:
+                logger.debug(f"Checking directory: {dir_name}")
             if not os.path.exists(dir_name) and create_sub_dirs:
                 logger.warning(f"Could not find {dir_name}... now creating {dir_name}")
                 os.makedirs(dir_name)
@@ -428,8 +427,8 @@ class Configuration(BaseModel):
                 logger.error(f"Could not find {dir_name}. Please create this directory or set create_sub_dirs=True.")
                 raise FileNotFoundError(f"Could not find {dir_name}. Please create this directory or set create_sub_dirs=True.")
             else:
-                if verbose_level >= 1:
-                    logger.info(f"Found {dir_name}")
+                if verbose_level >= 2:
+                    logger.debug(f"Found {dir_name}")
 
     def model_dump_json(self, indent=4):
         """Return the configuration as a JSON string."""
