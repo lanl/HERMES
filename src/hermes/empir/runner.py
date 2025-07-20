@@ -1,15 +1,17 @@
 import os, subprocess, shutil
-from hermes.empir.models import PixelToPhotonParams, PhotonToEventParams, EventToImageParams, DirectoryStructure
+from hermes.empir.models import PhotonToEventParams, EventToImageParams, DirectoryStructure
 from hermes.empir.logger import empir_logger as logger
-from pydantic import BaseModel, model_validator
 
 
-class EmpirRunner(BaseModel):
-    """ A class for running EMPIR processing steps. """
-
-    @model_validator(mode='after')
-    def check_for_empir_binaries(self):
-        """ Check if the EMPIR binaries are available in the PATH. """
+class EmpirRunner:
+    """A class for running EMPIR processing steps."""
+    
+    def __init__(self):
+        """Initialize and check for required EMPIR binaries."""
+        self._check_for_empir_binaries()
+    
+    def _check_for_empir_binaries(self):
+        """Check if the EMPIR binaries are available in the PATH."""
         required_binaries = [
             "empir_pixel2photon_tpx3spidr",
             "empir_photon2event",
@@ -20,59 +22,53 @@ class EmpirRunner(BaseModel):
             if not shutil.which(binary):
                 raise EnvironmentError(f"Required EMPIR binary '{binary}' not found in PATH.")
             else:
-                logger.debug(f"Found EMPIR binary: {binary} here {shutil.which(binary)}")
-        
-        return self
+                logger.debug(f"Found EMPIR binary: {binary} at {shutil.which(binary)}")
         
     @staticmethod
-    def pixels_to_photons(input_file = "", output_file = "",d_space=0.0,d_time = 0.0, min_number=0, use_tdc1=False,log_file=""):
+    def pixels_to_photons(pixel_file = "", photon_file = "", d_space = 0.0,d_time = 0.0, min_number = 0, use_tdc1 = False, log_file = ""):
         """ Runs empir_pixel2photon_tpx3spidr with the user-defined parameters. 
     
         Note: You need to have the EMPIR binaries installed and in your PATH to use this function.
 
         Args:
-            input_file (str): Path to the input .tpx3 file.
-            output_file (str): Path to the output .empirphot file.
+            pixel_file (str): Path to the input .tpx3 file.
+            photon_file (str): Path to the output *.empirphot file.
             d_space (float): Spatial dispersion parameter.
             d_time (float): Temporal dispersion parameter.
             min_number (int): Minimum number of photons.
             use_tdc1 (bool): Whether to use TDC1.
         """
 
-        if input_file == "":
+        if pixel_file == "":
             logger.error("No tpx3 file provided")
             return
         
         # Create input and output file names
-        log_file_name = tpx3_file_name.split(".")[0] + ".pixel2photon"
-        log_file = os.path.join(directories.log_file_dir, log_file_name)
-        list_file_name = input_file.replace('.tpx3', '.empirphot')
-        output_file = os.path.join(directories.list_file_dir, list_file_name)
         tdc_option = "-T" if use_tdc1 else ""
 
         # Prepare the subprocess command for running "empir_pixel2photon_tpx3spidr"
         pixels_to_photons_command = [
             "empir_pixel2photon_tpx3spidr",
-            "-s", str(params.d_space),
-            "-t", str(params.d_time),
-            "-k", str(params.min_number),
+            "-s", str(d_space),
+            "-t", str(d_time),
+            "-k", str(min_number),
             tdc_option,
-            "-i", input_file,
-            "-o", output_file
+            "-i", pixel_file,
+            "-o", photon_file
         ]
         pixel_to_photon_run_msg = f"Running command: {' '.join(pixels_to_photons_command)}"
 
-        logger.info(f"EMPIR: Processing pixels to photons for {tpx3_file_name}")
+        logger.info(f"EMPIR: Processing pixels to photons for {pixel_file}")
 
         with open(log_file, 'a') as log_output:
             log_output.write("<HERMES> " + pixel_to_photon_run_msg + "\n")
             log_output.write("--------\n")
             logger.debug(f"Writing log to {log_file}")
             try:
-                subprocess.run(pixels_to_photons_command, stdout=log_output, stderr=subprocess.STDOUT)
-                logger.info(f"Successfully processed pixels to photons for {tpx3_file_name}")
+                #subprocess.run(pixels_to_photons_command, stdout=log_output, stderr=subprocess.STDOUT)
+                logger.info(f"Successfully processed pixels to photons for {pixel_file}")
             except subprocess.CalledProcessError as e:
-                logger.error(f"Error processing pixels to photons for {tpx3_file_name}: {e}")
+                logger.error(f"Error processing pixels to photons for {pixel_file}: {e}")
         
     @staticmethod
     def photons_to_events(params: PhotonToEventParams, directories: DirectoryStructure, list_file_name=""):
