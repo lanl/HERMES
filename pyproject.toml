@@ -90,11 +90,21 @@ pydantic = ">=2.11.3,<3"
 loguru = ">=0.7.2,<0.8"
 requests = "*"
 pyepics = "*"
+# C++ compilation dependencies
+c-compiler = "*"
+cxx-compiler = "*"
+make = "*"
 
 [tool.pixi.activation]
 env = { cHERMES_DIR = "$PIXI_PROJECT_ROOT/src/chermes", PATH = "$PIXI_PROJECT_ROOT/src/chermes/bin:$PATH"}
 
 [tool.pixi.tasks]
+# Install task that builds C++ automatically
+install = { description = "Install everything (including C++ build)", depends-on = ["build-cpp"] }
+# C++ build tasks (moved to top so they can be dependencies)
+build-cpp = { cmd = "cd src/chermes && make", description = "Build the C++ tpx3SpidrUnpacker" }
+clean-cpp = { cmd = "cd src/chermes && make clean", description = "Clean C++ build artifacts" }
+rebuild-cpp = { cmd = "cd src/chermes && make clean && make", description = "Clean and rebuild the C++ tpx3SpidrUnpacker" }
 # PyPi packaging tasks
 build-pypi = { cmd = "python -m build", description = "Build the package for PyPI" }
 publish-pypi = { cmd = "twine upload dist/*", description = "Publish the package to PyPI", depends-on = ["build-pypi"] }
@@ -114,9 +124,6 @@ lint = { cmd = "ruff check .", description = "Run linting checks" }
 format = { cmd = "ruff format .", description = "Format code with ruff" }
 pre-commit-install = { cmd = "pre-commit install", description = "Install pre-commit hooks" }
 pre-commit-run = { cmd = "pre-commit run --all-files", description = "Run pre-commit on all files" }
-# C++ build tasks
-build-cpp = { cmd = "cd src/chermes && make", description = "Build the C++ tpx3SpidrUnpacker" }
-clean-cpp = { cmd = "cd src/chermes && make clean", description = "Clean C++ build artifacts" }
 # Clean all
 clean-all = { description = "Clean all build artifacts", depends-on = ["clean-pypi", "clean-conda", "clean-docs", "clean-test", "clean-cpp"] }
 
