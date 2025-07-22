@@ -76,4 +76,14 @@ struct photonData{
     uint8_t multiplicity = 0;
 };
 
+
+// Represents the data for a single raw pixel signal.
+struct pixelData{
+    uint8_t xPixel;
+    uint8_t yPixel;
+    uint64_t ToaFinal;
+    uint16_t TotFinal;
+};
+
+
 #endif
