@@ -53,6 +53,52 @@ std::chrono::duration<double> bufferClusterTime;
 
 
 /**
+ * @brief Resets global variables to clean state for processing new TPX3 files.
+ * 
+ * This function resets all global timing and processing variables to their default
+ * values. This is essential for batch mode processing to prevent contamination
+ * between files, which could lead to incorrect TDC counts and timing information.
+ */
+void resetGlobalVariables() {
+    // Reset basic file processing variables
+    fileLength = 0;
+    NumofPackets = 0;
+    
+    // Reset timing variables
+    coarseTime = 0.0;
+    tmpFine = 0;
+    trigTimeFine = 0;
+    global_timestamp = 0.0;
+    trigger_counter = 0;
+    timemaster = 0;
+    TDC_timestamp = 0.0;
+    spidrTimeInNs = 0.0;
+    
+    // Reset pixel processing variables  
+    x = 0;
+    y = 0;
+    timeOverThresholdNS = 0.0;
+    timeOfArrivalNS = 0.0;
+    dCol = 0;
+    sPix = 0;
+    pix = 0;
+    timeOverThreshold = 0;
+    timeOfArrival = 0;
+    fineTimeOfArrival = 0;
+    frameNr = 0;
+    coarseTimeOfArrival = 0;
+    mode = 0;
+    
+    // Reset global time stamp variables
+    timeStampLow_25nsClock = 0;
+    timeStampHigh_107sClock = 0;
+    spidrTime = 0;
+    Timer_LSB32 = 0;
+    Timer_MSB16 = 0;
+}
+
+
+/**
  * @brief Get a list of all files in a directory of a specific type or extention.
  *
  * This function takes a configParameters structure as input and returns a vector of strings containing the full paths of all files in the directory specified by the rawTPX3Folder field of the configParameters structure. The function uses the filesystem library to iterate over the directory and obtain the full paths of all files within it. The function then returns a vector of strings containing the full paths of all files in the directory.
@@ -639,6 +685,10 @@ tpx3FileDiagnostics unpackAndSortTPX3File(configParameters configParams){
     if(configParams.maxPacketsToRead == 0){
         packetsToRead = tpx3FileInfo.numberOfDataPackets;
         configParams.maxPacketsToRead = tpx3FileInfo.numberOfDataPackets;
+    } else {
+        // Update maxPacketsToRead to reflect the actual number of packets we'll process
+        // This ensures processDataPackets doesn't try to read beyond available data
+        configParams.maxPacketsToRead = packetsToRead;
     }
 
     // Allocate an array for tpx3DataPackets to store signals up to the maxPacketsToRead from the TPX3 file
@@ -701,6 +751,12 @@ void processTPX3Files(configParameters configParams){
         std::vector<std::string> tpx3Files = getFilesInDirectory(configParams);
         // Loop through all the files in the directory
         for (const auto& tpx3File : tpx3Files){
+
+            // Reset global variables to prevent contamination between files
+            resetGlobalVariables();
+            if (configParams.verboseLevel >= 2) {
+                std::cout << "Global variables reset for file: " << tpx3File << std::endl;
+            }
 
             // Grab start time for unpacking
             std::chrono::duration<double> hermesTime;
