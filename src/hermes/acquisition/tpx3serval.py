@@ -480,7 +480,51 @@ def log_info(run_config,http_string,verbose_level=0):
     if verbose_level >= 1:
         print_closing_line_block()
 
+def save_to_init(run_config,http_string,verbose_level=0):
+    # creating output file names and paths
+    output_json_name = http_string.replace("/", "_")+".json"
+    working_dir = run_config["WorkingDir"]['path_to_working_dir']
+    run_dir = working_dir + run_config["WorkingDir"]['run_dir_name']    
+    path_to_init_dir = run_dir + run_config['WorkingDir']['path_to_init_files']
+    output_json_file = path_to_init_dir + run_config['RunSettings']['run_name'] + "_" + run_config['RunSettings']['run_number'] + output_json_name
 
+    if verbose_level >= 1:
+        print_header_line_block()
+        print(f"Logging {http_string} info at: ")
+        print(output_json_file)
+    
+    server_get_response = requests.get(url=run_config['ServerConfig']['serverurl'] + http_string)
+    if verbose_level >=2:
+        print(server_get_response)
+    
+    # Check if the request was successful using check_request_status function
+    if not check_request_status(server_get_response.status_code, verbose=True):
+        print(f"Failed to get response from endpoint: {http_string}")
+        return
+    
+    # Check if response contains content
+    if not server_get_response.text.strip():
+        print(f"Warning: Empty response from server for endpoint: {http_string}")
+        return
+    
+    try:
+        server_get_data = json.loads(server_get_response.text)
+        save_json_to_file(server_get_data,output_json_file)
+        if verbose_level >= 1:
+            print(f"Successfully logged data from endpoint: {http_string}")
+    except json.JSONDecodeError as e:
+        print(f"Warning: Failed to parse JSON response for endpoint: {http_string}")
+        print(f"JSON decode error: {e}")
+        print(f"Response text: {server_get_response.text}")
+        # Save the raw response as a text file instead
+        raw_output_file = output_json_file.replace('.json', '_raw.txt')
+        with open(raw_output_file, 'w') as f:
+            f.write(server_get_response.text)
+        print(f"Raw response saved to: {raw_output_file}")
+        return
+    
+    if verbose_level >= 1:
+        print_closing_line_block()
 
 ###############################################################
 # DAQ functions
