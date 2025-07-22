@@ -9,6 +9,7 @@ class WorkingDir(BaseModel):
     path_to_status_files: str = Field(default="statusFiles/", description="Path to the directory where status files will be stored.")
     path_to_log_files: str = Field(default="tpx3Logs/", description="Path to the directory where log files will be stored.")
     path_to_image_files: str = Field(default="imageFiles/", description="Path to the directory where image files will be stored.")
+    path_to_rawSignal_files: str = Field(default="rawSignalFiles/", description="Path to the directory where raw signal files will be stored.")
     path_to_preview_files: str = Field(default="previewFiles/", description="Path to the directory where preview files will be stored.")
     path_to_raw_files: str = Field(default="tpx3Files/", description="Path to the directory where raw files are stored.")
     path_to_init_files: str = Field(default="initFiles/", description="Path to the initialization files.")

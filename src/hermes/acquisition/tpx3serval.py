@@ -47,7 +47,8 @@ def verify_working_dir(run_configs):
     working_dir = run_configs.WorkingDir.path_to_working_dir                                    # Experiment directory 
     run_dir = os.path.join(working_dir, run_configs.WorkingDir.run_dir_name)                    # Setting the parent dir for the run
     raw_file_dir = os.path.join(run_dir, run_configs.WorkingDir.path_to_raw_files)             # Setting the path for the tpx3 files
-    image_file_dir = os.path.join(run_dir, run_configs.WorkingDir.path_to_image_files)         # Setting the path for image files
+    image_file_dir = os.path.join(run_dir, run_configs.WorkingDir.path_to_image_files) 
+    raw_signals_file_dir = os.path.join(run_dir, run_configs.WorkingDir.path_to_rawSignal_files)        # Setting the path for image files
     preview_file_dir = os.path.join(run_dir, run_configs.WorkingDir.path_to_preview_files)     # Setting path for preview files
     tpx3_log_files_dir = os.path.join(run_dir, run_configs.WorkingDir.path_to_log_files)       # Setting path for tpx3 log files
     status_files_dir = os.path.join(run_dir, run_configs.WorkingDir.path_to_status_files)      # Setting path for status files
@@ -55,7 +56,7 @@ def verify_working_dir(run_configs):
 
     print(f"Verifying dir:{run_dir} and its sub-dirs")
     # List of directories to check and create if they don't exist
-    directories = [run_dir, raw_file_dir, image_file_dir, preview_file_dir, tpx3_log_files_dir, status_files_dir, init_files_dir]
+    directories = [run_dir, raw_file_dir, image_file_dir, preview_file_dir, raw_signals_file_dir, tpx3_log_files_dir, status_files_dir, init_files_dir]
 
     for dir in directories:
         if not os.path.exists(dir):
@@ -109,6 +110,7 @@ def config_run(config_file='run_config.ini',run_name="dummy"):
             'path_to_status_files': config.get('WorkingDir', 'path_to_status_files', fallback="statusFiles/"),
             'path_to_log_files': config.get('WorkingDir', 'path_to_log_files', fallback="tpx3Logs/"),
             'path_to_image_files': config.get('WorkingDir', 'path_to_image_files', fallback="imageFiles/"),
+            'path_to_rawSignal_files': config.get('WorkingDir', 'path_to_rawSignal_files', fallback="rawSignalFiles/"),
             'path_to_preview_files': config.get('WorkingDir', 'path_to_preview_files', fallback="previewFiles/"),
             'path_to_raw_files': config.get('WorkingDir', 'path_to_raw_files', fallback="tpx3Files/"),
             'path_to_init_files': config.get('WorkingDir', 'path_to_init_files', fallback="initFiles/")
