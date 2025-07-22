@@ -129,6 +129,7 @@ def config_run(config_file='run_config.ini',run_name="dummy"):
             'exposure_time_in_seconds': config.get('RunSettings', 'exposure_time_in_seconds', fallback=0.5),
             'trigger_delay_in_seconds': config.get('RunSettings', 'trigger_delay_in_seconds', fallback=0.0),
             'number_of_triggers': config.get('RunSettings', 'number_of_triggers', fallback=0),
+            'number_of_runs': config.get('RunSettings', 'number_of_runs', fallback=0),
             'global_timestamp_interval_in_seconds': config.get('RunSettings', 'global_timestamp_interval_in_seconds', fallback=0.0)
         }
     }
@@ -218,7 +219,7 @@ def set_and_load_server_destination(run_configs, verbose_level = 0):
         print("Setting up server destination for TPX3Cam")        
     
     # Setting up paths and names for initial dummy destinations config file
-    working_dir = run_configs["WorkingDir"]['path_to_working_dir']+ run_configs["WorkingDir"]['run_dir_name']  # Experiment directory
+    working_dir = run_configs["WorkingDir"]['path_to_working_dir'] # Experiment directory
     init_dest_file_path = working_dir + run_configs["WorkingDir"]['path_to_init_files']
     init_dest_file_name = run_configs["ServerConfig"]['destinations_file_name']
     

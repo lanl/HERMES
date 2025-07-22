@@ -29,6 +29,7 @@ class RunSettings(BaseModel):
     exposure_time_in_seconds: float = Field(default=0.5)
     trigger_delay_in_seconds: float = Field(default=0.0)
     number_of_triggers: int = Field(default=0)
+    number_of_runs: int = Field(default=0)
     global_timestamp_interval_in_seconds: float = Field(default=0.0)
     record_logs: bool = Field(default=True)
     record_images: bool = Field(default=True)
