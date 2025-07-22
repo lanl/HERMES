@@ -119,6 +119,7 @@ bool parseCommandLineFlags(int argc, char* argv[], configParameters& configParam
     helpLevel = 0;  // 0 = no help, 1 = basic help, 2 = help with examples
     
     std::string inputFile, inputDir, outputDir, configFile;
+    bool batchModeSpecified = false;
     bool sortSignals = false;
     bool sortSpecified = false;
     bool writeRawSignals = true;
@@ -162,6 +163,9 @@ bool parseCommandLineFlags(int argc, char* argv[], configParameters& configParam
         }
         else if ((arg == "-c" || arg == "--configFile") && i + 1 < argc) {
             configFile = argv[++i];
+        }
+        else if (arg == "-b" || arg == "--batch") {
+            batchModeSpecified = true;
         }
         else if (arg == "-s" || arg == "--sort") {
             sortSignals = true;
@@ -225,19 +229,31 @@ bool parseCommandLineFlags(int argc, char* argv[], configParameters& configParam
     }
     
     // Validate required parameters
-    if (inputFile.empty() && inputDir.empty() && configFile.empty()) {
-        std::cerr << "Error: Must specify either -i <input_file>, -I <input_dir>, or -c <config_file>" << std::endl;
+    if (inputFile.empty() && inputDir.empty() && !batchModeSpecified && configFile.empty()) {
+        std::cerr << "Error: Must specify either -i <input_file>, -I <input_dir>, -b (batch mode), or -c <config_file>" << std::endl;
         return false;
     }
     
+    // Handle conflicts between input options
     if (!inputFile.empty() && !inputDir.empty()) {
         std::cerr << "Error: Cannot specify both -i and -I options" << std::endl;
         return false;
     }
     
+    if (!inputFile.empty() && batchModeSpecified) {
+        std::cout << "Warning: Both input file (-i) and batch mode (-b) specified. Processing single file only: " << inputFile << std::endl;
+        // Single file mode will be set in the configuration section below
+    }
+    
+    // Check if batch mode is specified without input directory
+    if (batchModeSpecified && inputDir.empty() && inputFile.empty()) {
+        std::cerr << "Error: Batch mode (-b) requires an input directory. Use -I <directory> to specify the directory." << std::endl;
+        return false;
+    }
+    
     // Configure parameters (override config file if specified)
     if (!inputFile.empty()) {
-        // Single file mode
+        // Single file mode (takes priority over batch mode)
         if (!fileExists(inputFile)) {
             std::cerr << "Error: Input file does not exist: " << inputFile << std::endl;
             return false;
@@ -251,7 +267,7 @@ bool parseCommandLineFlags(int argc, char* argv[], configParameters& configParam
         configParams.runHandle = grabRunHandle(configParams.rawTPX3File);
         configParams.batchMode = false;
     } else if (!inputDir.empty()) {
-        // Batch mode
+        // Directory-based batch mode (works with or without -b flag)
         configParams.rawTPX3Folder = inputDir;
         configParams.rawTPX3File = "ALL";
         configParams.batchMode = true;
@@ -338,6 +354,7 @@ void printUsage(const char* programName, int helpLevel) {
     std::cout << "Input/Output Options:" << std::endl;
     std::cout << "  -i, --inputFile <file>     Input TPX3 file" << std::endl;
     std::cout << "  -I, --inputDir <dir>       Input directory (for batch mode)" << std::endl;
+    std::cout << "  -b, --batch                Enable batch mode (requires -I <directory>)" << std::endl;
     std::cout << "  -o, --outputDir <dir>      Output directory" << std::endl;
     std::cout << "  -c, --configFile <file>    Configuration file" << std::endl;
     std::cout << std::endl;
@@ -379,5 +396,8 @@ void printUsage(const char* programName, int helpLevel) {
         std::cout << std::endl;
         std::cout << "  # Batch processing with limits:" << std::endl;
         std::cout << "  ./bin/tpx3SpidrUnpacker -I /path/to/tpx3/files -o /path/to/output -s -H -m 1000" << std::endl;
+        std::cout << std::endl;
+        std::cout << "  # Explicit batch mode with directory:" << std::endl;
+        std::cout << "  ./bin/tpx3SpidrUnpacker -b -I /path/to/tpx3/files -o /path/to/output -v 2" << std::endl;
     }
 }
