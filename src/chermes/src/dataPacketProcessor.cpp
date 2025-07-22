@@ -621,6 +621,15 @@ void processDataPackets(const configParameters& configParams, tpx3FileDiagnostic
                         tpx3FileInfo.numberOfTXP3Controls++;
                         break;
                     }
+                    default: // Handle unrecognized packet types
+                        if(configParams.verboseLevel >= 3){
+                            std::cout << std::dec << currentPacket << ":" << chunkPacketIndex 
+                                      << ": Unrecognized packet type 0x" << std::hex << +packetType 
+                                      << " (packet: 0x" << std::hex << dataPackets[currentPacket] << ")" << std::endl;
+                        }
+                        // Leave signalData uninitialized (defaults to signalType=0)
+                        tpx3FileInfo.numberOfProcessedPackets++; // Still count as processed
+                        break;
                 }
 
                 currentPacket++;
@@ -704,7 +713,8 @@ tpx3FileDiagnostics unpackAndSortTPX3File(configParameters configParams){
     tpx3File.close();
 
     // allocate an array of signalData called signalDataArray that is the same size as bufferSize//8
-    signalData* signalDataArray = new signalData[packetsToRead];
+    // Initialize to zero to prevent contamination between batch mode files
+    signalData* signalDataArray = new signalData[packetsToRead]();  // Note the () for zero-initialization
     
     // Process the data packets and fill the signalDataArray
     processDataPackets(configParams, tpx3FileInfo,  tpx3DataPackets, signalDataArray);
