@@ -567,52 +567,49 @@ def make_user_wait(measurement_info):
         time.sleep(time_left)
 
 
-def take_exposure(run_config_struct,verbose_level=0):
-    
-    # Create run handle (name and number)
-    run_name_number = run_config_struct['RunSettings']['run_name']+"_"+run_config_struct['RunSettings']['run_number']
+def take_exposure(run_config_struct, verbose_level=0):
+    import time, json, requests
+
+    run_name_number = run_config_struct['RunSettings']['run_name'] + "_" + run_config_struct['RunSettings']['run_number']
     number_of_exposures = int(run_config_struct['RunSettings']['number_of_triggers'])
     exposure_time = float(run_config_struct['RunSettings']['exposure_time_in_seconds'])
-    total_expected_time = exposure_time*number_of_exposures
-    
-    # Check to see if data aquisition is running.    
-    while True:
-        dashboard_response = requests.get(url=run_config_struct['ServerConfig']['serverurl'] + '/dashboard')
-        dashboard_data = json.loads(dashboard_response.text)
-        if dashboard_data["Measurement"] == None:
-            break
-        elif dashboard_data["Measurement"]["Status"] == "DA_RECORDING":
-            make_user_wait(dashboard_data)
-        else:
-            break
-        
-    # Check to see if data aquisition is running.
+
+    # Wait if a measurement is already running
     dashboard_response = requests.get(url=run_config_struct['ServerConfig']['serverurl'] + '/dashboard')
     dashboard_data = json.loads(dashboard_response.text)
-        
+    make_user_wait(dashboard_data)
+
     if verbose_level >= 1:
         print_header_line_block()
-        print(f"Requesting to start measurement: {run_name_number}")
         
+    # Start measurement
     resp = requests.get(url=run_config_struct['ServerConfig']['serverurl'] + '/measurement/start')
     check_request_status(resp.status_code, verbose=True)
-    
+
+    # Start time
+    start_time = time.time()
+
+    # Calls function to print the status bar until we go into IDLE state. 
     while True:
+        # Query status
         dashboard_response = requests.get(url=run_config_struct['ServerConfig']['serverurl'] + '/dashboard')
         dashboard_data = json.loads(dashboard_response.text)
-        #print(dashboard_data["Measurement"])
-        
-        if dashboard_data["Measurement"]["Status"] == "DA_RECORDING":
-            elapsed_time = dashboard_data["Measurement"]["ElapsedTime"]
-            pixel_rate = dashboard_data["Measurement"]["PixelEventRate"]
-            tdc1_rate = dashboard_data["Measurement"]["TdcEventRate"]
-            frame_count = dashboard_data["Measurement"]["FrameCount"]
-            time_left = dashboard_data["Measurement"]["TimeLeft"]
-            
-            print_status_bar(elapsed_time, time_left, exposure_time, pixel_rate, tdc1_rate, frame_count, number_of_exposures)
-            time.sleep(.5)  # Update the status bar every second
-        else:
+        measurement = dashboard_data.get("Measurement")
+
+        # Stop looping if measurement is done
+        if measurement["Status"] == "DA_IDLE":
             break
 
+        # Print status bar
+        elapsed_time = measurement.get("ElapsedTime", time.time() - start_time)
+        expected_time_left = measurement.get("TimeLeft", 0)
+        pixel_rate = measurement.get("PixelEventRate", 0)
+        frame_count = measurement.get("FrameCount", 0)
+
+        print_status_bar(elapsed_time, expected_time_left, exposure_time, pixel_rate, tdc1_rate=0, frame_count=frame_count, total_number_of_exposures=number_of_exposures)
+
+        time.sleep(0.5)  # Polling interval. Set to 0.5 seconds by default, works well for 5s of data. 
+                         # For a long exposure, I would set to 2+ seconds.
+
+
     print(f"{bcolors.OKGREEN} > Exposures completed for {run_name_number}!{bcolors.ENDC}")
-    
