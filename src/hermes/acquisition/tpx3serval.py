@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import configparser
 import time
 from datetime import datetime
+import shutil
 
 from hermes.acquisition.models import Settings
 
@@ -53,6 +54,10 @@ def verify_working_dir(run_configs):
     tpx3_log_files_dir = os.path.join(run_dir, run_configs.WorkingDir.path_to_log_files)       # Setting path for tpx3 log files
     status_files_dir = os.path.join(run_dir, run_configs.WorkingDir.path_to_status_files)      # Setting path for status files
     init_files_dir = os.path.join(run_dir, run_configs.WorkingDir.path_to_init_files)          # Setting path to save init files
+
+    if os.path.exists(run_dir):
+        print(f"Duplicate directory exists. Cleaning existing directory: {run_dir}")
+        shutil.rmtree(run_dir)
 
     print(f"Verifying dir:{run_dir} and its sub-dirs")
     # List of directories to check and create if they don't exist
