@@ -77,7 +77,7 @@ struct photonData{
 };
 
 
-// Represents the data for a single raw pixel signal.
+// Represents the data for a single raw pixel signal. Currently not in use, planned for future.
 struct pixelData{
     uint8_t xPixel;
     uint8_t yPixel;
