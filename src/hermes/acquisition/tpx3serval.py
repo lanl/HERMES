@@ -39,42 +39,53 @@ def verify_working_dir(run_configs):
     Args:
         run_configs (str): run configuration.
     """
-    
-    # Use the Pydantic model to parse and validate the run_configs dictionary
     if not isinstance(run_configs, Settings):
-        # If run_configs is a dict, convert it to a Settings object
         run_configs = Settings.parse_obj(run_configs)
 
-    working_dir = run_configs.WorkingDir.path_to_working_dir                                    # Experiment directory 
-    run_dir = os.path.join(working_dir, run_configs.WorkingDir.run_dir_name)                    # Setting the parent dir for the run
-    raw_file_dir = os.path.join(run_dir, run_configs.WorkingDir.path_to_raw_files)             # Setting the path for the tpx3 files
-    image_file_dir = os.path.join(run_dir, run_configs.WorkingDir.path_to_image_files) 
-    raw_signals_file_dir = os.path.join(run_dir, run_configs.WorkingDir.path_to_rawSignal_files)        # Setting the path for image files
-    preview_file_dir = os.path.join(run_dir, run_configs.WorkingDir.path_to_preview_files)     # Setting path for preview files
-    tpx3_log_files_dir = os.path.join(run_dir, run_configs.WorkingDir.path_to_log_files)       # Setting path for tpx3 log files
-    status_files_dir = os.path.join(run_dir, run_configs.WorkingDir.path_to_status_files)      # Setting path for status files
-    init_files_dir = os.path.join(run_dir, run_configs.WorkingDir.path_to_init_files)          # Setting path to save init files
+    working_dir = run_configs.WorkingDir.path_to_working_dir
 
+    # Patch: Fallback if run_dir_name is missing or empty
+    run_dir_name = getattr(run_configs.WorkingDir, "run_dir_name", "").strip()
+    if not run_dir_name:
+        run_dir_name = run_configs.RunSettings.run_name  # fallback to run_name
 
+    run_dir = os.path.join(working_dir, run_dir_name)
+
+    raw_file_dir = os.path.join(run_dir, run_configs.WorkingDir.path_to_raw_files)
+    image_file_dir = os.path.join(run_dir, run_configs.WorkingDir.path_to_image_files)
+    raw_signals_file_dir = os.path.join(run_dir, run_configs.WorkingDir.path_to_rawSignal_files)
+    preview_file_dir = os.path.join(run_dir, run_configs.WorkingDir.path_to_preview_files)
+    tpx3_log_files_dir = os.path.join(run_dir, run_configs.WorkingDir.path_to_log_files)
+    status_files_dir = os.path.join(run_dir, run_configs.WorkingDir.path_to_status_files)
+    init_files_dir = os.path.join(run_dir, run_configs.WorkingDir.path_to_init_files)
+
+    # Protect against deleting root or invalid paths
     if os.path.exists(run_dir):
-
         if run_dir in ["", "/"]:
             raise RuntimeError("verify_working_dir() refusing to operate on root directory")
-            
+
         print(f"Duplicate directory exists. Cleaning existing directory: {run_dir}")
         shutil.rmtree(run_dir)
-        
 
     print(f"Verifying dir:{run_dir} and its sub-dirs")
-    # List of directories to check and create if they don't exist
-    directories = [run_dir, raw_file_dir, image_file_dir, preview_file_dir, raw_signals_file_dir, tpx3_log_files_dir, status_files_dir, init_files_dir]
+    directories = [
+        run_dir,
+        raw_file_dir,
+        image_file_dir,
+        preview_file_dir,
+        raw_signals_file_dir,
+        tpx3_log_files_dir,
+        status_files_dir,
+        init_files_dir,
+    ]
 
-    for dir in directories:
-        if not os.path.exists(dir):
-            os.makedirs(dir)
-            print(f"Creating directory: {dir}")
+    for dir_path in directories:
+        if not os.path.exists(dir_path):
+            os.makedirs(dir_path)
+            print(f"Creating directory: {dir_path}")
         else:
-            print(f"Directory already exists: {dir}")
+            print(f"Directory already exists: {dir_path}")
+
 
 # Updated function to handle newer configuration options in run_config.ini
 def config_run(config_file='run_config.ini',run_name="dummy"):
