@@ -6,14 +6,14 @@ This repository contains examples demonstrating the use of HERMES for setting up
 
 To use these examples, first ensure you have the HERMES system and the necessary hardware components set up. You will need TPX3Cam and SPIDR readout boards configured and connected to your system. Please see the ASI TPX3Cam manual for hardware setup and connections. 
 
-Additionaly we suggest using a directory structure adopted from EMPIR. There are built-in functions in tpx3serval that will create the `[run_N]` directory and its sub-directories. Please make sure that the python scripts used to aquire data are located in the scripts folder of your working directory. 
+Additionaly we suggest using a directory structure adopted and adjusted from EMPIR. There are built-in functions in tpx3serval that will create the `[run_N]` directory and its sub-directories. Please make sure that the python scripts used to aquire data are located in the scripts folder of your working directory. 
 
 ```
 Working Directory
 ├── README.md
 ├── scripts
-    └── aquire_python_script.py
-    └── aquire_config.ini
+    └── acquire_python_script.py
+    └── acquire_config.ini
 ├── initFiles
 ├── [run_1]
     ├── imageFiles
@@ -44,7 +44,7 @@ List any prerequisites or dependencies required for running the examples, such a
 ### Installation
 
 # 1. daq_simple/ #
-This example illustrated a simple python script, aquireTpx.py, to first initiate and configure a TPX3Cam setup, and then take "n" exposures using functions from the tpx3serval library (located in pyhermes). Initial camera and needed DAQ configurations are stored in the config file: "aquireTpx3.ini".   
+This example illustrated a simple python script, acquireTpx.py, to first initiate and configure a TPX3Cam setup, and then take "n" exposures using functions from the tpx3serval library (located in pyhermes). Initial camera and needed DAQ configurations are stored in the config file: "acquireTpx3.ini".   
 
 ```bash
 py acquireTpx.py example_folder
@@ -55,7 +55,7 @@ This will load acquireTpx3.ini and create a folder named `example_folder`. This 
 Below is the definition for each parameter used in the acquireTpx3.ini file: 
 
 [WorkingDir]
-`path_to_working_dir`: File path to working directory. This parameter should be changed from default.
+`path_to_working_dir`: File path to working directory. Should be changed from default.
 `path_to_init_files`: File path to init files. Generally, should not be changed. 
 `path_to_status_files`: File path to status files. Generally, should not be changed. 
 `path_to_rawSignal_files `: File path to .rawSignals files. Generally, should not be changed. 
@@ -84,5 +84,3 @@ Below is the definition for each parameter used in the acquireTpx3.ini file:
 `number_of_triggers`: Number of triggers during a single run. Will increment `trigger_number`
 `number_of_runs`: Total number of runs to perform. 
 `global_timestamp_interval_in_seconds`
-
-# 2. daq_ctscan/ #
