@@ -5,7 +5,7 @@ dynamic = ["version"]
 requires-python = ">=3.10,<4.0"
 license = { text = "MIT" }
 keywords = ["timepix","TPX3Cam","SPIDR"]
-authors = [{name = "Alexander M. Long", email = "alexlong@lanl.gov" },] 
+authors = [{name = "Alexander M. Long", email = "alexlong@lanl.gov" },{name = "Adam Farren", email = "a.farren@outlook.com"}] 
 dependencies = [ "numpy", "scipy", "pandas", "matplotlib", "jupyterlab", "pyyaml", "pydantic", "loguru", "scikit-image", "requests","pyepics"]
 
 [project.urls]
