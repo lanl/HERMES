@@ -12,6 +12,8 @@ Before using HERMES, ensure your system meets the necessary requirements and set
 Below are instructions for installing prerequisites on Linux/macOS and Windows.  
 **Note** HERMES has not been tested on any Windows systems directly, though it has been used successfully in WSL2 with ubuntu.  
 
+**Another Note** This README is totally outdated and does not have the current requirements for installation. At some point we will fix this!!!! For now, refer to the user manual. 
+
 #### PyHERMES Prerequisite Installation Options ####
 pyHERMES requires Python 3.8 or later. Python can be obtained directly via download or by a third party platform like Anaconda3, apt-get, Homebrew. 
 1. **Direct Installation:**
