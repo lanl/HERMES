@@ -11,7 +11,7 @@ Usage:
     from hermes.analysis.exporter import SignalDataExporter
     
     exporter = SignalDataExporter()
-    df = exporter.read_raw_signals('path/to/raw_signals.bin')
+    df = exporter.read_rawsignals_folder(path/to/rawsignal/directory, index_range="0:100")
     
 Author: HERMES Team
 """
