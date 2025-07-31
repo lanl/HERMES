@@ -1,17 +1,17 @@
 """
-Raw Signal Data Exporter
+Raw Signal Data Reader
 
-This module provides functionality to export raw signal binary files to pandas DataFrames.
+This module provides functionality to read raw signal binary files to pandas DataFrames.
 The binary format is based on the signalData structure from the C++ HERMES code.
 
 Requirements:
     pip install pandas numpy
 
 Usage:
-    from hermes.analysis.exporter import SignalDataExporter
+    from hermes.analysis.reader import SignalDataReader
     
-    exporter = SignalDataExporter()
-    df = exporter.read_rawsignals_folder(path/to/rawsignal/directory, index_range="0:100")
+    reader = SignalDataReader()
+    df = reader.read_rawsignals_folder(path/to/rawsignal/directory, index_range="0:100")
     
 Author: HERMES Team
 """
@@ -23,9 +23,9 @@ import numpy as np
 import os
 
 
-class SignalDataExporter:
+class SignalDataReader:
     """
-    A class to export raw signal binary files to pandas DataFrames.
+    A class to read raw signal binary files to pandas DataFrames.
     
     The binary file format is based on the signalData structure from the C++ code:
     - bufferNumber: uint32_t (4 bytes)
@@ -51,7 +51,7 @@ class SignalDataExporter:
     }
     
     def __init__(self):
-        """Initialize the SignalDataExporter."""
+        """Initialize the SignalDataReader."""
             
         # Account for compiler padding in C++ struct
         # Original: uint32_t(4) + uint8_t(1) + uint8_t(1) + uint8_t(1) + double(8) + uint16_t(2) + uint32_t(4) = 21 bytes
@@ -240,37 +240,37 @@ class SignalDataExporter:
 
 def main():
     """
-    Example usage of the SignalDataExporter class.
+    Example usage of the SignalDataReader class.
     """
-    # Initialize the exporter
-    exporter = SignalDataExporter()
+    # Initialize the reader
+    exporter = SignalDataReader()
     
     # Example usage (uncomment and modify paths as needed)
     # try:
     #     # Read raw signal file
-    #     df = exporter.read_raw_signals('/path/to/your/raw_signals.bin')
+    #     df = reader.read_rawsignal_file('/path/to/your/raw_signals.rawSignals')
     #     
     #     # Print basic info
     #     print(f"Loaded {len(df)} signals")
     #     print(f"Columns: {list(df.columns)}")
     #     
     #     # Get summary statistics
-    #     stats = exporter.get_summary_stats(df)
+    #     stats = reader.get_summary_stats(df)
     #     print("Summary Statistics:")
     #     for key, value in stats.items():
     #         print(f"  {key}: {value}")
     #     
     #     # Filter by signal type
-    #     pixel_signals = exporter.filter_by_signal_type(df, 'Pixel')
+    #     pixel_signals = reader.filter_by_signal_type(df, 'Pixel')
     #     print(f"Pixel signals: {len(pixel_signals)}")
     #     
     #     # Export to CSV
-    #     exporter.export_to_csv(df, '/path/to/output/signals.csv')
+    #     reader.export_to_csv(df, '/path/to/output/signals.csv')
     #     
     # except Exception as e:
     #     print(f"Error: {e}")
     
-    print("SignalDataExporter class is ready to use!")
+    print("SignalDataReader class is ready to use!")
 
 
 if __name__ == "__main__":
