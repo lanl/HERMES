@@ -272,6 +272,7 @@ class SignalDataReader:
         """
         return df[df['signalTypeDescription'] == signal_type].copy()
     
+    
     def filter_by_time_range(self, df: pd.DataFrame, start_time: float, end_time: float) -> pd.DataFrame:
         """        Filter DataFrame by time range.
         
