@@ -157,7 +157,6 @@ class SignalDataReader:
         return df
 
 
-
     def export_to_csv(self, df: pd.DataFrame, output_path: str) -> None:
         """
         Export DataFrame to CSV file.
@@ -169,6 +168,7 @@ class SignalDataReader:
         df.to_csv(output_path, index=False)
         print(f"Data exported to CSV: {output_path}")
     
+
     def export_to_parquet(self, df: pd.DataFrame, output_path: str) -> None:
         """
         Export DataFrame to Parquet file.
@@ -248,8 +248,7 @@ class SignalDataReader:
         return df[df['signalTypeDescription'] == signal_type].copy()
     
     def filter_by_time_range(self, df: pd.DataFrame, start_time: float, end_time: float) -> pd.DataFrame:
-        """
-        Filter DataFrame by time range.
+        """        Filter DataFrame by time range.
         
         Args:
             df (pd.DataFrame): DataFrame to filter
