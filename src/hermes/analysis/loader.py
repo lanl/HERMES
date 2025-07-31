@@ -78,6 +78,31 @@ class SignalsIO:
         else:
             raise OSError(f"Unsupported path type: {p}")
 
+
+
+    def export_to_csv(self, df: pd.DataFrame, output_path: str) -> None:
+        """
+        Export DataFrame to CSV file.
+        
+        Args:
+            df (pd.DataFrame): DataFrame to export
+            output_path (str): Path for output CSV file
+        """
+        df.to_csv(output_path, index=False)
+        print(f"Data exported to CSV: {output_path}")
+        
+
+    def export_to_parquet(self, df: pd.DataFrame, output_path: str) -> None:
+        """
+        Export DataFrame to Parquet file.
+        
+        Args:
+            df (pd.DataFrame): DataFrame to export
+            output_path (str): Path for output Parquet file
+        """
+        df.to_parquet(output_path, index=False)
+        print(f"Data exported to Parquet: {output_path}")
+
     # ----------------------------
     # FOLDER LOADING (with time-adjust)
     # ----------------------------
