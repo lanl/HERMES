@@ -158,7 +158,6 @@ class SignalDataReader:
 
 
 
-
     def export_to_csv(self, df: pd.DataFrame, output_path: str) -> None:
         """
         Export DataFrame to CSV file.
@@ -182,7 +181,7 @@ class SignalDataReader:
         print(f"Data exported to Parquet: {output_path}")
     
 
-    def get_summary_stats(self, df: pd.DataFrame, *, head: int = 10) -> Dict[str, Any]:
+    def get_summary_stats(self, df: pd.DataFrame, *, rows: int = 10) -> Dict[str, Any]:
         stats: Dict[str, Any] = {
             "total_signals": len(df),
             "unique_buffers": df["bufferNumber"].nunique() if "bufferNumber" in df else None,
@@ -225,14 +224,14 @@ class SignalDataReader:
         else:
             print("\nPixels: (missing)")
         print(f"\nUnique buffers: {stats['unique_buffers']} | Unique groups: {stats['unique_groups']}")
-        print(f"\nFirst {min(head, len(df))} rows:")
+        print(f"\nFirst {min(rows, len(df))} rows:")
         
         with pd.option_context(
             "display.max_columns", None,        # show all columns
-            "display.width", 2000,              # large line width; adjust if needed
+            "display.width", 2000,              # large line width; adjust if needed. Smaller number = less characters before wrap around
             "display.expand_frame_repr", False  # don't wrap across lines
         ):
-            print(df.head(head).to_string(index=False))
+            print(df.head(rows).to_string(index=False))
 
     
     def filter_by_signal_type(self, df: pd.DataFrame, signal_type: str) -> pd.DataFrame:
