@@ -102,21 +102,25 @@ class SignalDataReader:
         return df
 
 
-    def read_rawsignals_folder(self, directory: str, index_range: str = "") -> pd.DataFrame:
+    def read_rawsignals_folder(self, directory: str, index_range: str = "", *, time_adjust: bool = False, round_period_to: float = 0.5, file_duration: Optional[float] = None,
+    ) -> pd.DataFrame:
         """
-        Load multiple .rawSignals files into a single DataFrame.
-        
+        Load multiple .rawSignals files into a single DataFrame, with optional constant
+        time adjustment to make 'ToA' continuous across files.
+
         Args:
-            directory (str): Directory containing .rawSignals files
-            index_range (str, optional): Index range for selecting files. Examples:
-                                        - "5"       -> only file at index 5
-                                        - "5:10"    -> files 5 through 9
-                                        - "5:10:2"  -> files 5, 7, 9
-        
+            directory: Directory containing .rawSignals files.
+            index_range: Optional slice syntax to select files, e.g. "5", "5:10", "5:10:2".
+            time_adjust: If True, shift 'ToA' so timelines are contiguous across files.
+            round_period_to: When inferring the per-file span, round to the nearest multiple of this.
+                    Set <= 0 to disable rounding. Default: 0.5 (e.g., 4.99 → 5.0).
+            file_duration: If provided (e.g., 5.0), use this span for every file; no inference.
+
         Returns:
-            pd.DataFrame: Combined DataFrame of all selected files
+            pd.DataFrame
         """
         all_files = sorted([f for f in os.listdir(directory) if f.endswith('.rawSignals')])
+
         # Apply index_range filtering if provided
         if index_range:
             parts = index_range.split(":")
@@ -128,11 +132,7 @@ class SignalDataReader:
                 start, stop, step = int(parts[0]), int(parts[1]), int(parts[2])
             else:
                 raise ValueError("Invalid index_range format. Use 'start:end:step'.")
-
-            # Build selected files
             selected_files = [all_files[i] for i in range(start, stop, step) if 0 <= i < len(all_files)]
-
-            # Validate index range (e.g., start > stop or invalid indices)
             if not selected_files:
                 raise ValueError(
                     f"Invalid index_range '{index_range}'. "
@@ -144,16 +144,41 @@ class SignalDataReader:
         if not selected_files:
             raise ValueError("No .rawSignals files found to load.")
 
-        # Load all selected files
+        def infer_period(toa_values: np.ndarray, round_period_to: float) -> float:
+            """Estimate per-file span robustly, with optional rounding."""
+            arr = np.asarray(toa_values, dtype=float)
+            if arr.size == 0:
+                return 0.0
+            lo = np.nanquantile(arr, 0.001)
+            hi = np.nanquantile(arr, 0.999)
+            est = max(0.0, float(hi - lo))
+            if round_period_to and round_period_to > 0:
+                return float(round(est / round_period_to) * round_period_to)
+            return est
+
         df_list = []
-        for fname in selected_files:
+        period = None  # set once and reused (constant mode)
+
+        for i, fname in enumerate(selected_files):
             idx = all_files.index(fname)
             print(f"[{idx}] Reading {fname} ...")
             filepath = os.path.join(directory, fname)
-            df_list.append(self.read_rawsignals_file(filepath))
+            df_i = self.read_rawsignals_file(filepath)
+
+            if time_adjust:
+                if "ToaFinal" not in df_i.columns:
+                    raise KeyError(f"Column 'ToaFinal' not found in {fname}.")
+                if period is None:
+                    period = file_duration if file_duration is not None else infer_period(df_i["ToaFinal"].to_numpy(), round_period_to)
+                df_i = df_i.copy()
+                df_i["ToaFinal"] = df_i["ToaFinal"].astype(float) + (i * period)
+
+            df_list.append(df_i)
 
         df = pd.concat(df_list, ignore_index=True)
         print(f"\nSuccessfully loaded {len(df):,} signal records from {len(selected_files)} files")
+        if time_adjust:
+            print(f"Time adjustment: constant period = {period}")
         return df
 
 
