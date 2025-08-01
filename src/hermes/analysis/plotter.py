@@ -80,6 +80,45 @@ class HistogramPlotter:
         plt.tight_layout()
         plt.show()
 
+
+    def plot_2D_histogram(data, title="", x_axis_index=2, y_axis_index=3, vmin=None, vmax=None):
+        """
+        Displays a 256x256 2D histogram counting occurrences of (x, y) positions.
+
+        Parameters:
+        - data (pd.DataFrame or 2D array-like): Input data with pixel coordinates
+        - title (str): Plot title
+        - x_axis_index (int): Index of column for x-coordinate (0–255)
+        - y_axis_index (int): Index of column for y-coordinate (0–255)
+        - vmin, vmax (float, optional): Min and max color scale limits
+        """
+        if isinstance(data, pd.DataFrame):
+            x = data.iloc[:, x_axis_index].astype(int)
+            y = data.iloc[:, y_axis_index].astype(int)
+        else:
+            data = np.asarray(data)
+            if data.ndim != 2:
+                raise ValueError("Input must be 2D")
+            x = data[:, x_axis_index].astype(int)
+            y = data[:, y_axis_index].astype(int)
+
+        # Build a 256x256 grid of counts
+        heatmap = np.zeros((256, 256), dtype=int)
+        for xi, yi in zip(x, y):
+            if 0 <= xi < 256 and 0 <= yi < 256:
+                heatmap[yi, xi] += 1  # Note: image-style indexing (row = y, col = x)
+
+        # Plot the heatmap
+        plt.figure(figsize=(10, 8))
+        plt.imshow(heatmap, cmap="viridis", origin="lower", vmin=vmin, vmax=vmax)
+        plt.colorbar(label="Counts")
+        plt.xlabel("x-axis")
+        plt.ylabel("y-axis")
+        plt.title(title)
+        plt.tight_layout()
+        plt.show()
+
+
 class ToAImageSequenceGenerator:
     def __init__(self, df: pd.DataFrame, buffer_number: int):
         self.df = df[df["bufferNumber"] == buffer_number]
