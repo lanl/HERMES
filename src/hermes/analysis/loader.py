@@ -13,9 +13,9 @@ class SignalsIO:
     """
 
     _EXT_TO_FORMAT = {
-        ".rawsignals": "rawsignals",
+        ".rawSignals": "rawSignals",
         ".csv": "csv",
-        ".pixelactivations": "pixelactivations",
+        ".pixelActivations": "pixelActivations",
     }
 
     # Mapping from numeric signal types to descriptions
@@ -46,14 +46,14 @@ class SignalsIO:
             raise FileNotFoundError(f"Path does not exist: {p}")
 
         if p.is_dir():
-            fmt = (format or "auto").lower()
+            fmt = (format or "auto")
             if fmt in (None, "", "auto"):
                 fmt = self._detect_extensions_in_folder(p)  # raises if mixed/none
             else:
-                if fmt not in ("rawsignals", "csv", "pixelactivations"):
+                if fmt not in ("rawSignals", "csv", "pixelActivations"):
                     raise ValueError(
                         f"Unknown format option for folder: {fmt!r}. "
-                        "Use 'rawsignals' | 'csv' | 'pixelactivations'."
+                        "Use 'rawSignals' | 'csv' | 'pixelActivations'."
                     )
             return self._load_folder(
                 directory=p,
@@ -65,19 +65,22 @@ class SignalsIO:
             )
 
         elif p.is_file():
-            fmt = (format or "auto").lower()
+            fmt = (format or "auto")
             if fmt == "auto":
-                suffix = p.suffix.lower()
-                if   suffix == ".rawsignals":       fmt = "rawsignals"
+                suffix = p.suffix
+                if   suffix == ".rawSignals":       fmt = "rawSignals"
                 elif suffix == ".csv":              fmt = "csv"
-                elif suffix == ".pixelactivations": fmt = "pixelactivations"
+                elif suffix == ".pixelActivations": fmt = "pixelActivations"
                 else:
-                    raise ValueError(f"Unsupported file extension: {p.suffix}")
+                    raise ValueError(
+                        f"Unsupported file extension: {p.suffix} - "
+                        f"Supported extensions are: {', '.join(sorted(self._EXT_TO_FORMAT.keys()))}"
+                        )
             print(f"Loading {fmt} file: {p.name} ...")
             return self._read_file_by_format(fmt, p)
 
         else:
-            raise OSError(f"Unsupported path type: {p}")
+            raise OSError(f"Unsupported path type: {p}. Double check capitalization in file (.rawsignal is invalid, use .rawSignal)")
 
 
 
@@ -185,7 +188,7 @@ class SignalsIO:
         for entry in directory.iterdir():
             if not entry.is_file():
                 continue
-            fmt = self._EXT_TO_FORMAT.get(entry.suffix.lower())
+            fmt = self._EXT_TO_FORMAT.get(entry.suffix)
             if fmt:
                 counts[fmt] += 1
 
@@ -200,7 +203,7 @@ class SignalsIO:
             details = ", ".join(f"{k}={counts[k]}" for k in sorted(counts))
             raise ValueError(
                 f"Multiple supported file types found in folder '{directory}': {details}. "
-                f"Please specify format='rawsignals' | 'csv' | 'pixelactivations'."
+                f"Please specify format='rawSignals' | 'csv' | 'pixelActivations'."
             )
 
         fmt_detected, _ = counts.most_common(1)[0]
@@ -210,9 +213,9 @@ class SignalsIO:
     def _pattern_for_format(self, fmt: str) -> str:
         """Return the filename glob pattern associated with a given format."""
         return {
-            "rawsignals": "*.rawSignals",
+            "rawSignals": "*.rawSignals",
             "csv": "*.csv",
-            "pixelactivations": "*.pixelActivations",
+            "pixelActivations": "*.pixelActivations",
         }[fmt]
 
 
@@ -270,12 +273,12 @@ class SignalsIO:
 
     def _read_file_by_format(self, fmt: str, path: Path) -> pd.DataFrame:
         """Dispatch to the correct reader function based on the file format."""
-        if fmt == "rawsignals":
-            return self._read_rawsignals_file(path)
+        if fmt == "rawSignals":
+            return self._read_rawSignals_file(path)
         elif fmt == "csv":
             return self._read_csv_file(path)
-        elif fmt == "pixelactivations":
-            return self._read_pixelactivations_file(path)
+        elif fmt == "pixelActivations":
+            return self._read_pixelActivations_file(path)
         else:
             raise ValueError(f"Unknown format option: {fmt}")
 
@@ -296,7 +299,7 @@ class SignalsIO:
     # ----------------------------
     # READERS (IMPLEMENTED)
     # ----------------------------
-    def _read_rawsignals_file(self, path: Path) -> pd.DataFrame:
+    def _read_rawSignals_file(self, path: Path) -> pd.DataFrame:
         data = path.read_bytes()
         record_size = 24
         if len(data) % record_size != 0:
@@ -405,7 +408,7 @@ class SignalsIO:
         return df
 
 
-    def _read_pixelactivations_file(self, path: Path) -> pd.DataFrame:
+    def _read_pixelActivations_file(self, path: Path) -> pd.DataFrame:
         cols = ["typeOfEvent", "ToA_final", "xpixel", "ypixel", "spaceGroup", "timeGroup"]
         df = pd.read_csv(path, sep=r"\s+|,", engine="python", header=None, names=cols)
         print(f"  -> {len(df):,} rows loaded from {path.name}")
