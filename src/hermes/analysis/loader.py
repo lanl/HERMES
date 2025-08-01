@@ -117,12 +117,7 @@ class SignalsIO:
         file_duration: Optional[float] = None,
     ) -> pd.DataFrame:
         pattern = self._pattern_for_format(fmt)
-        files = sorted(directory.glob(pattern))
-
-        if not files:
-            raise ValueError(
-                f"No files matching pattern {pattern!r} found in folder '{directory}'. (format={fmt})"
-            )
+        files = self._list_files(directory, fmt)
 
         # Apply index slicing if requested
         if index:
@@ -230,7 +225,10 @@ class SignalsIO:
     def _list_files(self, directory: Path, fmt: str) -> list[Path]:
         """Return a naturally sorted list of files matching the given format in a folder."""
         pattern = self._pattern_for_format(fmt)
-        files = sorted(directory.glob(pattern), key=self._natural_key)
+        files = sorted(
+            [f for f in directory.glob(pattern) if not f.name.startswith("._")], # Remove macOS helper files '._'
+            key=self._natural_key,
+        )
         if not files:
             raise ValueError(
                 f"No files matching pattern {pattern!r} found in '{directory}' (format={fmt})."
