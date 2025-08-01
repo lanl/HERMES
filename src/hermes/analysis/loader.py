@@ -29,7 +29,7 @@ class SignalsIO:
     }
 
     # ----------------------------
-    # PUBLIC ENTRY POINT
+    # PUBLIC FUNCTIONS
     # ----------------------------
     def load_data(
         self,
@@ -73,6 +73,7 @@ class SignalsIO:
                 elif suffix == ".pixelactivations": fmt = "pixelactivations"
                 else:
                     raise ValueError(f"Unsupported file extension: {p.suffix}")
+            print(f"Loading {fmt} file: {p.name} ...")
             return self._read_file_by_format(fmt, p)
 
         else:
@@ -104,50 +105,77 @@ class SignalsIO:
         print(f"Data exported to Parquet: {output_path}")
 
     # ----------------------------
-    # FOLDER LOADING (with time-adjust)
+    # FOLDER LOADING (with time-adjustment based on ToA in files)
     # ----------------------------
     def _load_folder(
         self,
-        *,
         directory: Path,
         fmt: str,
-        index: str,
-        time_adjust: bool,
-        round_period_to: float,
-        file_duration: Optional[float],
+        index: str = "",
+        time_adjust: bool = False,
+        round_period_to: float = 0.5,
+        file_duration: Optional[float] = None,
     ) -> pd.DataFrame:
-        files = self._list_files(directory, fmt)
-        files = self._apply_index(files, index) if index else files
+        pattern = self._pattern_for_format(fmt)
+        files = sorted(directory.glob(pattern))
+
         if not files:
-            raise ValueError(f"No files selected to load in '{directory}' (format={fmt}).")
+            raise ValueError(
+                f"No files matching pattern {pattern!r} found in folder '{directory}'. (format={fmt})"
+            )
 
-        dfs: list[pd.DataFrame] = []
-        period: Optional[float] = None
+        # Apply index slicing if requested
+        if index:
+            parts = index.split(":")
+            try:
+                if len(parts) == 1:
+                    start = int(parts[0]); stop = start + 1; step = 1
+                elif len(parts) == 2:
+                    start, stop = int(parts[0]), int(parts[1]); step = 1
+                elif len(parts) == 3:
+                    start, stop, step = int(parts[0]), int(parts[1]), int(parts[2])
+                else:
+                    raise ValueError
+            except ValueError:
+                raise ValueError(
+                    f"Invalid index format: {index!r}. Use 'start', 'start:stop', or 'start:stop:step'."
+                )
+            files = [files[i] for i in range(start, stop, step) if 0 <= i < len(files)]
+            if not files:
+                raise ValueError(
+                    f"index {index!r} selected no files "
+                    f"(valid indices: 0–{len(sorted(directory.glob(pattern))) - 1})."
+                )
 
-        for i, f in enumerate(files):
-            df_i = self._read_file_by_format(fmt, f)
+        dfs = []
+        period = None  # Only computed once if time_adjust is on
+
+        file_indices = [f.name for f in sorted(directory.glob(self._pattern_for_format(fmt)))]
+        for i, path in enumerate(files):
+            idx = file_indices.index(path.name)
+            print(f"[{idx}] Loading {fmt} file: {path.name} ...")
+
+            df = self._read_file_by_format(fmt, path)
 
             if time_adjust:
-                if "ToaFinal" not in df_i.columns:
-                    raise KeyError(f"'ToaFinal' column missing in {f.name}; cannot time-adjust.")
+                if "ToaFinal" not in df.columns:
+                    raise KeyError(f"Column 'ToaFinal' not found in {path.name}.")
                 if period is None:
-                    if file_duration is not None:
-                        period = float(file_duration)
-                    else:
-                        period = self._infer_period(df_i["ToaFinal"].to_numpy(), round_period_to)
-                        if not np.isfinite(period) or period <= 0:
-                            tmin, tmax = float(df_i["ToaFinal"].min()), float(df_i["ToaFinal"].max())
-                            period = max(0.0, tmax - tmin)
-                    if period is None or period <= 0:
-                        raise ValueError(
-                            "Could not infer a positive file period; consider specifying file_duration."
-                        )
-                df_i = df_i.copy()
-                df_i["ToaFinal"] = df_i["ToaFinal"].astype(float) + (i * period)
+                    period = (
+                        file_duration if file_duration is not None
+                        else self._infer_period(df["ToaFinal"].to_numpy(), round_period_to)
+                    )
+                df = df.copy()
+                df["ToaFinal"] = df["ToaFinal"].astype(float) + (i * period)
 
-            dfs.append(df_i)
+            dfs.append(df)
 
-        return pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
+        result = pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
+        print(f"\nSuccessfully loaded {len(result):,} signal records from {len(files)} file(s).")
+        if time_adjust and period is not None:
+            print(f"Time adjustment: constant period = {period}")
+        return result
+
 
     # ----------------------------
     # HELPERS
@@ -179,6 +207,7 @@ class SignalsIO:
         fmt_detected, _ = counts.most_common(1)[0]
         return fmt_detected
 
+
     def _pattern_for_format(self, fmt: str) -> str:
         return {
             "rawsignals": "*.rawSignals",
@@ -186,10 +215,12 @@ class SignalsIO:
             "pixelactivations": "*.pixelActivations",
         }[fmt]
 
+
     def _natural_key(self, path: Path):
         """Natural sort key so '10.rawSignals' comes after '2.rawSignals'."""
         s = path.name
         return [int(t) if t.isdigit() else t.lower() for t in re.split(r"(\d+)", s)]
+
 
     def _list_files(self, directory: Path, fmt: str) -> list[Path]:
         pattern = self._pattern_for_format(fmt)
@@ -199,6 +230,7 @@ class SignalsIO:
                 f"No files matching pattern {pattern!r} found in '{directory}' (format={fmt})."
             )
         return files
+
 
     def _apply_index(self, files: list[Path], index: str) -> list[Path]:
         if isinstance(index, int):
@@ -226,6 +258,7 @@ class SignalsIO:
             )
         return sel
 
+
     def _read_file_by_format(self, fmt: str, path: Path) -> pd.DataFrame:
         if fmt == "rawsignals":
             return self._read_rawsignals_file(path)
@@ -235,6 +268,7 @@ class SignalsIO:
             return self._read_pixelactivations_file(path)
         else:
             raise ValueError(f"Unknown format option: {fmt}")
+
 
     def _infer_period(self, toa_values: np.ndarray, round_to: float) -> float:
         """Estimate per-file span from toa via robust quantiles; optional rounding."""
@@ -247,6 +281,7 @@ class SignalsIO:
         if round_to and round_to > 0:
             return float(round(est / round_to) * round_to)
         return est
+
 
     # ----------------------------
     # READERS (IMPLEMENTED)
@@ -272,6 +307,7 @@ class SignalsIO:
         ])
 
         arr = np.frombuffer(data, dtype=dtype)
+        print(f"  -> {len(arr):,} packets loaded from {path.name}")
         df = pd.DataFrame(arr)
         df.drop(columns=[c for c in ("_pad1", "_pad2") if c in df.columns], inplace=True, errors="ignore")
         df.rename(columns={"groupID": "groupId"}, inplace=True)
@@ -298,6 +334,7 @@ class SignalsIO:
         # Try header first; fallback to no-header
         try:
             df = pd.read_csv(path, sep=r"[,\s]+", engine="python", header=0)
+            print(f"  -> {len(df):,} rows loaded from {path.name}")
         except Exception:
             df = pd.read_csv(path, sep=r"[,\s]+", engine="python", header=None)
 
@@ -361,6 +398,7 @@ class SignalsIO:
     def _read_pixelactivations_file(self, path: Path) -> pd.DataFrame:
         cols = ["typeOfEvent", "ToA_final", "xpixel", "ypixel", "spaceGroup", "timeGroup"]
         df = pd.read_csv(path, sep=r"\s+|,", engine="python", header=None, names=cols)
+        print(f"  -> {len(df):,} rows loaded from {path.name}")
 
         df.rename(columns={
             "typeOfEvent": "signalType",
