@@ -181,7 +181,11 @@ class SignalsIO:
     # HELPERS
     # ----------------------------
     def _detect_extensions_in_folder(self, directory: Path) -> str:
-        """Return the single detected format in a folder or raise if multiple/none."""
+        """
+        Scan a folder and return the single detected supported format.
+
+        Raises if multiple formats or no supported formats are found.
+        """
         counts = Counter()
         for entry in directory.iterdir():
             if not entry.is_file():
@@ -209,6 +213,7 @@ class SignalsIO:
 
 
     def _pattern_for_format(self, fmt: str) -> str:
+        """Return the filename glob pattern associated with a given format."""
         return {
             "rawsignals": "*.rawSignals",
             "csv": "*.csv",
@@ -223,6 +228,7 @@ class SignalsIO:
 
 
     def _list_files(self, directory: Path, fmt: str) -> list[Path]:
+        """Return a naturally sorted list of files matching the given format in a folder."""
         pattern = self._pattern_for_format(fmt)
         files = sorted(directory.glob(pattern), key=self._natural_key)
         if not files:
@@ -233,6 +239,11 @@ class SignalsIO:
 
 
     def _apply_index(self, files: list[Path], index: str) -> list[Path]:
+        """
+        Select a slice of files based on index string (e.g., '2', '1:4', '0:10:2').
+
+        Raises if the slice is invalid or selects no files.
+        """
         if isinstance(index, int):
             start, stop, step = index, index + 1, 1
         else:
@@ -260,6 +271,7 @@ class SignalsIO:
 
 
     def _read_file_by_format(self, fmt: str, path: Path) -> pd.DataFrame:
+        """Dispatch to the correct reader function based on the file format."""
         if fmt == "rawsignals":
             return self._read_rawsignals_file(path)
         elif fmt == "csv":
@@ -271,7 +283,7 @@ class SignalsIO:
 
 
     def _infer_period(self, toa_values: np.ndarray, round_to: float) -> float:
-        """Estimate per-file span from toa via robust quantiles; optional rounding."""
+        """Estimate per-file span from toa via robust quantiles; optional rounding to nearest multiple of 'round_to'."""
         arr = np.asarray(toa_values, dtype=float)
         if arr.size == 0 or not np.isfinite(arr).any():
             return 0.0
@@ -362,7 +374,7 @@ class SignalsIO:
         }
         df.rename(columns=rename, inplace=True)
 
-        # Ensure all target columns exist (fill if missing)
+        # Ensure all target columns exist
         required = ["bufferNumber","signalType","xPixel","yPixel","ToaFinal","TotFinal","groupId"]
         for col in required:
             if col not in df.columns:
