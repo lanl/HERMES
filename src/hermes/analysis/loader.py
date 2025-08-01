@@ -123,6 +123,7 @@ class SignalsIO:
         files = self._list_files(directory, fmt)
 
         # Apply index slicing if requested
+        full_range_count = len(files)
         if index:
             parts = index.split(":")
             try:
@@ -138,6 +139,8 @@ class SignalsIO:
                 raise ValueError(
                     f"Invalid index format: {index!r}. Use 'start', 'start:stop', or 'start:stop:step'."
                 )
+
+            full_range_count = stop - start  # used later for time adjustment
             files = [files[i] for i in range(start, stop, step) if 0 <= i < len(files)]
             if not files:
                 raise ValueError(
@@ -146,9 +149,10 @@ class SignalsIO:
                 )
 
         dfs = []
-        period = None  # Only computed once if time_adjust is on
-
         file_indices = [f.name for f in sorted(directory.glob(self._pattern_for_format(fmt)))]
+        period = None
+        total_duration = None
+
         for i, path in enumerate(files):
             idx = file_indices.index(path.name)
             print(f"[{idx}] Loading {fmt} file: {path.name} ...")
@@ -163,16 +167,20 @@ class SignalsIO:
                         file_duration if file_duration is not None
                         else self._infer_period(df["ToaFinal"].to_numpy(), round_period_to)
                     )
+                    total_duration = full_range_count * period
+
                 df = df.copy()
-                df["ToaFinal"] = df["ToaFinal"].astype(float) + (i * period)
+                adjusted_t0 = i * (total_duration / len(files))
+                df["ToaFinal"] = df["ToaFinal"].astype(float) + adjusted_t0
 
             dfs.append(df)
 
         result = pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
         print(f"\nSuccessfully loaded {len(result):,} signal records from {len(files)} file(s).")
         if time_adjust and period is not None:
-            print(f"Time adjustment: constant period = {period}")
+            print(f"Time adjustment: constant period = {period}, total adjusted window = {total_duration} s")
         return result
+
 
 
     # ----------------------------
