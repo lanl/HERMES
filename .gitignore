@@ -14,6 +14,9 @@ __pycache__
 # ignore any .vscode files
 .vscode/*
 
+# Ignore Microsoft Word temp/lock files
+~$*.docx
+
 # ignore all .o files
 *.o
 
