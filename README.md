@@ -14,7 +14,7 @@ To begin, install pixi and HERMES into desired directory using:
    git clone https://github.com/lanl/HERMES.git
    ```
 You should see:
-   ```
+   ```bash
    user@hostname:~/HERMES
    ```
 
