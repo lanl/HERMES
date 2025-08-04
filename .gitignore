@@ -229,8 +229,6 @@ MANIFEST
 # Ignore development work files (use Github issues instead)
 docs/project_management
 
-# ignore any additional ini files
-*.ini
 
 # Ignore direnv stuff
 .envrc
