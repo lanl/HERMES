@@ -1,4 +1,4 @@
-![HERMES](images/HERMES.jpg)
+![HERMES](docs/images/HERMES.jpg)
 # HERMES: High-speed Event Retrieval and Management for Enhanced Spectral neutron imaging with TPX3Cams #
 
 ## What is HERMES? ##
