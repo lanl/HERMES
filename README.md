@@ -27,7 +27,7 @@ Now, ```cd``` into your HERMES directory that was just created. Run:
 Pixi will automatically install required dependencies and manage the python version for HERMES. If everything worked correctly, you should see the text (hermes) in your terminal preceding the current address.
    ```bash 
    (hermes) user@hostname:~/HERMES
-
+   ```
 
 From here, HERMES has successfully been installed. To get started, run the following code in your base HERMES directory (/HERMES)
 ```
