@@ -7,12 +7,29 @@ import os
 import re
 
 class BufferPlotter:
+    """
+    Class for visualizing signal data from a specific buffer.
+    """
+
     def __init__(self, df: pd.DataFrame, buffer_number: int):
+        """
+        Initialize a BufferPlotter.
+
+        Args:
+            df (pd.DataFrame): Full signal DataFrame.
+            buffer_number (int): Buffer number to filter and visualize.
+        """
         self.df = df
         self.buffer_number = buffer_number
         self.filtered_df = df[df["bufferNumber"] == buffer_number]
 
     def plot_3d_pixels_vs_toa(self, ax=None):
+        """
+        Plot 3D scatter of (xPixel, yPixel, ToaFinal) for 'Pixel' signals and overlay TDCs.
+
+        Args:
+            ax (matplotlib.axes._subplots.Axes3DSubplot, optional): Optional pre-existing 3D axis.
+        """
         pixels = self.filtered_df[self.filtered_df["signalTypeDescription"] == "Pixel"]
         tdcs = self.filtered_df[self.filtered_df["signalTypeDescription"] == "TDC"]
 
@@ -36,6 +53,13 @@ class BufferPlotter:
         ax.set_title(f"3D Plot of Pixels vs. ToA for Buffer {self.buffer_number}")
 
     def plot_tot_image(self, log=False, ax=None):
+        """
+        Plot 2D image of integrated TOT for all pixel hits in the buffer.
+
+        Args:
+            log (bool): Whether to use logarithmic color scaling.
+            ax (matplotlib.axes.Axes, optional): Optional pre-existing axis.
+        """
         pixels = self.filtered_df[self.filtered_df["signalTypeDescription"] == "Pixel"]
         image = np.zeros((256, 256))
 
@@ -61,9 +85,21 @@ class BufferPlotter:
         ax.set_yticks([])
         plt.colorbar(img, ax=ax, label=label)
 
+
 class HistogramPlotter:
+    """
+    Utility class for plotting histograms from signal data.
+    """
+
     @staticmethod
     def plot_packets_per_buffer(df: pd.DataFrame, print_counts=False):
+        """
+        Plot a histogram showing number of packets per buffer.
+
+        Args:
+            df (pd.DataFrame): Input signal DataFrame.
+            print_counts (bool): Whether to print buffer counts to console.
+        """
         counts = df["bufferNumber"].value_counts().sort_index()
 
         if print_counts:
@@ -80,17 +116,21 @@ class HistogramPlotter:
         plt.tight_layout()
         plt.show()
 
-
+    @staticmethod
     def plot_2D_histogram(data, title="", x_axis_index=2, y_axis_index=3, vmin=None, vmax=None):
         """
-        Displays a 256x256 2D histogram counting occurrences of (x, y) positions.
+        Display a 256x256 2D histogram of pixel (x, y) hit counts.
 
-        Parameters:
-        - data (pd.DataFrame or 2D array-like): Input data with pixel coordinates
-        - title (str): Plot title
-        - x_axis_index (int): Index of column for x-coordinate (0–255)
-        - y_axis_index (int): Index of column for y-coordinate (0–255)
-        - vmin, vmax (float, optional): Min and max color scale limits
+        Args:
+            data (pd.DataFrame or array-like): Input data containing pixel coordinates.
+            title (str): Plot title.
+            x_axis_index (int): Column index for x-coordinate.
+            y_axis_index (int): Column index for y-coordinate.
+            vmin (float, optional): Minimum value for color scaling.
+            vmax (float, optional): Maximum value for color scaling.
+
+        Raises:
+            ValueError: If input is not 2D.
         """
         if isinstance(data, pd.DataFrame):
             x = data.iloc[:, x_axis_index].astype(int)
@@ -102,13 +142,11 @@ class HistogramPlotter:
             x = data[:, x_axis_index].astype(int)
             y = data[:, y_axis_index].astype(int)
 
-        # Build a 256x256 grid of counts
         heatmap = np.zeros((256, 256), dtype=int)
         for xi, yi in zip(x, y):
             if 0 <= xi < 256 and 0 <= yi < 256:
-                heatmap[yi, xi] += 1  # Note: image-style indexing (row = y, col = x)
+                heatmap[yi, xi] += 1
 
-        # Plot the heatmap
         plt.figure(figsize=(10, 8))
         plt.imshow(heatmap, cmap="viridis", origin="lower", vmin=vmin, vmax=vmax)
         plt.colorbar(label="Counts")
@@ -120,11 +158,32 @@ class HistogramPlotter:
 
 
 class ToAImageSequenceGenerator:
+    """
+    Generates a sequence of TOT images across time bins for a specific buffer.
+    """
+
     def __init__(self, df: pd.DataFrame, buffer_number: int):
+        """
+        Initialize the sequence generator for a specific buffer.
+
+        Args:
+            df (pd.DataFrame): Input signal DataFrame.
+            buffer_number (int): Buffer number to visualize.
+        """
         self.df = df[df["bufferNumber"] == buffer_number]
         self.buffer_number = buffer_number
 
     def generate_images(self, time_bin_size: float, toa_start: float, toa_stop: float, output_path: str = "./", log=True):
+        """
+        Generate and save TOT images for time-binned intervals.
+
+        Args:
+            time_bin_size (float): Duration of each time bin.
+            toa_start (float): Start time for image generation.
+            toa_stop (float): Stop time for image generation.
+            output_path (str): Directory to save images.
+            log (bool): Use logarithmic scaling for TOT values.
+        """
         pixels = self.df[(self.df["signalTypeDescription"] == "Pixel") & 
                          (self.df["ToaFinal"] >= toa_start) & 
                          (self.df["ToaFinal"] <= toa_stop)]
@@ -167,6 +226,14 @@ class ToAImageSequenceGenerator:
 
     @staticmethod
     def compile_images_to_gif(output_path: str, output_name: str = "output.gif", duration: float = 0.2):
+        """
+        Compile a sequence of saved PNG images into an animated GIF.
+
+        Args:
+            output_path (str): Directory containing PNG frames.
+            output_name (str): Filename for the output GIF.
+            duration (float): Duration per frame in seconds.
+        """
         image_files = sorted([f for f in os.listdir(output_path) if f.endswith(".png")],
                              key=lambda x: int(re.search(r'\d+', x).group()))
         images = [imageio.imread(os.path.join(output_path, fname)) for fname in image_files]

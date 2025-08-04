@@ -2,11 +2,37 @@ from typing import Dict, Any
 import pandas as pd
 
 class SignalAnalyzer:
+    """
+    A class for analyzing signal data from DataFrames, including summary statistics
+    and filtering utilities.
+    """
+
     def __init__(self):
-        pass  # Reserved for future expansion (e.g., storing config or metadata)
+        """
+        Initialize the SignalAnalyzer.
+
+        Currently a placeholder for future configuration or metadata storage.
+        """
+        pass
 
 
     def get_summary_stats(self, df: pd.DataFrame, *, rows: int = 10) -> Dict[str, Any]:
+        """
+        Compute and print summary statistics for a signal DataFrame.
+
+        Args:
+            df (pd.DataFrame): Input DataFrame containing signal data.
+            rows (int): Number of preview rows to display (default is 10).
+
+        Returns:
+            Dict[str, Any]: A dictionary containing:
+                - total_signals (int)
+                - unique_buffers (int or None)
+                - signal_type_counts (dict or None)
+                - toa_range (dict with min, max, duration or None)
+                - pixel_range (dict with x/y min/max or None)
+                - unique_groups (int or None)
+        """
         stats: Dict[str, Any] = {
             "total_signals": len(df),
             "unique_buffers": df["bufferNumber"].nunique() if "bufferNumber" in df else None,
@@ -56,12 +82,33 @@ class SignalAnalyzer:
         with pd.option_context("display.max_columns", None, "display.width", 2000, "display.expand_frame_repr", False):
             print(df.head(rows).to_string(index=False))
 
+        return stats
+
 
     def filter_by_signal_type(self, df: pd.DataFrame, signal_type: str) -> pd.DataFrame:
-        """Filter DataFrame by signal type (e.g., 'Pixel', 'TDC')."""
+        """
+        Filter the DataFrame by signal type description.
+
+        Args:
+            df (pd.DataFrame): Input DataFrame.
+            signal_type (str): Signal type to filter for (e.g., 'Pixel', 'TDC').
+
+        Returns:
+            pd.DataFrame: Filtered DataFrame containing only the specified signal type.
+        """
         return df[df['signalTypeDescription'] == signal_type].copy()
 
 
     def filter_by_time_range(self, df: pd.DataFrame, start_time: float, end_time: float) -> pd.DataFrame:
-        """Filter DataFrame based on a time window (start_time ≤ ToaFinal ≤ end_time)."""
+        """
+        Filter the DataFrame by a time range based on 'ToaFinal'.
+
+        Args:
+            df (pd.DataFrame): Input DataFrame.
+            start_time (float): Start time of the desired window (inclusive).
+            end_time (float): End time of the desired window (inclusive).
+
+        Returns:
+            pd.DataFrame: Filtered DataFrame with ToaFinal within the specified range.
+        """
         return df[(df['ToaFinal'] >= start_time) & (df['ToaFinal'] <= end_time)].copy()

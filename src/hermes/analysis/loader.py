@@ -9,8 +9,10 @@ import re
 
 class SignalsIO:
     """
-    A class to read various signal files and load their data into pandas DataFrames.
+    A class for reading, processing, and exporting signal data from various file formats 
+    into pandas DataFrames. Supports `.rawSignals`, `.csv`, and `.pixelActivations` formats.
     """
+
 
     _EXT_TO_FORMAT = {
         ".rawSignals": "rawSignals",
@@ -41,6 +43,21 @@ class SignalsIO:
         round_period_to: float = 0.5,
         file_duration: Optional[float] = None,
     ) -> pd.DataFrame:
+    """
+    Load signal data from a file or folder into a DataFrame.
+
+    Args:
+        filepath (str): Path to the input file or directory.
+        format (Optional[str]): Explicit format to use ('rawSignals', 'csv', 'pixelActivations'). 
+            If None or 'auto', it is inferred from the extension or folder contents.
+        index (str): Index string to select a file slice (e.g., '0:3').
+        time_adjust (bool): Whether to time-adjust signals across files using ToA.
+        round_period_to (float): Rounding factor for estimated period during time adjustment.
+        file_duration (Optional[float]): Explicit file duration to use for time adjustment.
+
+    Returns:
+        pd.DataFrame: Combined signal data.
+    """
         p = Path(filepath)
         if not p.exists():
             raise FileNotFoundError(f"Path does not exist: {p}")
@@ -119,6 +136,20 @@ class SignalsIO:
         round_period_to: float = 0.5,
         file_duration: Optional[float] = None,
     ) -> pd.DataFrame:
+    """
+    Load and concatenate signal files from a folder.
+
+    Args:
+        directory (Path): Path to the folder.
+        fmt (str): Format of files in the folder ('rawSignals', 'csv', or 'pixelActivations').
+        index (str): Index string for file slicing.
+        time_adjust (bool): Whether to apply time adjustments using ToA.
+        round_period_to (float): Rounding value for estimated period.
+        file_duration (Optional[float]): Manually specified file duration.
+
+    Returns:
+        pd.DataFrame: Concatenated and optionally time-adjusted signal data.
+    """
         pattern = self._pattern_for_format(fmt)
         files = self._list_files(directory, fmt)
 
@@ -188,9 +219,16 @@ class SignalsIO:
     # ----------------------------
     def _detect_extensions_in_folder(self, directory: Path) -> str:
         """
-        Scan a folder and return the single detected supported format.
+        Detect the signal file format in a folder.
 
-        Raises if multiple formats or no supported formats are found.
+        Args:
+            directory (Path): Directory to scan.
+
+        Returns:
+            str: Detected format ('rawSignals', 'csv', or 'pixelActivations').
+
+        Raises:
+            ValueError: If no supported files or multiple formats are found.
         """
         counts = Counter()
         for entry in directory.iterdir():
@@ -219,7 +257,15 @@ class SignalsIO:
 
 
     def _pattern_for_format(self, fmt: str) -> str:
-        """Return the filename glob pattern associated with a given format."""
+        """
+        Get the filename glob pattern for a given format.
+
+        Args:
+            fmt (str): File format ('rawSignals', 'csv', or 'pixelActivations').
+
+        Returns:
+            str: Glob pattern for file matching.
+        """
         return {
             "rawSignals": "*.rawSignals",
             "csv": "*.csv",
@@ -228,13 +274,33 @@ class SignalsIO:
 
 
     def _natural_key(self, path: Path):
-        """Natural sort key so '10.rawSignals' comes after '2.rawSignals'."""
+        """
+        Generate a sorting key for natural sorting of file names.
+
+        Args:
+            path (Path): File path.
+
+        Returns:
+            list: Sorting key with numeric components handled naturally.
+        """
         s = path.name
         return [int(t) if t.isdigit() else t.lower() for t in re.split(r"(\d+)", s)]
 
 
     def _list_files(self, directory: Path, fmt: str) -> list[Path]:
-        """Return a naturally sorted list of files matching the given format in a folder."""
+        """
+        List and sort files in a directory that match the given format.
+
+        Args:
+            directory (Path): Directory to search.
+            fmt (str): File format ('rawSignals', 'csv', 'pixelActivations').
+
+        Returns:
+            list[Path]: List of matching files.
+
+        Raises:
+            ValueError: If no files matching the pattern are found.
+        """
         pattern = self._pattern_for_format(fmt)
         files = sorted(
             [f for f in directory.glob(pattern) if not f.name.startswith("._")], # Remove macOS helper files '._'
@@ -249,9 +315,17 @@ class SignalsIO:
 
     def _apply_index(self, files: list[Path], index: str) -> list[Path]:
         """
-        Select a slice of files based on index string (e.g., '2', '1:4', '0:10:2').
+        Apply index slicing to a list of files.
 
-        Raises if the slice is invalid or selects no files.
+        Args:
+            files (list[Path]): List of files.
+            index (str): Index string (e.g., '2', '1:4', '0:10:2').
+
+        Returns:
+            list[Path]: Sliced file list.
+
+        Raises:
+            ValueError: If the index is invalid or selects no files.
         """
         if isinstance(index, int):
             start, stop, step = index, index + 1, 1
@@ -280,7 +354,19 @@ class SignalsIO:
 
 
     def _read_file_by_format(self, fmt: str, path: Path) -> pd.DataFrame:
-        """Dispatch to the correct reader function based on the file format."""
+        """
+        Read a single file based on its format.
+
+        Args:
+            fmt (str): Format type ('rawSignals', 'csv', or 'pixelActivations').
+            path (Path): Path to the file.
+
+        Returns:
+            pd.DataFrame: Parsed DataFrame.
+
+        Raises:
+            ValueError: If an unknown format is provided.
+        """
         if fmt == "rawSignals":
             return self._read_rawSignals_file(path)
         elif fmt == "csv":
@@ -292,7 +378,16 @@ class SignalsIO:
 
 
     def _infer_period(self, toa_values: np.ndarray, round_to: float) -> float:
-        """Estimate per-file span from toa via robust quantiles; optional rounding to nearest multiple of 'round_to'."""
+        """
+        Estimate period between signals using robust quantiles.
+
+        Args:
+            toa_values (np.ndarray): Array of ToA values.
+            round_to (float): Round estimated period to nearest multiple of this value.
+
+        Returns:
+            float: Estimated period.
+        """
         arr = np.asarray(toa_values, dtype=float)
         if arr.size == 0 or not np.isfinite(arr).any():
             return 0.0
@@ -305,9 +400,18 @@ class SignalsIO:
 
 
     # ----------------------------
-    # READERS (IMPLEMENTED)
+    # READERS
     # ----------------------------
     def _read_rawSignals_file(self, path: Path) -> pd.DataFrame:
+        """
+        Read a .rawSignals binary file into a DataFrame.
+
+        Args:
+            path (Path): Path to the .rawSignals file.
+
+        Returns:
+            pd.DataFrame: Parsed signal data.
+        """
         data = path.read_bytes()
         record_size = 24
         if len(data) % record_size != 0:
@@ -333,7 +437,7 @@ class SignalsIO:
         df.drop(columns=[c for c in ("_pad1", "_pad2") if c in df.columns], inplace=True, errors="ignore")
         df.rename(columns={"groupID": "groupId"}, inplace=True)
 
-        # Dtypes (exact where we can)
+
         try:
             df = df.astype({
                 "bufferNumber": "uint32",
@@ -352,6 +456,15 @@ class SignalsIO:
 
 
     def _read_csv_file(self, path: Path) -> pd.DataFrame:
+        """
+        Read a CSV file into a DataFrame with flexible header handling.
+
+        Args:
+            path (Path): Path to the CSV file.
+
+        Returns:
+            pd.DataFrame: Parsed signal data with normalized column names.
+        """
         # Try header first; fallback to no-header
         try:
             df = pd.read_csv(path, sep=r"[,\s]+", engine="python", header=0)
@@ -417,6 +530,15 @@ class SignalsIO:
 
 
     def _read_pixelActivations_file(self, path: Path) -> pd.DataFrame:
+        """
+        Read a .pixelActivations file into a DataFrame.
+
+        Args:
+            path (Path): Path to the .pixelActivations file.
+
+        Returns:
+            pd.DataFrame: Parsed signal data with standardized columns.
+        """
         cols = ["typeOfEvent", "ToA_final", "xpixel", "ypixel", "spaceGroup", "timeGroup"]
         df = pd.read_csv(path, sep=r"\s+|,", engine="python", header=None, names=cols)
         print(f"  -> {len(df):,} rows loaded from {path.name}")
@@ -428,12 +550,10 @@ class SignalsIO:
             "ypixel":      "yPixel",
         }, inplace=True)
 
-        # Add required columns not present in this format
         if "bufferNumber" not in df: df["bufferNumber"] = np.nan
         if "TotFinal" not in df:     df["TotFinal"] = np.nan
         if "groupId" not in df:      df["groupId"] = np.nan
 
-        # Cast safe ones
         for col, dt in {
             "signalType":   "uint8",
             "xPixel":       "uint8",
@@ -456,6 +576,15 @@ class SignalsIO:
     # NORMALIZATION - Currently not required for anything, keeping it around just in case. 
     # ----------------------------
     def _normalize_columns(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Normalize column presence and order in a DataFrame.
+
+        Args:
+            df (pd.DataFrame): Input DataFrame.
+
+        Returns:
+            pd.DataFrame: Normalized DataFrame with required columns.
+        """
         # Ensure ordering and the description column
         required = ["bufferNumber","signalType","xPixel","yPixel","ToaFinal","TotFinal","groupId","signalTypeDescription"]
         for col in required:
