@@ -13,6 +13,10 @@ To begin, install pixi and HERMES into desired directory using:
    curl -fsSL https://pixi.sh/install.sh | sh
    git clone https://github.com/lanl/HERMES.git
    ```
+You should see:
+   ```
+   user@hostname:~/HERMES
+   ```
 
 Now, ```cd``` into your HERMES directory that was just created. Run:
    ```
@@ -21,6 +25,9 @@ Now, ```cd``` into your HERMES directory that was just created. Run:
    pixi run build-cpp
    ```
 Pixi will automatically install required dependencies and manage the python version for HERMES. If everything worked correctly, you should see the text (hermes) in your terminal preceding the current address.
+   ```
+   bash (hermes) user@hostname:~/HERMES
+   ```
 
 From here, HERMES has successfully been installed. To get started, run the following code in your base HERMES directory (/HERMES)
 ```
