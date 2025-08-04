@@ -62,9 +62,6 @@ docs/project_management
 .pixi
 *.egg-info
 
-# ignore any additional ini files
-*.ini
-
 # Ignore mac stuff.
 *.DS_Store
 
