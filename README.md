@@ -18,7 +18,7 @@ Now, ```cd``` into your HERMES directory that was just created. You should see:
    user@hostname:~/HERMES
    ```
 
-If so, run:
+If so, run the following in the HERMES directory.
    ```
    pixi install
    pixi shell
