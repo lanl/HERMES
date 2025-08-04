@@ -31,7 +31,7 @@ Pixi will automatically install required dependencies and manage the python vers
 
 From here, HERMES has successfully been installed. To get started, run the following code in your base HERMES directory (/HERMES)
 ```
-cp examples/notebooks/analysis_hermes workspace/
+cp examples/notebooks/analysis_hermes.ipynb workspace/
 ```
 This provides a basic starting point for HERMES users. For more detailed instruction and function of HERMES, refer to the user manual. 
 
