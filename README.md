@@ -13,12 +13,12 @@ To begin, install pixi and HERMES into desired directory using:
    curl -fsSL https://pixi.sh/install.sh | sh
    git clone https://github.com/lanl/HERMES.git
    ```
-You should see:
+Now, ```cd``` into your HERMES directory that was just created. You should see:
    ```bash
    user@hostname:~/HERMES
    ```
 
-Now, ```cd``` into your HERMES directory that was just created. Run:
+If so, run:
    ```
    pixi install
    pixi shell
