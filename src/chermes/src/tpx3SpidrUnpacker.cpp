@@ -31,12 +31,12 @@ int main(int argc, char *argv[]){
 
     // Check for the number of command-line arguments
     if (argc < 2) {
-        std::cerr << "Error: Please provide command-line arguments." << std::endl;
+        cerr << "Error: Please provide command-line arguments." << endl;
         printUsage(argv[0]);
         return 1;
     }
 
-    std::string firstArg = argv[1];
+    string firstArg = argv[1];
     
     // Case 1: Help requested
     if (firstArg == "-h" || firstArg == "--help") {
@@ -66,20 +66,20 @@ int main(int argc, char *argv[]){
             return (helpLevel > 0) ? 0 : 1;
         }
         
-        std::cout << "Using flag-based configuration:" << std::endl;
+        cout << "Using flag-based configuration:" << endl;
         if (configParams.batchMode) {
-            std::cout << "Input directory: " << configParams.rawTPX3Folder << std::endl;
-            std::cout << "Batch mode: ALL files" << std::endl;
+            cout << "Input directory: " << configParams.rawTPX3Folder << endl;
+            cout << "Batch mode: ALL files" << endl;
         } else {
-            std::cout << "Input file: " << configParams.rawTPX3Folder << "/" << configParams.rawTPX3File << std::endl;
+            cout << "Input file: " << configParams.rawTPX3Folder << "/" << configParams.rawTPX3File << endl;
         }
-        std::cout << "Output folder: " << configParams.outputFolder << std::endl;
-        std::cout << "Verbose level: " << configParams.verboseLevel << std::endl;
+        cout << "Output folder: " << configParams.outputFolder << endl;
+        cout << "Verbose level: " << configParams.verboseLevel << endl;
     }
     else {
-        std::cerr << "Error: Unrecognized option. Please use flags starting with '-' or '--'." << std::endl;
-        std::cerr << "Provided: " << firstArg << std::endl;
-        std::cout << "Note: To use a config file, use: -c <config_file>" << std::endl;
+        cerr << "Error: Unrecognized option. Please use flags starting with '-' or '--'." << endl;
+        cerr << "Provided: " << firstArg << endl;
+        cout << "Note: To use a config file, use: -c <config_file>" << endl;
         printUsage(argv[0]);
         return 1;
     }

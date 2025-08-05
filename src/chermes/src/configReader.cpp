@@ -3,42 +3,44 @@
 #include <sstream>
 #include <iostream>
 
+using namespace std;
+
 
 // Trim function to remove leading and trailing whitespace
-std::string trim(const std::string& str) {
+string trim(const string& str) {
     size_t first = str.find_first_not_of(' ');
-    if (first == std::string::npos)
+    if (first == string::npos)
         return ""; // Return an empty string if the string contains only spaces
     size_t last = str.find_last_not_of(' ');
     return str.substr(first, (last - first + 1));
 }
 
-std::string grabRunHandle(const std::string& str){
+string grabRunHandle(const string& str){
     size_t lastDotIndex = str.find_last_of('.');
-        return (lastDotIndex != std::string::npos) ? str.substr(0, lastDotIndex) : str;
+        return (lastDotIndex != string::npos) ? str.substr(0, lastDotIndex) : str;
 }
 
 // Function to convert string to boolean
-bool stringToBool(const std::string& str) {
+bool stringToBool(const string& str) {
     if (str == "true") return true;
     if (str == "false") return false;
-    throw std::invalid_argument("Invalid boolean value: " + str);
+    throw invalid_argument("Invalid boolean value: " + str);
 }
 
 // Template function to handle conversion from string to numeric types with error checking
-template<typename T> T stringToNumber(const std::string& str) {
+template<typename T> T stringToNumber(const string& str) {
     T num;
-    std::istringstream iss(str);
+    istringstream iss(str);
     iss >> num;
     if (iss.fail() || !iss.eof()) {
-        throw std::invalid_argument("Invalid numeric value: " + str);
+        throw invalid_argument("Invalid numeric value: " + str);
     }
     return num;
 }
 
 // Error handling
-void logConfigError(const std::string& key, const std::string& value, const std::string& error) {
-    std::cerr << "CONFIG ERROR for key '" << key << "' with value '" << value << "': " << error << std::endl;
+void logConfigError(const string& key, const string& value, const string& error) {
+    cerr << "CONFIG ERROR for key '" << key << "' with value '" << value << "': " << error << endl;
 }
 
 
@@ -59,7 +61,6 @@ void logConfigError(const std::string& key, const std::string& value, const std:
  * - maxBuffersToRead: Maximum number of buffers to read.
  * - sortSignals: Whether to sort signals (true/false).
  * - verboseLevel: Level of verbosity in output.
- * - fillHistograms: Whether to fill histograms (true/false).
  * - clusterPixels: Whether to cluster pixels (true/false).
  * - queryRegion: Region to query (as an integer within uint16_t range).
  * - writeOutPhotons: Whether to write out photons (true/false).
@@ -76,21 +77,21 @@ void logConfigError(const std::string& key, const std::string& value, const std:
  * @note The function will print error messages to stderr for any issues encountered while reading the file
  * or parsing the configuration parameters.
  */
-bool readConfigFile(const std::string &filename, configParameters &params) {
-    std::ifstream configFile(filename);
+bool readConfigFile(const string &filename, configParameters &params) {
+    ifstream configFile(filename);
     if (!configFile.is_open()) {
-        std::cerr << "Failed to open configuration file: " << filename << std::endl;
+        cerr << "Failed to open configuration file: " << filename << endl;
         return false;
     }
     
-    std::string line;
-    while (std::getline(configFile, line)) {
-        if (line.empty() || line[0] == '#' || line.find('#') != std::string::npos) continue;
+    string line;
+    while (getline(configFile, line)) {
+        if (line.empty() || line[0] == '#' || line.find('#') != string::npos) continue;
 
-        std::istringstream lineStream(line);
-        std::string key, value;
-        std::getline(lineStream, key, '=');
-        std::getline(lineStream, value);
+        istringstream lineStream(line);
+        string key, value;
+        getline(lineStream, key, '=');
+        getline(lineStream, value);
         key = trim(key);
         value = trim(value);
 
@@ -114,7 +115,6 @@ bool readConfigFile(const std::string &filename, configParameters &params) {
             else if (key == "outputFolder") params.outputFolder = value;
             else if (key == "sortSignals") params.sortSignals = stringToBool(value);
             else if (key == "verboseLevel") params.verboseLevel = stringToNumber<int>(value);
-            else if (key == "fillHistograms") params.fillHistograms = stringToBool(value);
             else if (key == "clusterPixels") params.clusterPixels = stringToBool(value);
             else if (key == "queryRegion") params.queryRegion = static_cast<uint16_t>(stringToNumber<int>(value));
             else if (key == "writeOutPhotons") params.writeOutPhotons = stringToBool(value);
@@ -122,8 +122,8 @@ bool readConfigFile(const std::string &filename, configParameters &params) {
             else if (key == "epsTemporal") params.epsTemporal = stringToNumber<double>(value);
             else if (key == "minPts") params.minPts = static_cast<uint8_t>(stringToNumber<int>(value));
             else if (key == "maxPacketsToRead") params.maxPacketsToRead = stringToNumber<int>(value);
-            else std::cerr << "Unknown configuration key: " << key << std::endl;
-        } catch (const std::exception& e) {
+            else cerr << "Unknown configuration key: " << key << endl;
+        } catch (const exception& e) {
             logConfigError(key, value, e.what());
         }
     }
@@ -134,20 +134,19 @@ bool readConfigFile(const std::string &filename, configParameters &params) {
 
 void printParameters(const configParameters &params) {
     // If the program reaches this point, the configuration file was successfully read
-    std::cout << "=================== Config parameters ====================" << std::endl;
-    std::cout << "batchMode: " << (params.batchMode ? "true" : "false") << std::endl;
-    std::cout << "inputTPX3Folder: " << params.rawTPX3Folder << std::endl;
-    std::cout << "inputTPX3File: " << params.rawTPX3File << std::endl;
-    std::cout << "writeRawSignals: " << (params.writeRawSignals ? "true" : "false") << std::endl;
-    std::cout << "outputFolder: " << params.outputFolder << std::endl;
-    std::cout << "maxPacketsToRead: " << params.maxPacketsToRead << std::endl;
-    std::cout << "sortSignals: " << (params.sortSignals ? "true" : "false") << std::endl;
-    std::cout << "verboseLevel: " << params.verboseLevel << std::endl;
-    std::cout << "fillHistograms: " << (params.fillHistograms ? "true" : "false") << std::endl;
-    std::cout << "clusterPixels: " << (params.clusterPixels ? "true" : "false") << std::endl;
-    std::cout << "writeOutPhotons: " << (params.writeOutPhotons ? "true" : "false") << std::endl;
-    std::cout << "epsSpatial: " << static_cast<int>(params.epsSpatial) << std::endl;
-    std::cout << "epsTemporal: " << params.epsTemporal << std::endl;
-    std::cout << "minPts: " << static_cast<int>(params.minPts) << std::endl;
-    std::cout << "=========================================================" << std::endl << std::endl;
+    cout << "=================== Config parameters ====================" << endl;
+    cout << "batchMode: " << (params.batchMode ? "true" : "false") << endl;
+    cout << "inputTPX3Folder: " << params.rawTPX3Folder << endl;
+    cout << "inputTPX3File: " << params.rawTPX3File << endl;
+    cout << "writeRawSignals: " << (params.writeRawSignals ? "true" : "false") << endl;
+    cout << "outputFolder: " << params.outputFolder << endl;
+    cout << "maxPacketsToRead: " << params.maxPacketsToRead << endl;
+    cout << "sortSignals: " << (params.sortSignals ? "true" : "false") << endl;
+    cout << "verboseLevel: " << params.verboseLevel << endl;
+    cout << "clusterPixels: " << (params.clusterPixels ? "true" : "false") << endl;
+    cout << "writeOutPhotons: " << (params.writeOutPhotons ? "true" : "false") << endl;
+    cout << "epsSpatial: " << static_cast<int>(params.epsSpatial) << endl;
+    cout << "epsTemporal: " << params.epsTemporal << endl;
+    cout << "minPts: " << static_cast<int>(params.minPts) << endl;
+    cout << "=========================================================" << endl << endl;
 }

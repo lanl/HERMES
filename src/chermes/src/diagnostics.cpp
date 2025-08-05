@@ -1,7 +1,9 @@
-#include <iomanip> // Include for std::setw and std::setprecision
+#include <iomanip> // Include for setw and setprecision
 
 // HERMES defined libraries
 #include "diagnostics.h"
+
+using namespace std;
 
 // TODO: Figure out if you still need these otherwise delete them.
 int numberOfHeaders = 0;
@@ -20,7 +22,7 @@ int numberOfPhotons = 0;
  * @param signalType int of signal types (e.g. 1,2,3,..)
  * @return string description of signal type
  */
-std::string signalTypeToString(int signalType) {
+string signalTypeToString(int signalType) {
     switch (signalType) {
         case 1: return "TDC";
         case 2: return "Pixel";
@@ -47,15 +49,15 @@ std::string signalTypeToString(int signalType) {
 void printGroupIDs(int buffernNumber, signalData* signalDataArray, int16_t* signalGroupID, size_t dataPacketsInBuffer) {
     // Loop through dataPacketsInBuffer and print out each field. 
     for (size_t i = 0; i < dataPacketsInBuffer; i++) {
-        std::cout << std::left 
-                  << std::setw(6) << buffernNumber
-                  << std::setw(10) << signalTypeToString(static_cast<int>(signalDataArray[i].signalType))
-                  << std::setw(8) << static_cast<int>(signalDataArray[i].xPixel)
-                  << std::setw(8) << static_cast<int>(signalDataArray[i].yPixel)
-                  << std::setw(16) << std::fixed << std::setprecision(10) << signalDataArray[i].ToaFinal
-                  << std::setw(10) << std::fixed << std::setprecision(3) << signalDataArray[i].TotFinal
-                  << std::setw(10) << static_cast<int>(signalGroupID[i])
-                  << std::endl;
+        cout << left 
+                  << setw(6) << buffernNumber
+                  << setw(10) << signalTypeToString(static_cast<int>(signalDataArray[i].signalType))
+                  << setw(8) << static_cast<int>(signalDataArray[i].xPixel)
+                  << setw(8) << static_cast<int>(signalDataArray[i].yPixel)
+                  << setw(16) << fixed << setprecision(10) << signalDataArray[i].ToaFinal
+                  << setw(10) << fixed << setprecision(3) << signalDataArray[i].TotFinal
+                  << setw(10) << static_cast<int>(signalGroupID[i])
+                  << endl;
     }
 }
 
@@ -71,19 +73,19 @@ void printGroupIDs(int buffernNumber, signalData* signalDataArray, int16_t* sign
  */
 void printOutUnpackingDiagnostics(tpx3FileDiagnostics tpxFileInfo){
     int numberOfUnprocessedPackets = tpxFileInfo.numberOfDataPackets - tpxFileInfo.numberOfBuffers - tpxFileInfo.numberOfTDC1s - tpxFileInfo.numberOfPixelHits - tpxFileInfo.numberOfGTS - tpxFileInfo.numberOfTXP3Controls;
-    std::cout << std::endl << "=============== Diagnostics ==============" << std::endl;
-    std::cout << "Total HERMES Time: " << tpxFileInfo.totalHermesTime << " seconds" << std::endl;
-    std::cout << "Total Unpacking Time: " << tpxFileInfo.totalUnpackingTime << " seconds" << std::endl;
-    std::cout << "Total Sorting Time: " << tpxFileInfo.totalSortingTime << " seconds" << std::endl;
-    std::cout << "Total Clustering Time: " << tpxFileInfo.totalClusteringTime << " seconds" << std::endl;
-    std::cout << "Total Writing Time: " << tpxFileInfo.totalWritingTime << " seconds" << std::endl;
-    std::cout << "------------------------------------------" << std::endl;
-    std::cout << "Number of data packets: " << tpxFileInfo.numberOfDataPackets << std::endl;
-    std::cout << "Number of headers packets: " << tpxFileInfo.numberOfBuffers << std::endl;
-    std::cout << "Number of TDC packets: " << tpxFileInfo.numberOfTDC1s << std::endl;
-    std::cout << "Number of Pixels packets: " << tpxFileInfo.numberOfPixelHits << std::endl;
-    std::cout << "Number of Global Time stamp packets: " << tpxFileInfo.numberOfGTS << std::endl;
-    std::cout << "Number of TPX3 control packets: " << tpxFileInfo.numberOfTXP3Controls << std::endl;
-    std::cout << "Number of Unknown processed packets: " << numberOfUnprocessedPackets << std::endl;
-    std::cout << "==========================================" << std::endl;
+    cout << endl << "=============== Diagnostics ==============" << endl;
+    cout << "Total HERMES Time: " << tpxFileInfo.totalHermesTime << " seconds" << endl;
+    cout << "Total Unpacking Time: " << tpxFileInfo.totalUnpackingTime << " seconds" << endl;
+    cout << "Total Sorting Time: " << tpxFileInfo.totalSortingTime << " seconds" << endl;
+    cout << "Total Clustering Time: " << tpxFileInfo.totalClusteringTime << " seconds" << endl;
+    cout << "Total Writing Time: " << tpxFileInfo.totalWritingTime << " seconds" << endl;
+    cout << "------------------------------------------" << endl;
+    cout << "Number of data packets: " << tpxFileInfo.numberOfDataPackets << endl;
+    cout << "Number of headers packets: " << tpxFileInfo.numberOfBuffers << endl;
+    cout << "Number of TDC packets: " << tpxFileInfo.numberOfTDC1s << endl;
+    cout << "Number of Pixels packets: " << tpxFileInfo.numberOfPixelHits << endl;
+    cout << "Number of Global Time stamp packets: " << tpxFileInfo.numberOfGTS << endl;
+    cout << "Number of TPX3 control packets: " << tpxFileInfo.numberOfTXP3Controls << endl;
+    cout << "Number of Unknown processed packets: " << numberOfUnprocessedPackets << endl;
+    cout << "==========================================" << endl;
 }

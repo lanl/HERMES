@@ -4,15 +4,17 @@
 #include <iostream>
 #include <fstream> 
 
+using namespace std;
+
 // Computes the spatial distance between two signal data points using Euclidean distance formula.
 double spatialDistance(const signalData& p1, const signalData& p2) {
-    return std::sqrt((p1.xPixel - p2.xPixel) * (p1.xPixel - p2.xPixel) +
+    return sqrt((p1.xPixel - p2.xPixel) * (p1.xPixel - p2.xPixel) +
                      (p1.yPixel - p2.yPixel) * (p1.yPixel - p2.yPixel));
 }
 
 // Computes the temporal distance between two signal data points.
 double temporalDistance(const signalData& p1, const signalData& p2) {
-    return std::abs(p1.ToaFinal - p2.ToaFinal);
+    return abs(p1.ToaFinal - p2.ToaFinal);
 }
 
 // Checks if two signal data points are neighbors based on given spatial and temporal thresholds.
@@ -37,7 +39,7 @@ bool isNeighbor(const signalData& p1, const signalData& p2, double epsSpatial, d
  * includes spatial coordinates, time of arrival, etc.
  * @param homeIndex Index in 'signalDataArray' for which neighbors are searched.
  *
- * @return std::vector<size_t> Indices of neighboring data points within
+ * @return vector<size_t> Indices of neighboring data points within
  * specified thresholds.
  *
  * Example usage:
@@ -45,13 +47,13 @@ bool isNeighbor(const signalData& p1, const signalData& p2, double epsSpatial, d
  * Searches for neighbors of data point at index 1000 in 'signalDataArray',
  * using 'config' defined thresholds.
  */
-std::vector<size_t> regionQuery(configParameters configParams, tpx3FileDiagnostics& tpx3FileInfo, signalData* signalDataArray, const size_t homeIndex) {
+vector<size_t> regionQuery(configParameters configParams, tpx3FileDiagnostics& tpx3FileInfo, signalData* signalDataArray, const size_t homeIndex) {
     
     // Calculate start and end indices to search within, ensuring they stay within bounds of the array
     size_t startIndex = homeIndex > configParams.queryRegion ? homeIndex - configParams.queryRegion : 0;
     size_t endIndex = homeIndex + configParams.queryRegion < tpx3FileInfo.numberOfDataPackets ? homeIndex + configParams.queryRegion : tpx3FileInfo.numberOfDataPackets - 1;
     
-    std::vector<size_t> neighbors;
+    vector<size_t> neighbors;
     for (size_t i = startIndex; i <= endIndex; i++) {
         if (isNeighbor(signalDataArray[homeIndex], signalDataArray[i], configParams.epsSpatial, configParams.epsTemporal)) {
             neighbors.push_back(i);
@@ -86,7 +88,7 @@ std::vector<size_t> regionQuery(configParameters configParams, tpx3FileDiagnosti
  * @return photonData Structure containing the photon data statistics for the
  * expanded cluster.
  */
-photonData expandCluster(configParameters configParams, tpx3FileDiagnostics& tpx3FileInfo, signalData* signalDataArray, size_t homeIndex, std::vector<size_t>& neighbors, size_t clusterId) {
+photonData expandCluster(configParameters configParams, tpx3FileDiagnostics& tpx3FileInfo, signalData* signalDataArray, size_t homeIndex, vector<size_t>& neighbors, size_t clusterId) {
    
     photonData pd;                                      // Create a photonData instance to be filled and returned
     signalDataArray[homeIndex].groupID = clusterId;     // Mark the seed point as part of the cluster
@@ -117,7 +119,7 @@ photonData expandCluster(configParameters configParams, tpx3FileDiagnostics& tpx
             pixelCount++; // Increment the count of pixels contributing to the photon
 
             // Find neighbors of this point
-            std::vector<size_t> qNeighbors = regionQuery(configParams, tpx3FileInfo, signalDataArray, qIndex);
+            vector<size_t> qNeighbors = regionQuery(configParams, tpx3FileInfo, signalDataArray, qIndex);
 
             // If this point has enough neighbors, add them to the list for processing
             if (qNeighbors.size() >= configParams.minPts) {
@@ -170,7 +172,7 @@ photonData expandCluster(configParameters configParams, tpx3FileDiagnostics& tpx
  */
 void ST_DBSCAN(configParameters configParams, tpx3FileDiagnostics& tpx3FileInfo, signalData* signalDataArray) {
     uint32_t clusterId = 2; // Start cluster IDs from 2, reserving 1 for noise
-    std::vector<photonData> photons; // Vector to store photon data for each cluster.
+    vector<photonData> photons; // Vector to store photon data for each cluster.
 
     // Loop through signalDataArray and begin clustering. 
     for (size_t currentPacketIndex = 0; currentPacketIndex < tpx3FileInfo.numberOfDataPackets; currentPacketIndex++) {
@@ -181,7 +183,7 @@ void ST_DBSCAN(configParameters configParams, tpx3FileDiagnostics& tpx3FileInfo,
             continue;
         }
 
-        std::vector<size_t> neighbors = regionQuery(configParams, tpx3FileInfo, signalDataArray, currentPacketIndex);
+        vector<size_t> neighbors = regionQuery(configParams, tpx3FileInfo, signalDataArray, currentPacketIndex);
 
         if (neighbors.size() < static_cast<size_t>(configParams.minPts)) {
             signalDataArray[currentPacketIndex].groupID = 1; // Mark as noise
