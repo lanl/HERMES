@@ -43,21 +43,21 @@ class SignalsIO:
         round_period_to: float = 0.5,
         file_duration: Optional[float] = None,
     ) -> pd.DataFrame:
-    """
-    Load signal data from a file or folder into a DataFrame.
+        """
+        Load signal data from a file or folder into a DataFrame.
 
-    Args:
-        filepath (str): Path to the input file or directory.
-        format (Optional[str]): Explicit format to use ('rawSignals', 'csv', 'pixelActivations'). 
-            If None or 'auto', it is inferred from the extension or folder contents.
-        index (str): Index string to select a file slice (e.g., '0:3').
-        time_adjust (bool): Whether to time-adjust signals across files using ToA.
-        round_period_to (float): Rounding factor for estimated period during time adjustment.
-        file_duration (Optional[float]): Explicit file duration to use for time adjustment.
+        Args:
+            filepath (str): Path to the input file or directory.
+            format (Optional[str]): Explicit format to use ('rawSignals', 'csv', 'pixelActivations'). 
+                If None or 'auto', it is inferred from the extension or folder contents.
+            index (str): Index string to select a file slice (e.g., '0:3').
+            time_adjust (bool): Whether to time-adjust signals across files using ToA.
+            round_period_to (float): Rounding factor for estimated period during time adjustment.
+            file_duration (Optional[float]): Explicit file duration to use for time adjustment.
 
-    Returns:
-        pd.DataFrame: Combined signal data.
-    """
+        Returns:
+            pd.DataFrame: Combined signal data.
+        """
         p = Path(filepath)
         if not p.exists():
             raise FileNotFoundError(f"Path does not exist: {p}")
@@ -136,20 +136,20 @@ class SignalsIO:
         round_period_to: float = 0.5,
         file_duration: Optional[float] = None,
     ) -> pd.DataFrame:
-    """
-    Load and concatenate signal files from a folder.
+        """
+        Load and concatenate signal files from a folder.
 
-    Args:
-        directory (Path): Path to the folder.
-        fmt (str): Format of files in the folder ('rawSignals', 'csv', or 'pixelActivations').
-        index (str): Index string for file slicing.
-        time_adjust (bool): Whether to apply time adjustments using ToA.
-        round_period_to (float): Rounding value for estimated period.
-        file_duration (Optional[float]): Manually specified file duration.
+        Args:
+            directory (Path): Path to the folder.
+            fmt (str): Format of files in the folder ('rawSignals', 'csv', or 'pixelActivations').
+            index (str): Index string for file slicing.
+            time_adjust (bool): Whether to apply time adjustments using ToA.
+            round_period_to (float): Rounding value for estimated period.
+            file_duration (Optional[float]): Manually specified file duration.
 
-    Returns:
-        pd.DataFrame: Concatenated and optionally time-adjusted signal data.
-    """
+        Returns:
+            pd.DataFrame: Concatenated and optionally time-adjusted signal data.
+        """
         pattern = self._pattern_for_format(fmt)
         files = self._list_files(directory, fmt)
 

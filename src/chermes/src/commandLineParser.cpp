@@ -19,7 +19,6 @@ configParameters createDefaultConfig() {
     configParameters params;
     // Default values are already set in the struct definition
     // Just ensure some sensible defaults for common use cases
-    params.batchMode = false;
     params.writeRawSignals = true;
     params.sortSignals = true;
     params.outputFolder = ".";
@@ -118,11 +117,8 @@ bool parseCommandLineFlags(int argc, char* argv[], configParameters& configParam
     helpLevel = 0;  // 0 = no help, 1 = basic help, 2 = help with examples
     
     string inputFile, inputDir, outputDir, configFile;
-    bool batchModeSpecified = false;
     bool sortSignals = false;
     bool sortSpecified = false;
-    bool writeRawSignals = true;
-    bool writeRawSignalsSpecified = false;
     bool clusterPixels = false;
     bool clusterPixelsSpecified = false;
     bool writeOutPhotons = false;
@@ -161,9 +157,6 @@ bool parseCommandLineFlags(int argc, char* argv[], configParameters& configParam
         else if ((arg == "-c" || arg == "--configFile") && i + 1 < argc) {
             configFile = argv[++i];
         }
-        else if (arg == "-b" || arg == "--batch") {
-            batchModeSpecified = true;
-        }
         else if (arg == "-s" || arg == "--sort") {
             sortSignals = true;
             sortSpecified = true;
@@ -172,12 +165,8 @@ bool parseCommandLineFlags(int argc, char* argv[], configParameters& configParam
             verboseLevel = parseIntOrDefault(argv[++i], 1);
         }
         else if (arg == "-w" || arg == "--writeRawSignals") {
-            writeRawSignals = true;
-            writeRawSignalsSpecified = true;
-        }
-        else if (arg == "-W" || arg == "--no-writeRawSignals") {
-            writeRawSignals = false;
-            writeRawSignalsSpecified = true;
+            configParams.writeRawSignals = true;
+            cout << "Write raw signals: enabled" << endl;
         }
         else if (arg == "-C" || arg == "--clusterPixels") {
             clusterPixels = true;
@@ -289,11 +278,6 @@ bool parseCommandLineFlags(int argc, char* argv[], configParameters& configParam
     }
     
     // Set other boolean options (override config if specified)
-    if (writeRawSignalsSpecified) {
-        configParams.writeRawSignals = writeRawSignals;
-        cout << "Write raw signals: " << (writeRawSignals ? "enabled" : "disabled") << endl;
-    }
-    
     if (clusterPixelsSpecified) {
         configParams.clusterPixels = clusterPixels;
         cout << "Cluster pixels: " << (clusterPixels ? "enabled" : "disabled") << endl;
@@ -349,7 +333,6 @@ void printUsage(const char* programName, int helpLevel) {
     cout << "Processing Options:" << endl;
     cout << "  -s, --sort                 Enable signal sorting" << endl;
     cout << "  -w, --writeRawSignals      Enable writing raw signals" << endl;
-    cout << "  -W, --no-writeRawSignals   Disable writing raw signals" << endl;
     cout << "  -C, --clusterPixels        Enable pixel clustering" << endl;
     cout << "  -p, --writeOutPhotons      Enable writing photon data" << endl;
     cout << endl;
