@@ -45,7 +45,7 @@ class EmpirProcessor():
         if batch_mode:
             # If batch mode, process all files in the input directory
             pixel_files = [os.path.join(params.directories.tpx3_file_dir, f) for f in os.listdir(params.directories.tpx3_file_dir) if f.endswith('.tpx3')]
-            photon_files = [os.path.join(params.directories.output_file_dir, f.replace('.tpx3', '.empirphot')) for f in os.listdir(params.directories.tpx3_file_dir) if f.endswith('.tpx3')]
+            photon_files = [os.path.join(params.directories.photon_file_dir, f.replace('.tpx3', '.empirphot')) for f in os.listdir(params.directories.tpx3_file_dir) if f.endswith('.tpx3')]
             log_files = [os.path.join(params.directories.log_file_dir, f.replace('.tpx3', '_pixel2photon.log')) for f in os.listdir(params.directories.tpx3_file_dir) if f.endswith('.tpx3')]
         
             # TODO: Implement batch processing logic here
