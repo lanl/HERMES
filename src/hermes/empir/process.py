@@ -77,7 +77,7 @@ class EmpirProcessor():
 
 
             pixel_file = os.path.join(params.directories.tpx3_file_dir, params.pixel_to_photon_params.input_file)
-            photon_file = os.path.join(params.directories.output_file_dir, params.pixel_to_photon_params.output_file)
+            photon_file = os.path.join(params.directories.output_dir, params.pixel_to_photon_params.output_file)
             log_file = os.path.join(params.directories.log_file_dir, params.pixel_to_photon_params.log_file)
 
             # Log the file paths
