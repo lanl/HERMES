@@ -140,6 +140,7 @@ class Exporter(BaseModel):
             return pd.DataFrame()
 
     #-------------------------------------------------------------------------------------
+    @staticmethod
     def export_photons(directories: DirectoryStructure, input_file="", output_file=""):
         """ This function exports photon from an .empirphot file using the binary empir_export_photons. 
 
