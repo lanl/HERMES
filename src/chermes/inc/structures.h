@@ -12,12 +12,11 @@ struct configParameters {
     bool batchMode = false;     // Flag to run in batch mode
     
     // Output options
-    bool writeRawSignals = false;       // Flag to write out rawsignals in binrary
-    bool writeOutPhotons = false;       // Flag to write out Photon data in binrary
-    std::string outputFolder = ".";     // Default to current directory
+    bool writeRawSignals = true;    // Flag to write out rawsignals in binrary
+    std::string outputFolder = "."; // Default to current directory
     
     // Sorting options
-    bool sortSignals = false;   // Flag to sort signals
+    bool sortSignals = true;        // Flag to sort signals
     
     // Basic Clustering Options
     bool clusterPixels = false;
@@ -25,10 +24,11 @@ struct configParameters {
     double epsTemporal = 0;
     uint8_t minPts = 0;
     uint16_t queryRegion = 0;
+    bool writeOutPhotons = true;    // Flag to write out Photon data in binrary
 
     //Diagnostic options
     uint32_t maxPacketsToRead = 0;  // Number of buffer to read in. 0 means read all buffers. 
-    bool fillHistograms = false;     // Flag to fill histograms
+    bool fillHistograms = false;    // Flag to fill histograms
     int verboseLevel = 1;           // Verbosity Level
                                     // 0 = be quite, print nothing!
                                     // 1 = General file input/output
@@ -75,5 +75,15 @@ struct photonData{
     uint16_t integratedTot = 0;
     uint8_t multiplicity = 0;
 };
+
+
+// Represents the data for a single raw pixel signal. Currently not in use, planned for future.
+struct pixelData{
+    uint8_t xPixel;
+    uint8_t yPixel;
+    uint64_t ToaFinal;
+    uint16_t TotFinal;
+};
+
 
 #endif
