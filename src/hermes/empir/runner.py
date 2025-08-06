@@ -65,7 +65,7 @@ class EmpirRunner:
             log_output.write("--------\n")
             logger.debug(f"Writing log to {log_file}")
             try:
-                #subprocess.run(pixels_to_photons_command, stdout=log_output, stderr=subprocess.STDOUT)
+                subprocess.run(pixels_to_photons_command, stdout=log_output, stderr=subprocess.STDOUT)
                 logger.info(f"Successfully processed pixels to photons for {pixel_file}")
             except subprocess.CalledProcessError as e:
                 logger.error(f"Error processing pixels to photons for {pixel_file}: {e}")
