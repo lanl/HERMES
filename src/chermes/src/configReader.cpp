@@ -53,9 +53,8 @@ void logConfigError(const string& key, const string& value, const string& error)
  * by the keys in the file. Invalid or unexpected key-value pairs will generate errors to stderr.
  * 
  * Supported configuration parameters include:
- * - batchMode: Whether to run in batch mode (true/false).
  * - rawTPX3Folder: Folder for raw TPX3 files.
- * - rawTPX3File: Specific raw TPX3 file name.
+ * - rawTPX3File: Specific raw TPX3 file name (or 'ALL' for batch mode.).
  * - writeRawSignals: Whether to write raw signals (true/false).
  * - outputFolder: Folder for output files.
  * - maxBuffersToRead: Maximum number of buffers to read.
@@ -102,14 +101,13 @@ bool readConfigFile(const string &filename, configParameters &params) {
                 // If the value is empty, blank spaces, "ALL" then analyze all files in the folder in batch mode. 
 
                 if (value.empty() || value == "ALL" || value == "all") {
-                    params.batchMode = true;
+                    params.rawTPX3File = "ALL";
                     params.runHandle = "";
-                    params.rawTPX3File = "";
-                } else { // Otherwise, process the file in single mode.
-                    params.batchMode = false;
+                } else {
                     params.rawTPX3File = value;
                     params.runHandle = grabRunHandle(value);
                 }
+
             }
             else if (key == "writeRawSignals") params.writeRawSignals = stringToBool(value);
             else if (key == "outputFolder") params.outputFolder = value;
@@ -135,7 +133,6 @@ bool readConfigFile(const string &filename, configParameters &params) {
 void printParameters(const configParameters &params) {
     // If the program reaches this point, the configuration file was successfully read
     cout << "=================== Config parameters ====================" << endl;
-    cout << "batchMode: " << (params.batchMode ? "true" : "false") << endl;
     cout << "inputTPX3Folder: " << params.rawTPX3Folder << endl;
     cout << "inputTPX3File: " << params.rawTPX3File << endl;
     cout << "writeRawSignals: " << (params.writeRawSignals ? "true" : "false") << endl;

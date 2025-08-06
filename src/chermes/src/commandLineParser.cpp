@@ -211,8 +211,8 @@ bool parseCommandLineFlags(int argc, char* argv[], configParameters& configParam
     }
     
     // Validate required parameters
-    if (inputFile.empty() && inputDir.empty() && !batchModeSpecified && configFile.empty()) {
-        cerr << "Error: Must specify either -i <input_file>, -I <input_dir>, -b (batch mode), or -c <config_file>" << endl;
+    if (inputFile.empty() && inputDir.empty() && configFile.empty()) {
+        cerr << "Error: Must specify either -i <input_file>, -I <input_dir>, or -c <config_file>" << endl;
         return false;
     }
     
@@ -221,39 +221,34 @@ bool parseCommandLineFlags(int argc, char* argv[], configParameters& configParam
         cerr << "Error: Cannot specify both -i and -I options" << endl;
         return false;
     }
-    
-    if (!inputFile.empty() && batchModeSpecified) {
-        cout << "Warning: Both input file (-i) and batch mode (-b) specified. Processing single file only: " << inputFile << endl;
-        // Single file mode will be set in the configuration section below
-    }
-    
-    // Check if batch mode is specified without input directory
-    if (batchModeSpecified && inputDir.empty() && inputFile.empty()) {
-        cerr << "Error: Batch mode (-b) requires an input directory. Use -I <directory> to specify the directory." << endl;
-        return false;
-    }
+
     
     // Configure parameters (override config file if specified)
-    if (!inputFile.empty()) {
-        // Single file mode (takes priority over batch mode)
+    if (inputFile == "ALL") {
+        configParams.rawTPX3File = "ALL";
+    } else if (!inputFile.empty()) {
         if (!fileExists(inputFile)) {
-            cerr << "Error: Input file does not exist: " << inputFile << endl;
+            std::cerr << "Error: Input file does not exist: " << inputFile << std::endl;
             return false;
         }
         if (!hasExtension(inputFile, ".tpx3")) {
-            cerr << "Error: Input file must have .tpx3 extension: " << inputFile << endl;
+            std::cerr << "Error: Input file must have .tpx3 extension: " << inputFile << std::endl;
             return false;
         }
         configParams.rawTPX3File = getFilename(inputFile);
-        configParams.rawTPX3Folder = getDirectoryPath(inputFile);
         configParams.runHandle = grabRunHandle(configParams.rawTPX3File);
-        configParams.batchMode = false;
-    } else if (!inputDir.empty()) {
-        // Directory-based batch mode (works with or without -b flag)
-        configParams.rawTPX3Folder = inputDir;
-        configParams.rawTPX3File = "ALL";
-        configParams.batchMode = true;
+    } else {
+        std::cerr << "Error: Must specify -i <input_file> as a specific file or 'ALL'" << std::endl;
+        return false;
     }
+
+    if (!inputDir.empty()) {
+        configParams.rawTPX3Folder = inputDir;
+    } else {
+        std::cerr << "Error: Must specify -I <input_dir>" << std::endl;
+        return false;
+    }
+
     
     // Set output directory (override config if specified)
     if (!outputDir.empty()) {
@@ -324,9 +319,8 @@ bool parseCommandLineFlags(int argc, char* argv[], configParameters& configParam
  */
 void printUsage(const char* programName, int helpLevel) {
     cout << "Input/Output Options:" << endl;
-    cout << "  -i, --inputFile <file>     Input TPX3 file" << endl;
-    cout << "  -I, --inputDir <dir>       Input directory (for batch mode)" << endl;
-    cout << "  -b, --batch                Enable batch mode (requires -I <directory>)" << endl;
+    cout << "  -i, --inputFile <file>     Input TPX3 file (or use 'ALL' for batch mode)" << endl;
+    cout << "  -I, --inputDir <dir>       Input directory" << endl;
     cout << "  -o, --outputDir <dir>      Output directory" << endl;
     cout << "  -c, --configFile <file>    Configuration file" << endl;
     cout << endl;
@@ -352,22 +346,22 @@ void printUsage(const char* programName, int helpLevel) {
         cout << endl;
         cout << "Examples:" << endl;
         cout << "  # Use config file as-is:" << endl;
-        cout << "  ./bin/tpx3SpidrUnpacker -c settings.config" << endl;
+        cout << "  tpx3SpidrUnpacker -c settings.config" << endl;
         cout << endl;
         cout << "  # Direct file processing:" << endl;
-        cout << "  ./bin/tpx3SpidrUnpacker -i data.tpx3 -o /path/to/output -v 2" << endl;
+        cout << "  tpx3SpidrUnpacker -i data.tpx3 -o /path/to/output -v 2" << endl;
         cout << endl;
         cout << "  # Config file with overrides:" << endl;
-        cout << "  ./bin/tpx3SpidrUnpacker -c settings.config -o /different/output -v 3 -W" << endl;
-        cout << "  ./bin/tpx3SpidrUnpacker -c settings.config --clusterPixels -S 5 -T 100.0" << endl;
+        cout << "  tpx3SpidrUnpacker -c settings.config -o /different/output -v 3 -W" << endl;
+        cout << "  tpx3SpidrUnpacker -c settings.config --clusterPixels -S 5 -T 100.0" << endl;
         cout << endl;
         cout << "  # Compact clustering setup:" << endl;
-        cout << "  ./bin/tpx3SpidrUnpacker -i data.tpx3 -o /tmp -C -S 2 -T 250.5 -p -v 2" << endl;
+        cout << "  tpx3SpidrUnpacker -i data.tpx3 -o /tmp -C -S 2 -T 250.5 -p -v 2" << endl;
         cout << endl;
         cout << "  # Batch processing with limits:" << endl;
-        cout << "  ./bin/tpx3SpidrUnpacker -I /path/to/tpx3/files -o /path/to/output -s -m 1000" << endl;
+        cout << "  tpx3SpidrUnpacker -I /path/to/tpx3/files -o /path/to/output -s -m 1000" << endl;
         cout << endl;
         cout << "  # Explicit batch mode with directory:" << endl;
-        cout << "  ./bin/tpx3SpidrUnpacker -b -I /path/to/tpx3/files -o /path/to/output -v 2" << endl;
+        cout << "  tpx3SpidrUnpacker -i ALL -I /path/to/tpx3/files -o /path/to/output -v 2" << endl;
     }
 }
