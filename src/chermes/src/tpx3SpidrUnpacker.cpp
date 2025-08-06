@@ -66,13 +66,13 @@ int main(int argc, char *argv[]){
             return (helpLevel > 0) ? 0 : 1;
         }
         
-        cout << "Using flag-based configuration:" << endl;
-        if (configParams.batchMode) {
-            cout << "Input directory: " << configParams.rawTPX3Folder << endl;
-            cout << "Batch mode: ALL files" << endl;
+        cout << "Input directory: " << configParams.rawTPX3Folder << endl;
+        if (configParams.rawTPX3File == "ALL") {
+            cout << "Batch mode: ALL files in input directory" << endl;
         } else {
             cout << "Input file: " << configParams.rawTPX3Folder << "/" << configParams.rawTPX3File << endl;
         }
+
         cout << "Output folder: " << configParams.outputFolder << endl;
         cout << "Verbose level: " << configParams.verboseLevel << endl;
     }
