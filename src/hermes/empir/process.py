@@ -29,8 +29,8 @@ class EmpirProcessor():
         if not os.path.exists(params.directories.tpx3_file_dir):
             logger.error(f"Input directory does not exist: {params.directories.tpx3_file_dir}")
             return
-        if not os.path.exists(params.directories.output_file_dir):
-            logger.error(f"Output directory does not exist: {params.directories.output_file_dir}")
+        if not os.path.exists(params.directories.list_file_dir):
+            logger.error(f"Output directory does not exist: {params.directories.list_file_dir}")
             return
 
         logger.info("Processing pixel data with EMPIR binaries...")
