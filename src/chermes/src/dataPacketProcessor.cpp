@@ -109,14 +109,18 @@ void resetGlobalVariables() {
  */
 vector<string> getFilesInDirectory(configParameters configParams){
     vector<string> files;
-    // grab all files with a given extension of ".tpx3"
-    for (const auto & entry : filesystem::directory_iterator(configParams.rawTPX3Folder)){
-        if (entry.path().extension() == ".tpx3"){
-            // only grab the file name and not the full path
-            files.push_back(entry.path().filename().string());
-
-            //files.push_back(entry.path().string());
+    // Grab .tpx3 files only
+    for (const auto & entry : filesystem::directory_iterator(configParams.rawTPX3Folder)) {
+        string filename = entry.path().filename().string();
+        // Skip if file doesn't have .tpx3 extension
+        if (entry.path().extension() != ".tpx3") {
+            continue;
         }
+        // Skip Apple metadata files (like ._filename.tpx3)
+        if (filename.rfind("._", 0) == 0) {
+            continue;
+        }
+        files.push_back(filename);
     }
     return files;
 }
@@ -753,9 +757,6 @@ void processTPX3Files(configParameters configParams){
     if(configParams.verboseLevel>=2){printParameters(configParams);}
 
     if (configParams.rawTPX3File == "ALL") {
-        if (configParams.verboseLevel >= 1) {
-            cout << "Batch mode detected (rawTPX3File == 'ALL'). Processing all .tpx3 files in the input directory." << endl;
-        }
 
         // Get a list of all the files in the directory
         vector<string> tpx3Files = getFilesInDirectory(configParams);

@@ -5,6 +5,7 @@
 
 #include <fstream>
 #include <iostream>
+#include <filesystem>
 #include "commandLineParser.h"
 #include "configReader.h"
 #include "diagnostics.h"
@@ -211,43 +212,52 @@ bool parseCommandLineFlags(int argc, char* argv[], configParameters& configParam
     }
     
     // Validate required parameters
-    if (inputFile.empty() && inputDir.empty() && configFile.empty()) {
-        cerr << "Error: Must specify either -i <input_file>, -I <input_dir>, or -c <config_file>" << endl;
-        return false;
-    }
-    
-    // Handle conflicts between input options
-    if (!inputFile.empty() && !inputDir.empty()) {
-        cerr << "Error: Cannot specify both -i and -I options" << endl;
+    if (configFile.empty()) {
+        cerr << "Error: Must specify -c <config_file>" << endl;
         return false;
     }
 
     
     // Configure parameters (override config file if specified)
-    if (inputFile == "ALL") {
-        configParams.rawTPX3File = "ALL";
-    } else if (!inputFile.empty()) {
-        if (!fileExists(inputFile)) {
-            std::cerr << "Error: Input file does not exist: " << inputFile << std::endl;
-            return false;
-        }
-        if (!hasExtension(inputFile, ".tpx3")) {
-            std::cerr << "Error: Input file must have .tpx3 extension: " << inputFile << std::endl;
-            return false;
-        }
-        configParams.rawTPX3File = getFilename(inputFile);
-        configParams.runHandle = grabRunHandle(configParams.rawTPX3File);
-    } else {
-        std::cerr << "Error: Must specify -i <input_file> as a specific file or 'ALL'" << std::endl;
-        return false;
-    }
-
     if (!inputDir.empty()) {
         configParams.rawTPX3Folder = inputDir;
-    } else {
-        std::cerr << "Error: Must specify -I <input_dir>" << std::endl;
-        return false;
     }
+
+    // Set 'all' for batch mode as case-insensitive
+    string inputFileLower = inputFile;
+    transform(inputFileLower.begin(), inputFileLower.end(), inputFileLower.begin(),
+            [](unsigned char c){ return tolower(c); });
+            
+
+    // Batch mode
+    if (inputFileLower == "all") {
+        configParams.rawTPX3File = "ALL";
+    } 
+    // Not batch mode, single file inside of inputDir
+    else if (!inputFile.empty()) {
+        string baseName = getFilename(inputFile);
+
+        // Require an input directory from either -I or the config
+        if (configParams.rawTPX3Folder.empty()) {
+            cerr << "Error: -i <file> requires an input directory from -I <fileDir> or the config file." << endl;
+            return false;
+        }
+
+        filesystem::path fullPath = filesystem::path(configParams.rawTPX3Folder) / baseName;
+
+        if (fullPath.extension() != ".tpx3") {
+            cerr << "Error: Input file must have .tpx3 extension: " << baseName << endl;
+            return false;
+        }
+
+        // Validate existence at the resolved location
+        if (!filesystem::exists(fullPath)) {
+            cerr << "Error: Input file not found in input directory: " << fullPath.string() << endl;
+            return false;
+        }
+        configParams.rawTPX3File = baseName;
+        configParams.runHandle = grabRunHandle(baseName);
+    } 
 
     
     // Set output directory (override config if specified)
@@ -319,10 +329,10 @@ bool parseCommandLineFlags(int argc, char* argv[], configParameters& configParam
  */
 void printUsage(const char* programName, int helpLevel) {
     cout << "Input/Output Options:" << endl;
-    cout << "  -i, --inputFile <file>     Input TPX3 file (or use 'ALL' for batch mode)" << endl;
+    cout << "  -i, --inputFile <file>     Input TPX3 file (or use 'all' for batch mode)" << endl;
     cout << "  -I, --inputDir <dir>       Input directory" << endl;
     cout << "  -o, --outputDir <dir>      Output directory" << endl;
-    cout << "  -c, --configFile <file>    Configuration file" << endl;
+    cout << "  -c, --configFile <file>    Configuration file (REQUIRED)" << endl;
     cout << endl;
     cout << "Processing Options:" << endl;
     cout << "  -s, --sort                 Enable signal sorting" << endl;
@@ -352,7 +362,7 @@ void printUsage(const char* programName, int helpLevel) {
         cout << "  tpx3SpidrUnpacker -i data.tpx3 -o /path/to/output -v 2" << endl;
         cout << endl;
         cout << "  # Config file with overrides:" << endl;
-        cout << "  tpx3SpidrUnpacker -c settings.config -o /different/output -v 3 -W" << endl;
+        cout << "  tpx3SpidrUnpacker -c settings.config -o /different/output -v 3" << endl;
         cout << "  tpx3SpidrUnpacker -c settings.config --clusterPixels -S 5 -T 100.0" << endl;
         cout << endl;
         cout << "  # Compact clustering setup:" << endl;
