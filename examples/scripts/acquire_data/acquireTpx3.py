@@ -12,6 +12,10 @@ This script requires a configuration file (-c/--config) and allows only minimal 
 import argparse
 import json
 import sys
+import subprocess
+import os
+import signal
+import time
 from typing import Any, Dict, Optional
 from hermes.acquisition import tpx3serval
 
@@ -34,14 +38,17 @@ def merge_dicts(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any
         merged.setdefault(section, {}).update(values)
     return merged
 
+
 def load_config_file(path: str) -> Dict[str, Any]:
     """Load INI config using tpx3serval's parser."""
     run_settings_json = tpx3serval.config_run(path, "")
     return json.loads(run_settings_json)
 
+
 def set_if_provided(cfg: Dict[str, Any], section: str, key: str, value: Optional[Any]):
     if value is not None:
         cfg[section][key] = value
+
 
 def apply_overrides(cfg: Dict[str, Any], args: argparse.Namespace):
     """Override config with CLI flags (only WorkingDir.path_to_working_dir and RunSettings)."""
@@ -58,6 +65,7 @@ def apply_overrides(cfg: Dict[str, Any], args: argparse.Namespace):
     # Always enforce localhost server
     cfg["ServerConfig"]["serverurl"] = "http://localhost:8080"
 
+
 def normalize_types(cfg: Dict[str, Any]):
     run = cfg["RunSettings"]
 
@@ -71,6 +79,7 @@ def normalize_types(cfg: Dict[str, Any]):
 
     if isinstance(run.get("run_number"), int):
         run["run_number"] = f"{run['run_number']:04d}"
+
 
 def validate(cfg: Dict[str, Any]):
     """Check that required fields are present and valid."""
@@ -86,6 +95,26 @@ def validate(cfg: Dict[str, Any]):
         raise ValueError("Exposure time must be <= trigger period")
     if runs < 1:
         raise ValueError("Must run at least once")
+
+
+def start_serval_server(path_to_server: str) -> subprocess.Popen:
+    """
+    Start the Serval server as a background process.
+    Returns the process handle so it can be terminated later.
+    """
+    jar_path = os.path.join(path_to_server, "serv-2.1.6.jar")
+    if not os.path.isfile(jar_path):
+        raise FileNotFoundError(f"Could not find serval JAR at '{jar_path}'")
+
+    proc = subprocess.Popen(
+        ["java", "-jar", jar_path],
+        cwd=path_to_server,
+        stdout=subprocess.PIPE, # Standard output is stored here to not clog up terminal
+        stderr=subprocess.PIPE, # Standard error is stored here to not clog up terminal
+        preexec_fn=os.setsid  # So we can terminate the whole process group later
+    )
+    return proc
+
 
 
 # --------------------------------------------------------------------------
@@ -147,43 +176,65 @@ def main():
         print("=========================================")
         sys.exit(0)
 
-    if args.verbose > 0:
-        print(f"[INFO] Starting acquisition for run '{effective_config['RunSettings']['run_name']}'")
+    path_to_server = effective_config["ServerConfig"]["path_to_server"]
+    server_proc = None
 
-    tpx3serval.verify_working_dir(effective_config)
+    try:
+        if args.verbose > 0:
+            print("[INFO] Starting Serval server...")
 
-    if args.verbose > 0:
-        print("[INFO] Checking camera connection...")
+        server_proc = start_serval_server(path_to_server)
 
-    tpx3serval.check_camera_connection(
-        effective_config["ServerConfig"]["serverurl"],
-        verbose=(args.verbose > 1)
-    )
-
-    tpx3serval.load_dacs(effective_config, verbose_level=args.verbose)
-    tpx3serval.load_pixelconfig(effective_config, verbose_level=args.verbose)
-    tpx3serval.set_and_load_server_destination(effective_config, verbose_level=args.verbose)
-    tpx3serval.set_and_load_detector_config(effective_config, verbose_level=args.verbose)
-
-    num_runs = effective_config["RunSettings"]["number_of_runs"]
-    for i in range(num_runs):
-        effective_config["RunSettings"]["run_number"] = f"{i:04}"
+        time.sleep(3)  # Quick time delay just to ensure that serval has time to load up.
 
         if args.verbose > 0:
-            print(f"[INFO] Starting run {i+1}/{num_runs}")
+            print("[INFO] Serval server started.")
 
+        tpx3serval.verify_working_dir(effective_config)
+
+        if args.verbose > 0:
+            print("[INFO] Checking camera connection...")
+
+        tpx3serval.check_camera_connection(
+            effective_config["ServerConfig"]["serverurl"],
+            verbose=(args.verbose > 1)
+        )
+
+        tpx3serval.load_dacs(effective_config, verbose_level=args.verbose)
+        tpx3serval.load_pixelconfig(effective_config, verbose_level=args.verbose)
         tpx3serval.set_and_load_server_destination(effective_config, verbose_level=args.verbose)
+        tpx3serval.set_and_load_detector_config(effective_config, verbose_level=args.verbose)
 
-        tpx3serval.log_info(effective_config, http_string='/dashboard', verbose_level=args.verbose)
-        tpx3serval.log_info(effective_config, http_string='/detector/health', verbose_level=args.verbose)
-        tpx3serval.log_info(effective_config, http_string='/detector/layout', verbose_level=args.verbose)
-        tpx3serval.log_info(effective_config, http_string='/detector/chips/0/dacs', verbose_level=args.verbose)
-        tpx3serval.log_info(effective_config, http_string='/detector/chips/0/pixelconfig', verbose_level=args.verbose)
+        num_runs = effective_config["RunSettings"]["number_of_runs"]
+        for i in range(num_runs):
+            effective_config["RunSettings"]["run_number"] = f"{i:04}"
 
-        tpx3serval.take_exposure(effective_config, verbose_level=args.verbose)
+            if args.verbose > 0:
+                print(f"[INFO] Starting run {i+1}/{num_runs}")
 
-        if args.verbose > 0:
-            print(f"[INFO] Finished run {i+1}/{num_runs}")
+            tpx3serval.set_and_load_server_destination(effective_config, verbose_level=args.verbose)
+
+            tpx3serval.log_info(effective_config, http_string='/dashboard', verbose_level=args.verbose)
+            tpx3serval.log_info(effective_config, http_string='/detector/health', verbose_level=args.verbose)
+            tpx3serval.log_info(effective_config, http_string='/detector/layout', verbose_level=args.verbose)
+            tpx3serval.log_info(effective_config, http_string='/detector/chips/0/dacs', verbose_level=args.verbose)
+            tpx3serval.log_info(effective_config, http_string='/detector/chips/0/pixelconfig', verbose_level=args.verbose)
+
+            tpx3serval.take_exposure(effective_config, verbose_level=args.verbose)
+
+            if args.verbose > 0:
+                print(f"[INFO] Finished run {i+1}/{num_runs}")
+
+    finally:
+        if server_proc is not None:
+            if args.verbose > 0:
+                print("[INFO] Terminating Serval server...")
+            # Kill the process group to make sure all child processes are stopped
+            os.killpg(os.getpgid(server_proc.pid), signal.SIGTERM)
+            server_proc.wait()
+            if args.verbose > 0:
+                print("[INFO] Serval server terminated.")
+
 
 if __name__ == "__main__":
     main()
