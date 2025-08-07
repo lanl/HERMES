@@ -5,6 +5,7 @@
 
 #include <fstream>
 #include <iostream>
+#include <filesystem>
 #include "commandLineParser.h"
 #include "configReader.h"
 #include "diagnostics.h"
@@ -218,37 +219,45 @@ bool parseCommandLineFlags(int argc, char* argv[], configParameters& configParam
 
     
     // Configure parameters (override config file if specified)
+    if (!inputDir.empty()) {
+        configParams.rawTPX3Folder = inputDir;
+    }
 
     // Set 'all' for batch mode as case-insensitive
     string inputFileLower = inputFile;
     transform(inputFileLower.begin(), inputFileLower.end(), inputFileLower.begin(),
-            [](unsigned char c){ return std::tolower(c); });
+            [](unsigned char c){ return tolower(c); });
+            
 
-    // Handle conflicts between input options
-    if (!inputFile.empty() && !inputDir.empty() && inputFile != "all") {
-        cerr << "Error: Cannot specify both -i and -I options" << endl;
-        return false;
-    }
-
+    // Batch mode
     if (inputFileLower == "all") {
         configParams.rawTPX3File = "ALL";
-    } else if (!inputFile.empty()) {
-        if (!fileExists(inputFile)) {
-            std::cerr << "Error: Input file does not exist: " << inputFile << std::endl;
-            return false;
-        }
-        if (!hasExtension(inputFile, ".tpx3")) {
-            std::cerr << "Error: Input file must have .tpx3 extension: " << inputFile << std::endl;
-            return false;
-        }
-        configParams.rawTPX3File = getFilename(inputFile);
-        configParams.runHandle = grabRunHandle(configParams.rawTPX3File);
     } 
+    // Not batch mode, single file inside of inputDir
+    else if (!inputFile.empty()) {
+        string baseName = getFilename(inputFile);
 
+        // Require an input directory from either -I or the config
+        if (configParams.rawTPX3Folder.empty()) {
+            cerr << "Error: -i <file> requires an input directory from -I <fileDir> or the config file." << endl;
+            return false;
+        }
 
-    if (!inputDir.empty()) {
-        configParams.rawTPX3Folder = inputDir;
-    }
+        filesystem::path fullPath = filesystem::path(configParams.rawTPX3Folder) / baseName;
+
+        if (fullPath.extension() != ".tpx3") {
+            cerr << "Error: Input file must have .tpx3 extension: " << baseName << endl;
+            return false;
+        }
+
+        // Validate existence at the resolved location
+        if (!filesystem::exists(fullPath)) {
+            cerr << "Error: Input file not found in input directory: " << fullPath.string() << endl;
+            return false;
+        }
+        configParams.rawTPX3File = baseName;
+        configParams.runHandle = grabRunHandle(baseName);
+    } 
 
     
     // Set output directory (override config if specified)
