@@ -9,7 +9,6 @@ struct configParameters {
     std::string rawTPX3Folder;  // Directory where raw TPX3 files are located
     std::string rawTPX3File;    // Specific TPX3 file to process
     std::string runHandle;      // Name of the run number that is being processed.
-    bool batchMode = false;     // Flag to run in batch mode
     
     // Output options
     bool writeRawSignals = true;    // Flag to write out rawsignals in binrary

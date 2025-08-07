@@ -2502,8 +2502,8 @@ packages:
   timestamp: 1747091044218
 - pypi: ./
   name: hermes
-  version: 1.1.0.dev216+d202507301546
-  sha256: ea44c6891fce638d5e20f30e739f9e173dfb7351819d5745ac2951391e18661c
+  version: 1.1.0.dev289+d202508061815
+  sha256: dbace28bdeb5a1d9cf4f1f2b3a86ea2242ffd8aa68b34ea58f6529942458b485
   requires_dist:
   - numpy
   - scipy

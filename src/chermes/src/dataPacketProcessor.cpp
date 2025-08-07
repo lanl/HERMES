@@ -752,13 +752,14 @@ void processTPX3Files(configParameters configParams){
     // Print out config parameters based on verbosity level
     if(configParams.verboseLevel>=2){printParameters(configParams);}
 
-    // Check for bacthMode
-    if (configParams.batchMode){
-        if (configParams.verboseLevel >= 1){
-            cout << "Batch mode is enabled. Processing all files in the directory." << endl;
+    if (configParams.rawTPX3File == "ALL") {
+        if (configParams.verboseLevel >= 1) {
+            cout << "Batch mode detected (rawTPX3File == 'ALL'). Processing all .tpx3 files in the input directory." << endl;
         }
+
         // Get a list of all the files in the directory
         vector<string> tpx3Files = getFilesInDirectory(configParams);
+
         // Loop through all the files in the directory
         for (const auto& tpx3File : tpx3Files){
 
@@ -768,48 +769,45 @@ void processTPX3Files(configParameters configParams){
                 cout << "Global variables reset for file: " << tpx3File << endl;
             }
 
-            // Grab start time for unpacking
+            // Start timing
             chrono::duration<double> hermesTime;
             auto hermesStartTime = chrono::high_resolution_clock::now();
 
-            // Set the rawTPX3File to the current file
+            // Set current file into config
             configParams.rawTPX3File = tpx3File;
-
-            // Set the handle to the current file
             configParams.runHandle = grabRunHandle(tpx3File);
 
-            // Process the single file
+            // Process the file
             cout << "Processing file: " << tpx3File << endl;  
             tpxFileInfo = unpackAndSortTPX3File(configParams);
 
-            // Grab stop time for unpacking and calculate total times
+            // Finish timing
             auto hermesStopTime = chrono::high_resolution_clock::now();
             hermesTime = hermesStopTime - hermesStartTime;
             tpxFileInfo.totalHermesTime = hermesTime.count();
 
-            // Print out diagnostics based on verbosity level
-            if(configParams.verboseLevel>=2){printOutUnpackingDiagnostics(tpxFileInfo);}
-            
+            // Show diagnostics
+            if(configParams.verboseLevel >= 2){
+                printOutUnpackingDiagnostics(tpxFileInfo);
+            }
         }
-
     } else {
         // Process a single file
 
-        // Grab start time for unpacking
         chrono::duration<double> hermesTime;
         auto hermesStartTime = chrono::high_resolution_clock::now();
 
-        // Process the single file
         tpxFileInfo = unpackAndSortTPX3File(configParams);
         
-        // Grab stop time for unpacking and calculate total times
         auto hermesStopTime = chrono::high_resolution_clock::now();
         hermesTime = hermesStopTime - hermesStartTime;
         tpxFileInfo.totalHermesTime = hermesTime.count();
 
-        // Print out diagnostics based on verbosity level
-        if(configParams.verboseLevel>=2){printOutUnpackingDiagnostics(tpxFileInfo);}
+        if(configParams.verboseLevel >= 2){
+            printOutUnpackingDiagnostics(tpxFileInfo);
+        }
     }
+
 }
 
 
