@@ -6,7 +6,7 @@ requires-python = ">=3.10,<4.0"
 license = { text = "MIT" }
 keywords = ["timepix","TPX3Cam","SPIDR"]
 authors = [{name = "Alexander M. Long", email = "alexlong@lanl.gov" },{name = "Adam Farren", email = "a.farren@outlook.com"}] 
-dependencies = [ "numpy", "scipy", "pandas", "matplotlib", "jupyterlab", "pyyaml", "pydantic", "loguru", "scikit-image", "requests", "pyepics", "zaber-motion"]
+dependencies = [ "numpy", "scipy", "pandas", "matplotlib", "jupyterlab", "pyyaml", "pydantic", "loguru", "scikit-image", "requests", "pyepics", "zaber-motion==1.6.1"]
 
 [project.urls]
 homepage = "https://github.com/lanl/hermes"
@@ -90,7 +90,6 @@ pydantic = ">=2.11.3,<3"
 loguru = ">=0.7.2,<0.8"
 requests = "*"
 pyepics = "*"
-zaber-motion = "*"
 # C++ compilation dependencies
 c-compiler = "*"
 cxx-compiler = "*"
