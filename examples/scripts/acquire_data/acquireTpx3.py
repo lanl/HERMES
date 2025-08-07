@@ -185,7 +185,7 @@ def main():
 
         server_proc = start_serval_server(path_to_server)
 
-        time.sleep(5)  # Quick time delay just to ensure that serval has time to load up.
+        time.sleep(3)  # Quick time delay just to ensure that serval has time to load up.
 
         if args.verbose > 0:
             print("[INFO] Serval server started.")
