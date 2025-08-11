@@ -6,7 +6,7 @@ requires-python = ">=3.10,<4.0"
 license = { text = "MIT" }
 keywords = ["timepix","TPX3Cam","SPIDR"]
 authors = [{name = "Alexander M. Long", email = "alexlong@lanl.gov" },{name = "Adam Farren", email = "a.farren@outlook.com"}] 
-dependencies = [ "numpy", "scipy", "pandas", "matplotlib", "jupyterlab", "pyyaml", "pydantic", "loguru", "scikit-image", "requests", "pyepics", "zaber-motion==1.6.1"]
+dependencies = [ "numpy", "scipy", "pandas", "matplotlib", "jupyterlab", "pyyaml", "pydantic", "loguru", "scikit-image", "requests", "pyepics"]
 
 [project.urls]
 homepage = "https://github.com/lanl/hermes"
@@ -95,6 +95,8 @@ c-compiler = "*"
 cxx-compiler = "*"
 make = "*"
 tqdm = ">=4.67.1,<5"
+pyserial = ">=3.5,<4"
+zaber-motion = ">=7.10.0,<8"
 
 [tool.pixi.activation]
 env = { cHERMES_DIR = "$PIXI_PROJECT_ROOT/src/chermes", PATH = "$PIXI_PROJECT_ROOT/src/chermes/bin:$PATH"}

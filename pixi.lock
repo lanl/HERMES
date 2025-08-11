@@ -175,6 +175,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/libxkbcommon-1.10.0-h65c71a3_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/libxml2-2.13.8-h04c0eec_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/libxslt-1.1.43-h7a3aeb2_0.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-64/libzaber-motion-7.10.0-hc050d84_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/libzlib-1.3.1-hb9d3cd8_2.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/libzopfli-1.0.3-h9c3ff4c_0.tar.bz2
       - conda: https://conda.anaconda.org/conda-forge/noarch/loguru-0.7.3-pyh707e725_0.conda
@@ -221,6 +222,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/pyepics-3.5.8-py313h78bf25f_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/pygments-2.19.2-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/pyparsing-3.2.3-pyhe01879c_2.conda
+      - conda: https://conda.anaconda.org/conda-forge/noarch/pyserial-3.5-pyhd8ed1ab_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/pyside6-6.9.1-py313h7dabd7a_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/pysocks-1.7.1-pyha55dd90_7.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/python-3.13.5-hec9711d_102_cp313.conda
@@ -236,6 +238,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/qhull-2020.2-h434a139_5.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/qt6-main-6.9.1-h6ac528c_2.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/rav1e-0.7.1-h8fae777_3.conda
+      - conda: https://conda.anaconda.org/conda-forge/noarch/reactivex-4.0.4-pyhd8ed1ab_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/readline-8.2-h8c095d6_2.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/referencing-0.36.2-pyh29332c3_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/requests-2.32.4-pyhd8ed1ab_0.conda
@@ -298,16 +301,13 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/xorg-libxtst-1.2.5-hb9d3cd8_3.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/xorg-libxxf86vm-1.1.6-hb9d3cd8_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/yaml-0.2.5-h280c20c_3.conda
+      - conda: https://conda.anaconda.org/conda-forge/noarch/zaber-motion-7.10.0-pyha770c72_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/zeromq-4.3.5-h3b0a872_7.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/zfp-1.0.1-h5888daf_2.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/zipp-3.23.0-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/zlib-ng-2.2.4-h7955e40_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/zstandard-0.23.0-py313h536fd9c_2.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/zstd-1.5.7-hb8e6e7a_2.conda
-      - pypi: https://files.pythonhosted.org/packages/3b/ba/276d817d4b0184e544a9295e14e95f6148af5c5652033d30eb63d2c13bfa/protobuf-3.13.0-py2.py3-none-any.whl
-      - pypi: https://files.pythonhosted.org/packages/e2/a9/efeaeca4928a9a56d04d609b5730994d610c82cf4d9dd7aa173e6ef4233e/Rx-3.2.0-py3-none-any.whl
-      - pypi: https://files.pythonhosted.org/packages/7a/ad/07f0763b2ec8d846e0b7402e3f27a64ddedf60bb2ce959a289039af09326/zaber_motion-1.6.1-py2.py3-none-any.whl
-      - pypi: https://files.pythonhosted.org/packages/19/72/17417fd63e03390bfb9fb6a955cd1560024a314c99652c774e099294f287/zaber_motion_bindings_linux-1.6.1-py3-none-any.whl
       - pypi: ./
       osx-64:
       - conda: https://conda.anaconda.org/conda-forge/noarch/annotated-types-0.7.0-pyhd8ed1ab_1.conda
@@ -441,6 +441,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/osx-64/libwebp-base-1.6.0-hb807250_0.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-64/libxcb-1.17.0-hf1f96e2_0.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-64/libxml2-2.13.8-he1bc88e_1.conda
+      - conda: https://conda.anaconda.org/conda-forge/osx-64/libzaber-motion-7.10.0-h1621e73_0.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-64/libzlib-1.3.1-hd23fc13_2.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-64/libzopfli-1.0.3-h046ec9c_0.tar.bz2
       - conda: https://conda.anaconda.org/conda-forge/osx-64/llvm-openmp-20.1.8-hf4e0ed4_1.conda
@@ -489,6 +490,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/osx-64/pyobjc-core-11.1-py313h6971d95_0.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-64/pyobjc-framework-cocoa-11.1-py313h19a8f7f_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/pyparsing-3.2.3-pyhe01879c_2.conda
+      - conda: https://conda.anaconda.org/conda-forge/noarch/pyserial-3.5-pyhd8ed1ab_1.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/pysocks-1.7.1-pyha55dd90_7.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-64/python-3.13.5-hc3a4c56_102_cp313.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/python-dateutil-2.9.0.post0-pyhe01879c_2.conda
@@ -502,6 +504,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/osx-64/pyzmq-27.0.1-py313hc53fb4d_0.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-64/qhull-2020.2-h3c5361c_5.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-64/rav1e-0.7.1-h371c88c_3.conda
+      - conda: https://conda.anaconda.org/conda-forge/noarch/reactivex-4.0.4-pyhd8ed1ab_1.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-64/readline-8.2-h7cca4af_2.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/referencing-0.36.2-pyh29332c3_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/requests-2.32.4-pyhd8ed1ab_0.conda
@@ -544,16 +547,13 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/osx-64/xorg-libxau-1.0.12-h6e16a3a_0.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-64/xorg-libxdmcp-1.1.5-h00291cd_0.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-64/yaml-0.2.5-h4132b18_3.conda
+      - conda: https://conda.anaconda.org/conda-forge/noarch/zaber-motion-7.10.0-pyha770c72_0.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-64/zeromq-4.3.5-h7130eaa_7.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-64/zfp-1.0.1-h469392a_2.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/zipp-3.23.0-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-64/zlib-ng-2.2.4-h04d1b7c_0.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-64/zstandard-0.23.0-py313h63b0ddb_2.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-64/zstd-1.5.7-h8210216_2.conda
-      - pypi: https://files.pythonhosted.org/packages/3b/ba/276d817d4b0184e544a9295e14e95f6148af5c5652033d30eb63d2c13bfa/protobuf-3.13.0-py2.py3-none-any.whl
-      - pypi: https://files.pythonhosted.org/packages/e2/a9/efeaeca4928a9a56d04d609b5730994d610c82cf4d9dd7aa173e6ef4233e/Rx-3.2.0-py3-none-any.whl
-      - pypi: https://files.pythonhosted.org/packages/7a/ad/07f0763b2ec8d846e0b7402e3f27a64ddedf60bb2ce959a289039af09326/zaber_motion-1.6.1-py2.py3-none-any.whl
-      - pypi: https://files.pythonhosted.org/packages/f8/b4/4d53dd119f8535cdb3417f47a60463b4389e1c868a4ec5a13d148eea744a/zaber_motion_bindings_darwin-1.6.1-py3-none-any.whl
       - pypi: ./
       osx-arm64:
       - conda: https://conda.anaconda.org/conda-forge/noarch/annotated-types-0.7.0-pyhd8ed1ab_1.conda
@@ -687,6 +687,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/libwebp-base-1.6.0-h07db88b_0.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/libxcb-1.17.0-hdb1d25a_0.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/libxml2-2.13.8-h4a9ca0c_1.conda
+      - conda: https://conda.anaconda.org/conda-forge/osx-arm64/libzaber-motion-7.10.0-hb80d1ce_0.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/libzlib-1.3.1-h8359307_2.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/libzopfli-1.0.3-h9f76cd9_0.tar.bz2
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/llvm-openmp-20.1.8-hbb9b287_1.conda
@@ -735,6 +736,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/pyobjc-core-11.1-py313had225c5_0.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/pyobjc-framework-cocoa-11.1-py313hb6afeec_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/pyparsing-3.2.3-pyhe01879c_2.conda
+      - conda: https://conda.anaconda.org/conda-forge/noarch/pyserial-3.5-pyhd8ed1ab_1.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/pysocks-1.7.1-pyha55dd90_7.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/python-3.13.5-hf3f3da0_102_cp313.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/python-dateutil-2.9.0.post0-pyhe01879c_2.conda
@@ -748,6 +750,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/pyzmq-27.0.1-py313h330de61_0.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/qhull-2020.2-h420ef59_5.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/rav1e-0.7.1-h0716509_3.conda
+      - conda: https://conda.anaconda.org/conda-forge/noarch/reactivex-4.0.4-pyhd8ed1ab_1.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/readline-8.2-h1d1bf99_2.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/referencing-0.36.2-pyh29332c3_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/requests-2.32.4-pyhd8ed1ab_0.conda
@@ -790,16 +793,13 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/xorg-libxau-1.0.12-h5505292_0.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/xorg-libxdmcp-1.1.5-hd74edd7_0.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/yaml-0.2.5-h925e9cb_3.conda
+      - conda: https://conda.anaconda.org/conda-forge/noarch/zaber-motion-7.10.0-pyha770c72_0.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/zeromq-4.3.5-hc1bb282_7.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/zfp-1.0.1-h1c5d8ea_2.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/zipp-3.23.0-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/zlib-ng-2.2.4-h13dfb9a_0.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/zstandard-0.23.0-py313h90d716c_2.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/zstd-1.5.7-h6491c7d_2.conda
-      - pypi: https://files.pythonhosted.org/packages/3b/ba/276d817d4b0184e544a9295e14e95f6148af5c5652033d30eb63d2c13bfa/protobuf-3.13.0-py2.py3-none-any.whl
-      - pypi: https://files.pythonhosted.org/packages/e2/a9/efeaeca4928a9a56d04d609b5730994d610c82cf4d9dd7aa173e6ef4233e/Rx-3.2.0-py3-none-any.whl
-      - pypi: https://files.pythonhosted.org/packages/7a/ad/07f0763b2ec8d846e0b7402e3f27a64ddedf60bb2ce959a289039af09326/zaber_motion-1.6.1-py2.py3-none-any.whl
-      - pypi: https://files.pythonhosted.org/packages/f8/b4/4d53dd119f8535cdb3417f47a60463b4389e1c868a4ec5a13d148eea744a/zaber_motion_bindings_darwin-1.6.1-py3-none-any.whl
       - pypi: ./
 packages:
 - conda: https://conda.anaconda.org/conda-forge/linux-64/_libgcc_mutex-0.1-conda_forge.tar.bz2
@@ -2488,8 +2488,8 @@ packages:
   timestamp: 1753795594101
 - pypi: ./
   name: hermes
-  version: 1.1.0.dev302+d202508071729
-  sha256: 9c503086fef458a042291f7cb17c7be3ba6805c23fe468114681b1dbdd610aba
+  version: 1.1.0.dev303+d202508111552
+  sha256: c7ebd5d45a2229480e09108f7e07583677e29d5ec0f6eb8605e67fc2203bc887
   requires_dist:
   - numpy
   - scipy
@@ -2502,7 +2502,6 @@ packages:
   - scikit-image
   - requests
   - pyepics
-  - zaber-motion==1.6.1
   requires_python: '>=3.10,<4.0'
   editable: true
 - conda: https://conda.anaconda.org/conda-forge/noarch/hpack-4.1.0-pyhd8ed1ab_0.conda
@@ -4964,6 +4963,40 @@ packages:
   purls: []
   size: 244399
   timestamp: 1753273455036
+- conda: https://conda.anaconda.org/conda-forge/linux-64/libzaber-motion-7.10.0-hc050d84_0.conda
+  sha256: d24b224dc6a11b9525fff68c11520f2897dc108f4b41e0ef8e39855b435f8a17
+  md5: eb382fa6304216ced52a2b55fe8956ca
+  depends:
+  - __glibc >=2.17
+  - __glibc >=2.17,<3.0.a0
+  - libgcc >=14
+  license: MIT
+  license_family: MIT
+  purls: []
+  size: 9908332
+  timestamp: 1752347038425
+- conda: https://conda.anaconda.org/conda-forge/osx-64/libzaber-motion-7.10.0-h1621e73_0.conda
+  sha256: 23666745fd50bac4478848eba21da4eb066f47396bf2ef28102ec9b2206b37a3
+  md5: a4c05492f3974ee5586d1237dbcd2237
+  depends:
+  - __osx >=10.14
+  constrains:
+  - __osx>=10.12
+  license: MIT
+  license_family: MIT
+  purls: []
+  size: 5201427
+  timestamp: 1752347096018
+- conda: https://conda.anaconda.org/conda-forge/osx-arm64/libzaber-motion-7.10.0-hb80d1ce_0.conda
+  sha256: 0f66739c25f7b06c1750b8925bb2971e8c94a5ca7eae25a147805cfd914a1bb5
+  md5: 75056770a46c34f0aff7143797d644dd
+  depends:
+  - __osx >=11.0
+  license: MIT
+  license_family: MIT
+  purls: []
+  size: 4721902
+  timestamp: 1752347134767
 - conda: https://conda.anaconda.org/conda-forge/linux-64/libzlib-1.3.1-hb9d3cd8_2.conda
   sha256: d4bfe88d7cb447768e31650f06257995601f89076080e76df55e3112d4e47dc4
   md5: edb0dca6bc32e4f4789199455a1dbeb8
@@ -6067,13 +6100,6 @@ packages:
   - pkg:pypi/prompt-toolkit?source=hash-mapping
   size: 271841
   timestamp: 1744724188108
-- pypi: https://files.pythonhosted.org/packages/3b/ba/276d817d4b0184e544a9295e14e95f6148af5c5652033d30eb63d2c13bfa/protobuf-3.13.0-py2.py3-none-any.whl
-  name: protobuf
-  version: 3.13.0
-  sha256: d69697acac76d9f250ab745b46c725edf3e98ac24763990b24d58c16c642947a
-  requires_dist:
-  - setuptools
-  - six>=1.9
 - conda: https://conda.anaconda.org/conda-forge/linux-64/psutil-7.0.0-py313h536fd9c_0.conda
   sha256: 1b39f0ce5a345779d70c885664d77b5f8ef49f7378829bd7286a7fb98b7ea852
   md5: 8f315d1fce04a046c1b93fa6e536661d
@@ -6379,6 +6405,17 @@ packages:
   - pkg:pypi/pyparsing?source=compressed-mapping
   size: 102292
   timestamp: 1753873557076
+- conda: https://conda.anaconda.org/conda-forge/noarch/pyserial-3.5-pyhd8ed1ab_1.conda
+  sha256: 48b51797fa1f5d8b2ed5d5f155a18993bb02616eef7a3b053a9125d7650bbe59
+  md5: 0127bf00a534e0c7b8075090f162bf82
+  depends:
+  - python >=3.9
+  license: BSD-3-Clause
+  license_family: BSD
+  purls:
+  - pkg:pypi/pyserial?source=hash-mapping
+  size: 69380
+  timestamp: 1734140304034
 - conda: https://conda.anaconda.org/conda-forge/linux-64/pyside6-6.9.1-py313h7dabd7a_0.conda
   sha256: fc91214da44dc2efef121ae79ba996b08c11e46b4d768fa10d7a6bd59a97d685
   md5: 42a24d0f4fe3a2e8307de3838e162452
@@ -6829,6 +6866,18 @@ packages:
   purls: []
   size: 856271
   timestamp: 1746622200646
+- conda: https://conda.anaconda.org/conda-forge/noarch/reactivex-4.0.4-pyhd8ed1ab_1.conda
+  sha256: 746926e097b739ee9e0355420203e3fed0d6a251b6c672c5e25ab5f62402c5bf
+  md5: 360ad33df81127dd421e44deaa3873d6
+  depends:
+  - python >=3.9,<4.0a0
+  - typing-extensions >=4.1.1,<5.0.0a0
+  license: MIT
+  license_family: MIT
+  purls:
+  - pkg:pypi/reactivex?source=hash-mapping
+  size: 111729
+  timestamp: 1754424129739
 - conda: https://conda.anaconda.org/conda-forge/linux-64/readline-8.2-h8c095d6_2.conda
   sha256: 2d6d0c026902561ed77cd646b5021aef2d4db22e57a5b0178dfc669231e06d2c
   md5: 283b96675859b20a825f8fa30f311446
@@ -6972,11 +7021,6 @@ packages:
   - pkg:pypi/rpds-py?source=compressed-mapping
   size: 356744
   timestamp: 1754570030468
-- pypi: https://files.pythonhosted.org/packages/e2/a9/efeaeca4928a9a56d04d609b5730994d610c82cf4d9dd7aa173e6ef4233e/Rx-3.2.0-py3-none-any.whl
-  name: rx
-  version: 3.2.0
-  sha256: 922c5f4edb3aa1beaa47bf61d65d5380011ff6adcd527f26377d05cb73ed8ec8
-  requires_python: '>=3.6.0'
 - conda: https://conda.anaconda.org/conda-forge/linux-64/scikit-image-0.25.2-py313ha87cce1_1.conda
   sha256: 18ac61aaa79d4b615b44997bcb9e1794744d9dbe1516e76770dc27ded3cac58a
   md5: 751e6b4fdd6bb610824d1eba10887eb3
@@ -8021,35 +8065,20 @@ packages:
   purls: []
   size: 83386
   timestamp: 1753484079473
-- pypi: https://files.pythonhosted.org/packages/7a/ad/07f0763b2ec8d846e0b7402e3f27a64ddedf60bb2ce959a289039af09326/zaber_motion-1.6.1-py2.py3-none-any.whl
-  name: zaber-motion
-  version: 1.6.1
-  sha256: 48610ebe8e98a37b996299e84a96fcbf66186286779048ffe94659e334a32167
-  requires_dist:
-  - protobuf==3.13.0
-  - rx>=3.0.0
-  - zaber-motion-bindings-darwin==1.6.1 ; sys_platform == 'darwin'
-  - zaber-motion-bindings-linux==1.6.1 ; sys_platform == 'linux'
-  - zaber-motion-bindings-windows==1.6.1 ; sys_platform == 'win32'
-  - pytest ; extra == 'dev'
-  - pylint ; extra == 'dev'
-  - pycodestyle ; extra == 'dev'
-  - setuptools ; extra == 'dev'
-  - wheel ; extra == 'dev'
-  - twine==1.15.0 ; extra == 'dev'
-  requires_python: '>=3.5'
-- pypi: https://files.pythonhosted.org/packages/f8/b4/4d53dd119f8535cdb3417f47a60463b4389e1c868a4ec5a13d148eea744a/zaber_motion_bindings_darwin-1.6.1-py3-none-any.whl
-  name: zaber-motion-bindings-darwin
-  version: 1.6.1
-  sha256: 370005285c36c4771854ca8e7b334a9f5de961409a717f7aef394d35d2afdc60
-  requires_dist:
-  - invoke ; extra == 'build'
-- pypi: https://files.pythonhosted.org/packages/19/72/17417fd63e03390bfb9fb6a955cd1560024a314c99652c774e099294f287/zaber_motion_bindings_linux-1.6.1-py3-none-any.whl
-  name: zaber-motion-bindings-linux
-  version: 1.6.1
-  sha256: 74b19fe6190cb02fa454d0e9d786b24e0c3bb0d206ccda3a5b302f40b01c0309
-  requires_dist:
-  - invoke ; extra == 'build'
+- conda: https://conda.anaconda.org/conda-forge/noarch/zaber-motion-7.10.0-pyha770c72_0.conda
+  sha256: c568a8bbe13c94c72156b5eadd99c3e1793bbf84693823e2882641491c230563
+  md5: be1e0a9fa2f19e7fb2beb07f9c35e52f
+  depends:
+  - libzaber-motion >=7.10.0,<7.10.1.0a0
+  - python >=3.9
+  - reactivex 4.0.*
+  license: MIT
+  license_family: MIT
+  purls:
+  - pkg:pypi/zaber-bson?source=hash-mapping
+  - pkg:pypi/zaber-motion?source=hash-mapping
+  size: 215910
+  timestamp: 1752347052499
 - conda: https://conda.anaconda.org/conda-forge/linux-64/zeromq-4.3.5-h3b0a872_7.conda
   sha256: a4dc72c96848f764bb5a5176aa93dd1e9b9e52804137b99daeebba277b31ea10
   md5: 3947a35e916fcc6b9825449affbf4214
