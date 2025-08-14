@@ -127,34 +127,11 @@ def start_serval_server(path_to_server: str) -> subprocess.Popen:
     proc = subprocess.Popen(
         ["java", "-jar", jar_path],
         cwd=path_to_server,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        stdout=subprocess.PIPE, # Standard output is stored here to not clog up terminal
+        stderr=subprocess.PIPE, # Standard error is stored here to not clog up terminal
         preexec_fn=os.setsid  # So we can terminate the whole process group later
     )
     return proc
-
-
-# >>> ZABER: small helper that won’t crash your DAQ if Zaber isn’t present
-def _best_effort_set_zaber_ao(volts: float, channel: int, verbose: int = 1):
-    """
-    Try to set Zaber AO; log warnings on failure but never raise.
-    Requires tpx3Zaber + pyserial + zaber-motion to be importable.
-    """
-    if ZaberController is None:
-        if verbose > 0:
-            print(f"[WARN] Zaber control unavailable (module not importable). Skipping AO={volts:.3f}V.")
-        return
-    try:
-        with ZaberController(debug=(verbose > 1)) as z:
-            z.open()
-            z.select_device()
-            z.set_analog_output(channel, float(volts))
-            if verbose > 0:
-                print(f"[INFO] Zaber AO{channel} set to {volts:.3f} V")
-    except (ZaberNotFound, ZaberError, Exception) as e:
-        if verbose > 0:
-            print(f"[WARN] Could not set Zaber AO{channel} to {volts:.3f} V: {e}")
-
 
 # --------------------------------------------------------------------------
 # CLI
@@ -229,8 +206,8 @@ def main():
 
         server_proc = start_serval_server(path_to_server)
 
-        # Give Serval a moment to come up
-        time.sleep(5)
+        time.sleep(3)  # Quick time delay just to ensure that serval has time to load up.
+
 
         if args.verbose > 0:
             print("[INFO] Serval server started.")
@@ -292,7 +269,6 @@ def main():
                 channel=int(zcfg.get("channel", 1)),
                 verbose=args.verbose,
             )
-
 
 
 if __name__ == "__main__":

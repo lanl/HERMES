@@ -2502,12 +2502,12 @@ packages:
   license: MIT
   license_family: MIT
   purls: []
-  size: 1806911
-  timestamp: 1753795594101
+  size: 1730226
+  timestamp: 1747091044218
 - pypi: ./
   name: hermes
-  version: 1.1.0.dev306+d202508142054
-  sha256: 8532517d4a5806bf56a85c9fefd2874b5a891442baff406a0a9d01d9f412a1fa
+  version: 1.1.0.dev302+d202508071948
+  sha256: 933bb15d38fc88eeae888bf873599f2a2e9022d1f111e340329dc548621223d5
   requires_dist:
   - numpy
   - scipy
