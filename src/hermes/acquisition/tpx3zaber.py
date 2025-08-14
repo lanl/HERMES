@@ -44,20 +44,9 @@ from typing import Iterable, List, Optional, Tuple, Dict, Any
 import sys
 import time
 import contextlib
+from serial.tools import list_ports
+from zaber_motion.ascii import Connection # type: ignore[reportMissingImports]
 
-try:
-    from serial.tools import list_ports
-except ModuleNotFoundError as e:  # pragma: no cover
-    raise ModuleNotFoundError(
-        "pyserial is required. Please install with `pip install pyserial`."
-    ) from e
-
-try:
-    from zaber_motion.ascii import Connection
-except ModuleNotFoundError as e:  # pragma: no cover
-    raise ModuleNotFoundError(
-        "zaber-motion is required. Please install with `pip install zaber-motion`."
-    ) from e
 
 
 # --------------------------------------------------------------------------------------
