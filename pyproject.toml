@@ -97,6 +97,8 @@ make = "*"
 tqdm = ">=4.67.1,<5"
 pyserial = ">=3.5,<4"
 zaber-motion = ">=7.10.0,<8"
+plotly = ">=6.3.0,<7"
+seaborn = ">=0.13.2,<0.14"
 
 [tool.pixi.activation]
 env = { cHERMES_DIR = "$PIXI_PROJECT_ROOT/src/chermes", PATH = "$PIXI_PROJECT_ROOT/src/chermes/bin:$PATH"}
