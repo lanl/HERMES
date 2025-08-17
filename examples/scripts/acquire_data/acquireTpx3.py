@@ -14,7 +14,7 @@ import argparse
 import json
 import sys
 from typing import Any, Dict, Optional
-from hermes.acquisition import tpx3serval
+from hermes.acquisition import acquisiton
 
 
 # --------------------------------------------------------------------------
@@ -67,7 +67,7 @@ def merge_dicts(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any
 
 def load_config_file(path: str) -> Dict[str, Any]:
     """Load INI config using tpx3serval's parser."""
-    run_settings_json = tpx3serval.config_run(path, "")
+    run_settings_json = acquisiton.config_run(path, "")
     return json.loads(run_settings_json)
 
 
@@ -200,21 +200,21 @@ def main():
         if args.verbose > 1:
             print(f"[DEBUG] Number of runs: {effective_config['RunSettings']['number_of_runs']}")
 
-    tpx3serval.verify_working_dir(effective_config)
+    acquisiton.verify_working_dir(effective_config)
 
     if args.verbose > 0:
         print("[INFO] Checking camera connection...")
 
-    tpx3serval.check_camera_connection(
+    acquisiton.check_camera_connection(
         effective_config["ServerConfig"]["serverurl"], 
         verbose=(args.verbose > 1)
     )
 
     # Load detector and server configuration
-    tpx3serval.load_dacs(effective_config, verbose_level=args.verbose)
-    tpx3serval.load_pixelconfig(effective_config, verbose_level=args.verbose)
-    tpx3serval.set_and_load_server_destination(effective_config, verbose_level=args.verbose)
-    tpx3serval.set_and_load_detector_config(effective_config, verbose_level=args.verbose)
+    acquisiton.load_dacs(effective_config, verbose_level=args.verbose)
+    acquisiton.load_pixelconfig(effective_config, verbose_level=args.verbose)
+    acquisiton.set_and_load_server_destination(effective_config, verbose_level=args.verbose)
+    acquisiton.set_and_load_detector_config(effective_config, verbose_level=args.verbose)
 
     # Run acquisition loop
     num_runs = effective_config["RunSettings"]["number_of_runs"]
@@ -226,17 +226,17 @@ def main():
             print(f"[INFO] Starting run {i+1}/{num_runs} (run_number={effective_config['RunSettings']['run_number']})")
 
         # Update server destinations for this run
-        tpx3serval.set_and_load_server_destination(effective_config, verbose_level=args.verbose)
+        acquisiton.set_and_load_server_destination(effective_config, verbose_level=args.verbose)
 
         # Log configuration info
-        tpx3serval.log_info(effective_config, http_string='/dashboard', verbose_level=args.verbose)
-        tpx3serval.log_info(effective_config, http_string='/detector/health', verbose_level=args.verbose)
-        tpx3serval.log_info(effective_config, http_string='/detector/layout', verbose_level=args.verbose)
-        tpx3serval.log_info(effective_config, http_string='/detector/chips/0/dacs', verbose_level=args.verbose)
-        tpx3serval.log_info(effective_config, http_string='/detector/chips/0/pixelconfig', verbose_level=args.verbose)
+        acquisiton.log_info(effective_config, http_string='/dashboard', verbose_level=args.verbose)
+        acquisiton.log_info(effective_config, http_string='/detector/health', verbose_level=args.verbose)
+        acquisiton.log_info(effective_config, http_string='/detector/layout', verbose_level=args.verbose)
+        acquisiton.log_info(effective_config, http_string='/detector/chips/0/dacs', verbose_level=args.verbose)
+        acquisiton.log_info(effective_config, http_string='/detector/chips/0/pixelconfig', verbose_level=args.verbose)
 
         # Take exposure
-        tpx3serval.take_exposure(effective_config, verbose_level=args.verbose)
+        acquisiton.take_exposure(effective_config, verbose_level=args.verbose)
 
         if args.verbose > 0:
             print(f"[INFO] Finished run {i+1}/{num_runs}")
