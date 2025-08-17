@@ -1,7 +1,10 @@
 
 from pydantic import BaseModel, Field, validator
+import tempfile
 from typing import Optional
 import os
+
+from serval.models import ServalConfig
 
 class WorkingDir(BaseModel):
     path_to_working_dir: str = Field(default="./", description="Path to the working directory where all files will be stored.")
@@ -13,15 +16,6 @@ class WorkingDir(BaseModel):
     path_to_preview_files: str = Field(default="previewFiles/", description="Path to the directory where preview files will be stored.")
     path_to_raw_files: str = Field(default="tpx3Files/", description="Path to the directory where raw files are stored.")
     path_to_init_files: str = Field(default="initFiles/", description="Path to the initialization files.")
-
-class ServerConfig(BaseModel):
-    serverurl: str = Field(default="http://localhost", description="URL of the server.")
-    path_to_server: str = Field(default="./server/", description="Path to the server directory.")
-    path_to_server_config_files: str = Field(default="serverConfigFiles/", description="Path to the server config files.")
-    destinations_file_name: str = Field(default="initial_server_destinations.json", description="Initial destinations file.")
-    detector_config_file_name: str = Field(default="initial_detector_config.json", description="Initial detector config file.")
-    bpc_file_name: str = Field(default="settings.bpc", description="Name of the BPC file.")
-    dac_file_name: str = Field(default="settings.bpc.dac", description="Name of the DAC file.")
 
 class RunSettings(BaseModel):
     run_name: str = Field(default="you_forgot_to_name_the_runs")
@@ -40,7 +34,7 @@ class RunSettings(BaseModel):
 
 class Settings(BaseModel):
     WorkingDir: WorkingDir
-    ServerConfig: ServerConfig
+    ServalConfig: ServalConfig
     RunSettings: RunSettings
     
     
