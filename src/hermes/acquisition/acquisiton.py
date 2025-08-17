@@ -9,7 +9,8 @@ import time
 from datetime import datetime
 import shutil
 
-from hermes.acquisition.models import Settings
+from hermes.acquisition.models import WorkingDir, RunSettings, Settings
+from hermes.acquisition.serval.models import ServalConfig, Serval_2_1_6
 
 ###############################################################
 # Me make code output pretty!
@@ -168,46 +169,57 @@ def config_run(config_file='run_config.ini', run_name="dummy"):
     config.read(config_file)
 
     # Ensure sections exist
-    for section in ['WorkingDir', 'RunSettings', 'ServerConfig']:
+    for section in ['WorkingDir', 'RunSettings', 'ServalConfig']:
         if section not in config.sections():
             config.add_section(section)
 
-    # NOTE: run_dir_name is clean (no trailing slash). Subpaths can have trailing
-    # slashes; they will be normalized by _normalize_run_config().
-    settings_dict = {
-        'WorkingDir': {
-            'path_to_working_dir': config.get('WorkingDir', 'path_to_working_dir', fallback="./"),
-            'run_dir_name': run_name.strip('/'),
-            'path_to_status_files': config.get('WorkingDir', 'path_to_status_files', fallback="statusFiles/"),
-            'path_to_log_files': config.get('WorkingDir', 'path_to_log_files', fallback="tpx3Logs/"),
-            'path_to_image_files': config.get('WorkingDir', 'path_to_image_files', fallback="imageFiles/"),
-            'path_to_rawSignal_files': config.get('WorkingDir', 'path_to_rawSignal_files', fallback="rawSignalFiles/"),
-            'path_to_preview_files': config.get('WorkingDir', 'path_to_preview_files', fallback="previewFiles/"),
-            'path_to_raw_files': config.get('WorkingDir', 'path_to_raw_files', fallback="tpx3Files/"),
-            'path_to_init_files': config.get('WorkingDir', 'path_to_init_files', fallback="initFiles/"),
-        },
-        'ServerConfig': {
-            'serverurl': config.get('ServerConfig', 'serverurl', fallback=None),
-            'path_to_server': config.get('ServerConfig', 'path_to_server', fallback=None),
-            'path_to_server_config_files': config.get('ServerConfig', 'path_to_server_config_files', fallback=None),
-            'destinations_file_name': config.get('ServerConfig', 'destinations_file_name', fallback=None),
-            'detector_config_file_name': config.get('ServerConfig', 'detector_config_file_name', fallback=None),
-            'bpc_file_name': config.get('ServerConfig', 'bpc_file_name', fallback=None),
-            'dac_file_name': config.get('ServerConfig', 'dac_file_name', fallback=None),
-        },
-        'RunSettings': {
-            'run_name': config.get('RunSettings', 'run_name', fallback='you_forgot_to_name_the_runs'),
-            'run_number': config.get('RunSettings', 'run_number', fallback=0),
-            'trigger_period_in_seconds': config.get('RunSettings', 'trigger_period_in_seconds', fallback=1.0),
-            'exposure_time_in_seconds': config.get('RunSettings', 'exposure_time_in_seconds', fallback=0.5),
-            'trigger_delay_in_seconds': config.get('RunSettings', 'trigger_delay_in_seconds', fallback=0.0),
-            'number_of_triggers': config.get('RunSettings', 'number_of_triggers', fallback=0),
-            'number_of_runs': config.get('RunSettings', 'number_of_runs', fallback=0),
-            'global_timestamp_interval_in_seconds': config.get('RunSettings', 'global_timestamp_interval_in_seconds', fallback=0.0),
-        }
-    }
+    # Create WorkingDir model
+    working_dir = WorkingDir(
+        path_to_working_dir=config.get('WorkingDir', 'path_to_working_dir', fallback="./"),
+        run_dir_name=run_name.strip('/'),
+        path_to_status_files=config.get('WorkingDir', 'path_to_status_files', fallback="statusFiles/"),
+        path_to_log_files=config.get('WorkingDir', 'path_to_log_files', fallback="tpx3Logs/"),
+        path_to_image_files=config.get('WorkingDir', 'path_to_image_files', fallback="imageFiles/"),
+        path_to_rawSignal_files=config.get('WorkingDir', 'path_to_rawSignal_files', fallback="rawSignalFiles/"),
+        path_to_preview_files=config.get('WorkingDir', 'path_to_preview_files', fallback="previewFiles/"),
+        path_to_raw_files=config.get('WorkingDir', 'path_to_raw_files', fallback="tpx3Files/"),
+        path_to_init_files=config.get('WorkingDir', 'path_to_init_files', fallback="initFiles/"),
+    )
 
-    return json.dumps(settings_dict, indent=4)
+    # Create ServalConfig model with default Serval_2_1_6 settings
+    serval_settings = ServalConfig(
+        servalurl=config.get('ServalConfig', 'servalurl', fallback="http://localhost:8080"),
+        path_to_serval=config.get('ServalConfig', 'path_to_serval', fallback="./serval/"),
+        path_to_serval_config_files=config.get('ServalConfig', 'path_to_serval_config_files', fallback="servalConfigFiles/"),
+        destinations_file_name=config.get('ServalConfig', 'destinations_file_name', fallback="initial_serval_destinations.json"),
+        detector_config_file_name=config.get('ServalConfig', 'detector_config_file_name', fallback="initial_detector_config.json"),
+        bpc_file_name=config.get('ServalConfig', 'bpc_file_name', fallback="settings.bpc"),
+        dac_file_name=config.get('ServalConfig', 'dac_file_name', fallback="settings.bpc.dac"),
+        
+        # Use default Serval_2_1_6 settings - will use model defaults
+        serval=Serval_2_1_6()
+    )
+
+    # Create RunSettings model
+    run_settings = RunSettings(
+        run_name=config.get('RunSettings', 'run_name', fallback='you_forgot_to_name_the_runs'),
+        run_number=config.getint('RunSettings', 'run_number', fallback=0),
+        trigger_period_in_seconds=config.getfloat('RunSettings', 'trigger_period_in_seconds', fallback=1.0),
+        exposure_time_in_seconds=config.getfloat('RunSettings', 'exposure_time_in_seconds', fallback=0.5),
+        trigger_delay_in_seconds=config.getfloat('RunSettings', 'trigger_delay_in_seconds', fallback=0.0),
+        number_of_triggers=config.getint('RunSettings', 'number_of_triggers', fallback=0),
+        number_of_runs=config.getint('RunSettings', 'number_of_runs', fallback=0),
+        global_timestamp_interval_in_seconds=config.getfloat('RunSettings', 'global_timestamp_interval_in_seconds', fallback=0.0),
+    )
+
+    # Create complete Settings model
+    settings = Settings(
+        WorkingDir=working_dir,
+        ServalConfig=serval_settings,
+        RunSettings=run_settings
+    )
+
+    return settings.json(indent=4)
 
 
 ###############################################################
@@ -262,7 +274,7 @@ def set_and_load_server_destination(run_configs, verbose_level=0):
 
     working_dir = run_configs["WorkingDir"]['path_to_working_dir']
     init_dir    = _safe_join(working_dir, run_configs["WorkingDir"]['path_to_init_files'])
-    init_name   = run_configs["ServerConfig"]['destinations_file_name']
+    init_name   = run_configs["ServalConfig"]['destinations_file_name']
 
     # Check init dir & file
     if not os.path.isdir(init_dir) or not any(f.endswith('.json') for f in os.listdir(init_dir)):
@@ -307,7 +319,7 @@ def set_and_load_server_destination(run_configs, verbose_level=0):
         channel['FilePattern'] = run_configs["RunSettings"]['run_name'] + "_" + run_configs["RunSettings"]['run_number'] + "_%MdHms_"
 
     destination_set_response = requests.put(
-        url=run_configs['ServerConfig']['serverurl'] + '/server/destination',
+        url=run_configs['ServalConfig']['servalurl'] + '/serval/destination',
         data=json.dumps(destination_json_data)
     )
     destination_set_data = destination_set_response.text.strip("\n")
@@ -321,7 +333,7 @@ def set_and_load_detector_config(run_configs, verbose_level=0):
 
     working_dir = run_configs["WorkingDir"]['path_to_working_dir']
     init_dir    = _safe_join(working_dir, run_configs["WorkingDir"]['path_to_init_files'])
-    init_name   = run_configs["ServerConfig"]['detector_config_file_name']
+    init_name   = run_configs["ServalConfig"]['detector_config_file_name']
 
     path_to_json_file = _safe_join(init_dir, init_name)
     detector_config_json_data = load_json_file(path_to_json_file)
@@ -343,7 +355,7 @@ def set_and_load_detector_config(run_configs, verbose_level=0):
     detector_config_json_data['GlobalTimestampInterval'] = run_configs['RunSettings']['global_timestamp_interval_in_seconds']
 
     detector_config_set_response = requests.put(
-        url=run_configs['ServerConfig']['serverurl'] + '/detector/config',
+        url=run_configs['ServalConfig']['servalurl'] + '/detector/config',
         data=json.dumps(detector_config_json_data)
     )
     detector_config_set_data = detector_config_set_response.text.strip("\n")
@@ -356,9 +368,9 @@ def load_dacs(run_configs, verbose_level=0):
     run_configs = _normalize_run_config(run_configs)
 
     path_to_json_file = _safe_join(
-        run_configs["ServerConfig"]['path_to_server'],
-        run_configs["ServerConfig"]['path_to_server_config_files'],
-        run_configs['ServerConfig']['dac_file_name']
+        run_configs["ServalConfig"]['path_to_serval'],
+        run_configs["ServalConfig"]['path_to_serval_config_files'],
+        run_configs['ServalConfig']['dac_file_name']
     )
     dacs_json_data = load_dacfile_to_json(path_to_json_file)
 
@@ -370,7 +382,7 @@ def load_dacs(run_configs, verbose_level=0):
             print(dacs_json_data)
 
     dacs_set_response = requests.put(
-        url=run_configs['ServerConfig']['serverurl'] + '/detector/chips/0/dacs',
+        url=run_configs['ServalConfig']['servalurl'] + '/detector/chips/0/dacs',
         data=json.dumps(dacs_json_data)
     )
     dacs_set_data = dacs_set_response.text.strip("\n")
@@ -384,9 +396,9 @@ def load_pixelconfig(run_configs, verbose_level=0):
     run_configs = _normalize_run_config(run_configs)
 
     bpc_file_location = _safe_join(
-        run_configs["ServerConfig"]['path_to_server'],
-        run_configs["ServerConfig"]['path_to_server_config_files'],
-        run_configs['ServerConfig']['bpc_file_name']
+        run_configs["ServalConfig"]['path_to_serval'],
+        run_configs["ServalConfig"]['path_to_serval_config_files'],
+        run_configs['ServalConfig']['bpc_file_name']
     )
     with open(bpc_file_location, 'rb') as bpc_file:
         bpc_binary_data = bpc_file.read()
@@ -397,7 +409,7 @@ def load_pixelconfig(run_configs, verbose_level=0):
         print(bpc_file_location)
 
     bpc_set_response = requests.put(
-        url=run_configs['ServerConfig']['serverurl'] + '/detector/chips/0/pixelconfig?format=bpc',
+        url=run_configs['ServalConfig']['servalurl'] + '/detector/chips/0/pixelconfig?format=bpc',
         data=bpc_binary_data
     )
     bpc_set_data = bpc_set_response.text.strip("\n")
@@ -484,32 +496,32 @@ def log_info(run_config, http_string, verbose_level=0):
         print(f"Logging {http_string} info at: ")
         print(output_json_file)
 
-    server_get_response = requests.get(url=run_config['ServerConfig']['serverurl'] + http_string)
+    serval_get_response = requests.get(url=run_config['ServalConfig']['servalurl'] + http_string)
 
     if verbose_level >= 2:
-        print(server_get_response)
+        print(serval_get_response)
 
-    if not check_request_status(server_get_response.status_code, verbose=True):
+    if not check_request_status(serval_get_response.status_code, verbose=True):
         print(f"Failed to get response from endpoint: {http_string}")
         return
 
-    if not server_get_response.text.strip():
-        print(f"Warning: Empty response from server for endpoint: {http_string}")
+    if not serval_get_response.text.strip():
+        print(f"Warning: Empty response from serval for endpoint: {http_string}")
         return
 
     try:
-        server_get_data = json.loads(server_get_response.text)
-        save_json_to_file(server_get_data, output_json_file)
+        serval_get_data = json.loads(serval_get_response.text)
+        save_json_to_file(serval_get_data, output_json_file)
         if verbose_level >= 1:
             print(f"Successfully logged data from endpoint: {http_string}")
     except json.JSONDecodeError as e:
         print(f"Warning: Failed to parse JSON response for endpoint: {http_string}")
         print(f"JSON decode error: {e}")
-        print(f"Response text: {server_get_response.text}")
+        print(f"Response text: {serval_get_response.text}")
         raw_output_file = output_json_file.replace('.json', '_raw.txt')
         _ensure_parent_dir(raw_output_file)
         with open(raw_output_file, 'w') as f:
-            f.write(server_get_response.text)
+            f.write(serval_get_response.text)
         print(f"Raw response saved to: {raw_output_file}")
         return
 
@@ -537,31 +549,31 @@ def save_to_init(run_config, http_string, verbose_level=0):
         print(f"Logging {http_string} info at: ")
         print(output_json_file)
 
-    server_get_response = requests.get(url=run_config['ServerConfig']['serverurl'] + http_string)
+    serval_get_response = requests.get(url=run_config['ServalConfig']['servalurl'] + http_string)
     if verbose_level >= 2:
-        print(server_get_response)
+        print(serval_get_response)
 
-    if not check_request_status(server_get_response.status_code, verbose=True):
+    if not check_request_status(serval_get_response.status_code, verbose=True):
         print(f"Failed to get response from endpoint: {http_string}")
         return
 
-    if not server_get_response.text.strip():
-        print(f"Warning: Empty response from server for endpoint: {http_string}")
+    if not serval_get_response.text.strip():
+        print(f"Warning: Empty response from serval for endpoint: {http_string}")
         return
 
     try:
-        server_get_data = json.loads(server_get_response.text)
-        save_json_to_file(server_get_data, output_json_file)
+        serval_get_data = json.loads(serval_get_response.text)
+        save_json_to_file(serval_get_data, output_json_file)
         if verbose_level >= 1:
             print(f"Successfully logged data from endpoint: {http_string}")
     except json.JSONDecodeError as e:
         print(f"Warning: Failed to parse JSON response for endpoint: {http_string}")
         print(f"JSON decode error: {e}")
-        print(f"Response text: {server_get_response.text}")
+        print(f"Response text: {serval_get_response.text}")
         raw_output_file = output_json_file.replace('.json', '_raw.txt')
         _ensure_parent_dir(raw_output_file)
         with open(raw_output_file, 'w') as f:
-            f.write(server_get_response.text)
+            f.write(serval_get_response.text)
         print(f"Raw response saved to: {raw_output_file}")
         return
 
@@ -638,7 +650,7 @@ def take_exposure(run_config_struct, verbose_level=0):
     exposure_time = float(run_config_struct['RunSettings']['exposure_time_in_seconds'])
 
     # Wait if a measurement is already running
-    dashboard_response = requests.get(url=run_config_struct['ServerConfig']['serverurl'] + '/dashboard')
+    dashboard_response = requests.get(url=run_config_struct['ServalConfig']['servalurl'] + '/dashboard')
     dashboard_data = json.loads(dashboard_response.text)
     make_user_wait(dashboard_data)
 
@@ -646,7 +658,7 @@ def take_exposure(run_config_struct, verbose_level=0):
         print_header_line_block()
 
     # Start measurement
-    resp = requests.get(url=run_config_struct['ServerConfig']['serverurl'] + '/measurement/start')
+    resp = requests.get(url=run_config_struct['ServalConfig']['servalurl'] + '/measurement/start')
     check_request_status(resp.status_code, verbose=True)
 
     # Start time
@@ -654,7 +666,7 @@ def take_exposure(run_config_struct, verbose_level=0):
 
     # Poll status
     while True:
-        dashboard_response = requests.get(url=run_config_struct['ServerConfig']['serverurl'] + '/dashboard')
+        dashboard_response = requests.get(url=run_config_struct['ServalConfig']['servalurl'] + '/dashboard')
         dashboard_data = json.loads(dashboard_response.text)
         measurement = dashboard_data.get("Measurement")
 
