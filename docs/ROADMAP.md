@@ -11,7 +11,8 @@ This document outlines the long-term goals for **HERMES**, whether or not they a
 - Implement calibration support from **SoPhy/Accos**  
 - Integrate **EMPIR** for both acquisition and analysis  
 - Restructure the **unpacking process** (likely in conjunction with EMPIR work)  
-- Set up **Read the Docs** to replace the manual  
+- Set up **Read the Docs** to replace the manual
+- Adjust acquireTpx3.py to have more of its code in seperate files that get called, instead of having so much clutter inside of it.
 
 ---
 
