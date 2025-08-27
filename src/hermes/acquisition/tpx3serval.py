@@ -204,6 +204,12 @@ def config_run(config_file='run_config.ini', run_name="dummy"):
             'number_of_triggers': config.get('RunSettings', 'number_of_triggers', fallback=0),
             'number_of_runs': config.get('RunSettings', 'number_of_runs', fallback=0),
             'global_timestamp_interval_in_seconds': config.get('RunSettings', 'global_timestamp_interval_in_seconds', fallback=0.0),
+        },
+        'Zaber': {
+            'enabled': config.getboolean('Zaber', 'enabled', fallback=True),
+            'channel': config.getint('Zaber', 'channel', fallback=1),
+            'start_voltage': config.getfloat('Zaber', 'start_voltage', fallback=4.0),
+            'end_voltage': config.getfloat('Zaber', 'end_voltage', fallback=0.0),
         }
     }
 

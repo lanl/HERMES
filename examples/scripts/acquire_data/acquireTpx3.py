@@ -18,6 +18,24 @@ import signal
 import time
 from typing import Any, Dict, Optional
 from hermes.acquisition import tpx3serval
+from hermes.acquisition.tpx3zaber import ZaberController, ZaberError, ZaberNotFound
+
+
+def _best_effort_set_zaber_ao(volts: float, channel: int, verbose: int = 1):
+    if ZaberController is None:
+        if verbose > 0:
+            print(f"[WARN] Zaber control unavailable (module not importable). Skipping AO={volts:.3f}V.")
+        return
+    try:
+        with ZaberController(debug=(verbose > 1)) as z:
+            z.open()
+            z.select_device()
+            z.set_analog_output(channel, float(volts))
+            if verbose > 0:
+                print(f"[INFO] Zaber AO{channel} set to {volts:.3f} V")
+    except (ZaberNotFound, ZaberError, Exception) as e:
+        if verbose > 0:
+            print(f"[WARN] Could not set Zaber AO{channel} to {volts:.3f} V: {e}")
 
 # --------------------------------------------------------------------------
 # Minimal base config structure (no defaults)
@@ -115,8 +133,6 @@ def start_serval_server(path_to_server: str) -> subprocess.Popen:
     )
     return proc
 
-
-
 # --------------------------------------------------------------------------
 # CLI
 # --------------------------------------------------------------------------
@@ -139,6 +155,11 @@ def build_parser():
     p.add_argument("--dry-run", action="store_true", help="Show effective config and exit")
     p.add_argument("-v", "--verbose", type=int, choices=range(0, 3), default=1,
                    help="Verbosity level (0=quiet, 2=very verbose)")
+
+    # >>> ZABER: AO wiring (defaults to 4V on start, 0V on shutdown)
+    p.add_argument("--zaber-channel", type=int, default=1, help="Analog output channel to use (default: 1)")
+    p.add_argument("--zaber-start-v", type=float, default=4.0, help="Voltage to set at start (default: 4.0 V)")
+    p.add_argument("--zaber-end-v", type=float, default=0.0, help="Voltage to set at end (default: 0.0 V)")
     return p
 
 # --------------------------------------------------------------------------
@@ -187,18 +208,24 @@ def main():
 
         time.sleep(3)  # Quick time delay just to ensure that serval has time to load up.
 
+
         if args.verbose > 0:
             print("[INFO] Serval server started.")
 
-        tpx3serval.verify_working_dir(effective_config)
+        # --- Zaber config + safety warning ---
+        zcfg = effective_config.get("Zaber", {})
+        if zcfg.get("enabled", True):
+            start_v = float(zcfg.get("start_voltage", 4.0))
+            end_v   = float(zcfg.get("end_voltage", 0.0))
+            channel = int(zcfg.get("channel", 1))
 
-        if args.verbose > 0:
-            print("[INFO] Checking camera connection...")
+            # Warn if end voltage is higher than start voltage
+            if end_v < start_v:
+                print("[WARNING] Start voltage is greater than End Voltage. "
+                    "Ensure that this will not burn your image intensifier.")
 
-        tpx3serval.check_camera_connection(
-            effective_config["ServerConfig"]["serverurl"],
-            verbose=(args.verbose > 1)
-        )
+            # Set AO at start
+            _best_effort_set_zaber_ao(start_v, channel, verbose=args.verbose)
 
         tpx3serval.load_dacs(effective_config, verbose_level=args.verbose)
         tpx3serval.load_pixelconfig(effective_config, verbose_level=args.verbose)
@@ -226,14 +253,22 @@ def main():
                 print(f"[INFO] Finished run {i+1}/{num_runs}")
 
     finally:
+        # Shut down Serval
         if server_proc is not None:
             if args.verbose > 0:
                 print("[INFO] Terminating Serval server...")
-            # Kill the process group to make sure all child processes are stopped
             os.killpg(os.getpgid(server_proc.pid), signal.SIGTERM)
             server_proc.wait()
             if args.verbose > 0:
                 print("[INFO] Serval server terminated.")
+
+            # --- Set AO at end ---
+        if zcfg.get("enabled", True):
+            _best_effort_set_zaber_ao(
+                volts=float(zcfg.get("end_voltage", 0.0)),
+                channel=int(zcfg.get("channel", 1)),
+                verbose=args.verbose,
+            )
 
 
 if __name__ == "__main__":
