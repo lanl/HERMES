@@ -512,3 +512,16 @@ if __name__ == "__main__":  # pragma: no cover
             print(f"DO{ch} = {int(v) if v is not None else 'N/A'}")
     finally:
         z.close()
+
+def set_zaber_ao(volts: float, channel: int, verbose: int = 1):
+    """Set Zaber analog output."""
+    try:
+        with ZaberController(debug=(verbose > 1)) as z:
+            z.open()
+            z.select_device()
+            z.set_analog_output(channel, float(volts))
+            if verbose > 0:
+                print(f"[INFO] Zaber AO{channel} set to {volts:.3f} V")
+    except (ZaberNotFound, ZaberError, Exception) as e:
+        if verbose > 0:
+            print(f"[WARN] Could not set Zaber AO{channel} to {volts:.3f} V: {e}")
