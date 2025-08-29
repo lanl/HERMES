@@ -165,7 +165,7 @@ def verify_working_dir(run_configs):
         os.makedirs(d, exist_ok=True)
 
 
-def config_run(config_file='run_config.ini', run_name="dummy"):
+def load_config_file(config_file='run_config.ini', run_name="dummy"):
     """ Configures the run settings based on an INI config file. """
     config = configparser.ConfigParser()
     config.read(config_file)

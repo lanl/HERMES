@@ -6,22 +6,18 @@ import time
 from typing import Any, Dict, Optional
 from HERMES.src.hermes.acquisition import serval
 from HERMES.src.hermes.acquisition.zaber import set_zaber_ao
-from HERMES.src.hermes.acquisition.serval import start_serval_server, stop_serval_server
+from HERMES.src.hermes.acquisition.serval import start_serval_server, stop_serval_server, load_config_file
 from HERMES.src.hermes.acquisition.logging import log_info
 
 # --------------------------------------------------------------------------
 # Configuration Management
 # --------------------------------------------------------------------------
 
-def load_config_file(path: str) -> Dict[str, Any]:
-    """Load INI config using tpx3serval's parser."""
-    run_settings_json = serval.config_run(path, "")
-    return json.loads(run_settings_json)
-
 def apply_overrides(cfg: Dict[str, Any], overrides: Dict[str, Any]):
     """Apply overrides to the configuration."""
     for section, values in overrides.items():
         cfg.setdefault(section, {}).update(values)
+
 
 def validate_config(cfg: Dict[str, Any]):
     """Validate the configuration."""
@@ -37,6 +33,7 @@ def validate_config(cfg: Dict[str, Any]):
         raise ValueError("Exposure time must be <= trigger period")
     if runs < 1:
         raise ValueError("Must run at least once")
+
 
 def prepare_config(config_path: str, overrides: Dict[str, Any]) -> Dict[str, Any]:
     """Load, apply overrides, and validate the configuration."""
