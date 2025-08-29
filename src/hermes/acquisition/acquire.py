@@ -3,11 +3,13 @@ import os
 import signal
 import subprocess
 import time
+import datetime
 from typing import Any, Dict, Optional
 from HERMES.src.hermes.acquisition import serval
 from HERMES.src.hermes.acquisition.zaber import set_zaber_ao
 from HERMES.src.hermes.acquisition.serval import start_serval_server, stop_serval_server, load_config_file
 from HERMES.src.hermes.acquisition.logging import log_info
+import configparser
 
 # --------------------------------------------------------------------------
 # Configuration Management
@@ -56,6 +58,24 @@ def prepare_config(config_path: str, overrides: Dict[str, Any]) -> Dict[str, Any
 
     return config
 
+def save_config(config: Dict[str, Any], base_path: str, verbose: int = 1):
+    """Save the configuration to the acquisition_configs folder with a timestamp."""
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    file_name = f"config_{timestamp}.ini"
+    save_path = os.path.join(base_path, "CameraConfig", "acquisition_configs", file_name)
+
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+
+    config_parser = configparser.ConfigParser()
+    for section, values in config.items():
+        config_parser[section] = values
+
+    with open(save_path, "w") as config_file:
+        config_parser.write(config_file)
+
+    if verbose:
+        print(f"Configuration saved to {save_path}")
+
 # --------------------------------------------------------------------------
 # TPX3 Operations
 # --------------------------------------------------------------------------
@@ -77,12 +97,16 @@ def run_tpx3_operations(config: Dict[str, Any], verbose: int = 1):
 # Finalized TPX3 Acquisition Functions
 # --------------------------------------------------------------------------
 
-def configure_and_run_acquisition(config_path: str, overrides: Dict[str, Any], verbose: int = 1):
+def configure_and_run_acquisition(config_path: str, overrides: Dict[str, Any], verbose: int = 1, save: bool = False):
     """Configure and run the TPX3 acquisition process."""
     try:
         # Prepare configuration
         config = prepare_config(config_path, overrides)
         log_info("[INFO] Configuration loaded and validated.", verbose)
+
+        # Save configuration if requested
+        if save:
+            save_config(config, os.path.dirname(config_path), verbose)
 
         # Start Serval server
         server_proc = start_serval_server(config["ServerConfig"]["path_to_server"])

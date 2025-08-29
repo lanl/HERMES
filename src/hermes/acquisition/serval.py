@@ -647,3 +647,7 @@ def stop_serval_server(proc: subprocess.Popen):
     """Terminate the Serval server."""
     os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
     proc.wait()
+
+def resolve_server_config_path(base_path: str, relative_path: str) -> str:
+    """Resolve the server config path relative to CameraConfig."""
+    return os.path.join(base_path, "CameraConfig", relative_path)
