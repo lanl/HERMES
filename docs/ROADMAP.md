@@ -13,6 +13,8 @@ This document outlines the long-term goals for **HERMES**, whether or not they a
 - Restructure the **unpacking process** (likely in conjunction with EMPIR work)  
 - Set up **Read the Docs** to replace the manual
 - Adjust acquireTpx3.py to have more of its code in seperate files that get called, instead of having so much clutter inside of it.
+- Adjust __init__.py to create an API of sorts? I'm not sure familiar with this, but it would allow for functions like """import hermes""" and """hermes.acquire_data()""" instead of the long strings that we have now.
+
 
 ---
 
