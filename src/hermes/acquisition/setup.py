@@ -56,3 +56,4 @@ def initial_setup(base_path: str):
         print(f"server_config.ini already exists at: {setup_ini_path}")
 
     print(f"Initial setup completed. Camera info directory created at: {os.path.join(base_path, 'CameraConfig')}")
+ 

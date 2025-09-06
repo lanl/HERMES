@@ -100,6 +100,7 @@ zaber-motion = ">=7.10.0,<8"
 plotly = ">=6.3.0,<7"
 seaborn = ">=0.13.2,<0.14"
 pylance = ">=0.33.0,<0.34"
+pip = ">=25.2,<26"
 
 [tool.pixi.activation]
 env = { cHERMES_DIR = "$PIXI_PROJECT_ROOT/src/chermes", PATH = "$PIXI_PROJECT_ROOT/src/chermes/bin:$PATH"}

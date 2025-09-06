@@ -5,10 +5,10 @@ import subprocess
 import time
 import datetime
 from typing import Any, Dict, Optional
-from HERMES.src.hermes.acquisition import serval
-from HERMES.src.hermes.acquisition.zaber import set_zaber_ao
-from HERMES.src.hermes.acquisition.serval import start_serval_server, stop_serval_server, load_config_file
-from HERMES.src.hermes.acquisition.logging import log_info
+from hermes.acquisition import serval
+from hermes.acquisition.zaber import set_zaber_ao
+from hermes.acquisition.serval import start_serval_server, stop_serval_server, load_config_file
+from hermes.acquisition.logging import log_info
 import configparser
 
 # --------------------------------------------------------------------------
