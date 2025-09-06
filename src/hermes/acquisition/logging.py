@@ -1,7 +1,7 @@
 import os
 import json
 import requests
-from HERMES.src.hermes.acquisition.utils import _normalize_run_config, _safe_join, check_request_status, save_json_to_file
+from hermes.acquisition.utils import _normalize_run_config, _safe_join, check_request_status, save_json_to_file
 
 # --------------------------------------------------------------------------
 # Logging Utilities for TPX3

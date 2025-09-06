@@ -10,8 +10,7 @@ from datetime import datetime
 import shutil
 import subprocess
 import signal
-from HERMES.src.hermes.acquisition.utils import _normalize_run_config, _safe_join, check_request_status, save_json_to_file
-
+from hermes.acquisition.utils import _normalize_run_config, _safe_join, check_request_status, save_json_to_file
 from hermes.acquisition.models import Settings
 
 ###############################################################
