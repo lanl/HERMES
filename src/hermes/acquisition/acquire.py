@@ -55,6 +55,8 @@ def load_run_config_file(config_file='run_config.ini', run_name="dummy"):
             'end_voltage': config.getfloat('Zaber', 'end_voltage', fallback=0.0),
         }
     }
+    # Validate after loading
+    validate_config(run_config)
     return json.dumps(run_config, indent=4)
 
 
@@ -77,6 +79,8 @@ def load_server_config_file(config_file='run_config.ini'):
             'dac_file_name': config.get('ServerConfig', 'dac_file_name', fallback=None),
         }
     }
+    # Validate after loading
+    validate_config(server_config)
     return json.dumps(server_config, indent=4)
 
 
@@ -88,20 +92,28 @@ def apply_overrides(cfg: Dict[str, Any], overrides: Dict[str, Any]):
 
 def validate_config(cfg: Dict[str, Any]):
     """Validate the configuration."""
-    try:
-        run = cfg["RunSettings"]
-        exposure = float(run["exposure_time_in_seconds"])
-        trigger = float(run["trigger_period_in_seconds"])
-        runs = int(run["number_of_runs"])
-    except KeyError as e:
-        raise ValueError(f"Missing required RunSettings key: {e}")
+    if "RunSettings" in cfg:
+        try:
+            run = cfg["RunSettings"]
+            exposure = float(run["exposure_time_in_seconds"])
+            trigger = float(run["trigger_period_in_seconds"])
+            runs = int(run["number_of_runs"])
+        except KeyError as e:
+            raise ValueError(f"Missing required RunSettings key: {e}")
 
-    if exposure > trigger:
-        raise ValueError("Exposure time must be <= trigger period")
-    if runs < 1:
-        raise ValueError("Must run at least once")
+        if exposure > trigger:
+            raise ValueError("Exposure time must be <= trigger period")
+        if runs < 1:
+            raise ValueError("Must run at least once")
 
-    print("Config validation passed: configuration is valid.")
+        print("Run config validation passed: configuration is valid.")
+    elif "ServerConfig" in cfg:
+        server = cfg["ServerConfig"]
+        if not server.get("path_to_server"):
+            raise ValueError("Server config validation failed: 'path_to_server' must be set.")
+        print("Server config validation passed: configuration is valid.")
+    else:
+        raise ValueError("Unknown config type for validation.")
 
 
 def save_config(config: Dict[str, Any], base_path: str, verbose: int = 1):
