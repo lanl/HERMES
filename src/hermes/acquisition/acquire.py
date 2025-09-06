@@ -16,19 +16,17 @@ import configparser
 # Configuration Management
 # --------------------------------------------------------------------------
 
-def load_config_file(config_file='run_config.ini', run_name="dummy"):
-    """ Configures the run settings based on an INI config file. """
+def load_run_config_file(config_file='run_config.ini', run_name="dummy"):
+    """Load run-related settings from an INI config file."""
     config = configparser.ConfigParser()
     config.read(config_file)
 
     # Ensure sections exist
-    for section in ['WorkingDir', 'RunSettings', 'ServerConfig']:
+    for section in ['WorkingDir', 'RunSettings', 'Zaber']:
         if section not in config.sections():
             config.add_section(section)
 
-    # NOTE: run_dir_name is clean (no trailing slash). Subpaths can have trailing
-    # slashes; they will be normalized by _normalize_run_config().
-    settings_dict = {
+    run_config = {
         'WorkingDir': {
             'path_to_working_dir': config.get('WorkingDir', 'path_to_working_dir', fallback="./"),
             'run_dir_name': run_name.strip('/'),
@@ -39,15 +37,6 @@ def load_config_file(config_file='run_config.ini', run_name="dummy"):
             'path_to_preview_files': config.get('WorkingDir', 'path_to_preview_files', fallback="previewFiles/"),
             'path_to_raw_files': config.get('WorkingDir', 'path_to_raw_files', fallback="tpx3Files/"),
             'path_to_init_files': config.get('WorkingDir', 'path_to_init_files', fallback="initFiles/"),
-        },
-        'ServerConfig': {
-            'serverurl': config.get('ServerConfig', 'serverurl', fallback=None),
-            'path_to_server': config.get('ServerConfig', 'path_to_server', fallback=None),
-            'path_to_server_config_files': config.get('ServerConfig', 'path_to_server_config_files', fallback=None),
-            'destinations_file_name': config.get('ServerConfig', 'destinations_file_name', fallback=None),
-            'detector_config_file_name': config.get('ServerConfig', 'detector_config_file_name', fallback=None),
-            'bpc_file_name': config.get('ServerConfig', 'bpc_file_name', fallback=None),
-            'dac_file_name': config.get('ServerConfig', 'dac_file_name', fallback=None),
         },
         'RunSettings': {
             'run_name': config.get('RunSettings', 'run_name', fallback='you_forgot_to_name_the_runs'),
@@ -66,8 +55,29 @@ def load_config_file(config_file='run_config.ini', run_name="dummy"):
             'end_voltage': config.getfloat('Zaber', 'end_voltage', fallback=0.0),
         }
     }
+    return json.dumps(run_config, indent=4)
 
-    return json.dumps(settings_dict, indent=4)
+
+def load_server_config_file(config_file='run_config.ini'):
+    """Load server-related settings from an INI config file."""
+    config = configparser.ConfigParser()
+    config.read(config_file)
+
+    if 'ServerConfig' not in config.sections():
+        config.add_section('ServerConfig')
+
+    server_config = {
+        'ServerConfig': {
+            'serverurl': config.get('ServerConfig', 'serverurl', fallback=None),
+            'path_to_server': config.get('ServerConfig', 'path_to_server', fallback=None),
+            'path_to_server_config_files': config.get('ServerConfig', 'path_to_server_config_files', fallback=None),
+            'destinations_file_name': config.get('ServerConfig', 'destinations_file_name', fallback=None),
+            'detector_config_file_name': config.get('ServerConfig', 'detector_config_file_name', fallback=None),
+            'bpc_file_name': config.get('ServerConfig', 'bpc_file_name', fallback=None),
+            'dac_file_name': config.get('ServerConfig', 'dac_file_name', fallback=None),
+        }
+    }
+    return json.dumps(server_config, indent=4)
 
 
 def apply_overrides(cfg: Dict[str, Any], overrides: Dict[str, Any]):
@@ -91,27 +101,8 @@ def validate_config(cfg: Dict[str, Any]):
     if runs < 1:
         raise ValueError("Must run at least once")
 
+    print("Config validation passed: configuration is valid.")
 
-def prepare_config(config_path: str, overrides: Dict[str, Any]) -> Dict[str, Any]:
-    """Load, apply overrides, and validate the configuration."""
-    config = load_config_file(config_path)
-    for section, values in overrides.items():
-        config.setdefault(section, {}).update(values)
-
-    try:
-        run = config["RunSettings"]
-        exposure = float(run["exposure_time_in_seconds"])
-        trigger = float(run["trigger_period_in_seconds"])
-        runs = int(run["number_of_runs"])
-    except KeyError as e:
-        raise ValueError(f"Missing required RunSettings key: {e}")
-
-    if exposure > trigger:
-        raise ValueError("Exposure time must be <= trigger period")
-    if runs < 1:
-        raise ValueError("Must run at least once")
-
-    return config
 
 def save_config(config: Dict[str, Any], base_path: str, verbose: int = 1):
     """Save the configuration to the acquisition_configs folder with a timestamp."""
