@@ -25,7 +25,9 @@ def save_config_file(config: dict, base_path: str, file_name: str):
     print(f"Configuration saved to {file_path}")
 
 
-def load_config_file(base_path: str, file_name: str) -> dict:
+
+# Optionally, you can rename this function to avoid confusion
+def load_json_config_file(base_path: str, file_name: str) -> dict:
     """Load a configuration file from the acquisition_configs/ folder inside CameraConfig."""
     file_path = os.path.join(base_path, "CameraConfig", "acquisition_configs", file_name)
     with open(file_path, "r") as f:

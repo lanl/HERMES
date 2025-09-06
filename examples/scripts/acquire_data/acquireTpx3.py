@@ -57,10 +57,9 @@ def merge_dicts(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any
     return merged
 
 
-def load_config_file(path: str) -> Dict[str, Any]:
-    """Load INI config using tpx3serval's parser."""
-    run_settings_json = tpx3serval.config_run(path, "")
-    return json.loads(run_settings_json)
+
+# Use the new load_config_file from hermes.acquisition.acquire
+from hermes.acquisition.acquire import load_config_file as load_acquire_config_file
 
 
 def set_if_provided(cfg: Dict[str, Any], section: str, key: str, value: Optional[Any]):
@@ -170,8 +169,8 @@ def main():
     args = build_parser().parse_args()
 
     try:
-        file_config = load_config_file(args.config)
-        effective_config = merge_dicts(EMPTY_CONFIG, file_config)
+        file_config = load_acquire_config_file(args.config)
+        effective_config = merge_dicts(EMPTY_CONFIG, json.loads(file_config))
         if args.verbose > 1:
             print(f"[DEBUG] Loaded config from '{args.config}'")
     except Exception as e:

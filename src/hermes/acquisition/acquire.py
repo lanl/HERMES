@@ -7,13 +7,68 @@ import datetime
 from typing import Any, Dict, Optional
 from hermes.acquisition import serval
 from hermes.acquisition.zaber import set_zaber_ao
-from hermes.acquisition.serval import start_serval_server, stop_serval_server, load_config_file
+from hermes.acquisition.serval import start_serval_server, stop_serval_server
 from hermes.acquisition.logging import log_info
 import configparser
+
 
 # --------------------------------------------------------------------------
 # Configuration Management
 # --------------------------------------------------------------------------
+
+def load_config_file(config_file='run_config.ini', run_name="dummy"):
+    """ Configures the run settings based on an INI config file. """
+    config = configparser.ConfigParser()
+    config.read(config_file)
+
+    # Ensure sections exist
+    for section in ['WorkingDir', 'RunSettings', 'ServerConfig']:
+        if section not in config.sections():
+            config.add_section(section)
+
+    # NOTE: run_dir_name is clean (no trailing slash). Subpaths can have trailing
+    # slashes; they will be normalized by _normalize_run_config().
+    settings_dict = {
+        'WorkingDir': {
+            'path_to_working_dir': config.get('WorkingDir', 'path_to_working_dir', fallback="./"),
+            'run_dir_name': run_name.strip('/'),
+            'path_to_status_files': config.get('WorkingDir', 'path_to_status_files', fallback="statusFiles/"),
+            'path_to_log_files': config.get('WorkingDir', 'path_to_log_files', fallback="tpx3Logs/"),
+            'path_to_image_files': config.get('WorkingDir', 'path_to_image_files', fallback="imageFiles/"),
+            'path_to_rawSignal_files': config.get('WorkingDir', 'path_to_rawSignal_files', fallback="rawSignalFiles/"),
+            'path_to_preview_files': config.get('WorkingDir', 'path_to_preview_files', fallback="previewFiles/"),
+            'path_to_raw_files': config.get('WorkingDir', 'path_to_raw_files', fallback="tpx3Files/"),
+            'path_to_init_files': config.get('WorkingDir', 'path_to_init_files', fallback="initFiles/"),
+        },
+        'ServerConfig': {
+            'serverurl': config.get('ServerConfig', 'serverurl', fallback=None),
+            'path_to_server': config.get('ServerConfig', 'path_to_server', fallback=None),
+            'path_to_server_config_files': config.get('ServerConfig', 'path_to_server_config_files', fallback=None),
+            'destinations_file_name': config.get('ServerConfig', 'destinations_file_name', fallback=None),
+            'detector_config_file_name': config.get('ServerConfig', 'detector_config_file_name', fallback=None),
+            'bpc_file_name': config.get('ServerConfig', 'bpc_file_name', fallback=None),
+            'dac_file_name': config.get('ServerConfig', 'dac_file_name', fallback=None),
+        },
+        'RunSettings': {
+            'run_name': config.get('RunSettings', 'run_name', fallback='you_forgot_to_name_the_runs'),
+            'run_number': config.get('RunSettings', 'run_number', fallback=0),
+            'trigger_period_in_seconds': config.get('RunSettings', 'trigger_period_in_seconds', fallback=1.0),
+            'exposure_time_in_seconds': config.get('RunSettings', 'exposure_time_in_seconds', fallback=0.5),
+            'trigger_delay_in_seconds': config.get('RunSettings', 'trigger_delay_in_seconds', fallback=0.0),
+            'number_of_triggers': config.get('RunSettings', 'number_of_triggers', fallback=0),
+            'number_of_runs': config.get('RunSettings', 'number_of_runs', fallback=0),
+            'global_timestamp_interval_in_seconds': config.get('RunSettings', 'global_timestamp_interval_in_seconds', fallback=0.0),
+        },
+        'Zaber': {
+            'enabled': config.getboolean('Zaber', 'enabled', fallback=True),
+            'channel': config.getint('Zaber', 'channel', fallback=1),
+            'start_voltage': config.getfloat('Zaber', 'start_voltage', fallback=4.0),
+            'end_voltage': config.getfloat('Zaber', 'end_voltage', fallback=0.0),
+        }
+    }
+
+    return json.dumps(settings_dict, indent=4)
+
 
 def apply_overrides(cfg: Dict[str, Any], overrides: Dict[str, Any]):
     """Apply overrides to the configuration."""

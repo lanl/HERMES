@@ -3,3 +3,4 @@ from . import utils
 from . import acquisition
 
 from .acquisition.acquire import validate_config
+from .acquisition.acquire import load_config_file
