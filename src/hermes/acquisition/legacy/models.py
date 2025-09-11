@@ -3,6 +3,17 @@ from pydantic import BaseModel, Field, validator
 from typing import Optional
 import os
 
+from config import Config
+
+
+class Acquisition(BaseModel):
+    acquisition_config: Config
+
+
+
+
+
+'''
 class WorkingDir(BaseModel):
     path_to_working_dir: str = Field(default="./", description="Path to the working directory where all files will be stored.")
     run_dir_name: str = Field(default="dummy/", description="Name of the run directory where all run-specific files will be stored.")
@@ -42,5 +53,5 @@ class Settings(BaseModel):
     WorkingDir: WorkingDir
     ServerConfig: ServerConfig
     RunSettings: RunSettings
-    
+'''
     
