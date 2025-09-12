@@ -12,9 +12,9 @@ from hermes.acquisition.models.software.epics import EPICSConfig
 from hermes.acquisition.models.hardware.tpx3Cam import HardwareConfig
 from hermes.acquisition.models.hardware.zabers import ZaberConfig
 
-class Hermes_Default(BaseModel):  # or HermesConfig
+class Default(BaseModel):  
     """
-    Default schema combining all software and hardware configurations.
+    Default acquisition schema combining all software and hardware configurations.
     """
     
     # Software configuration
