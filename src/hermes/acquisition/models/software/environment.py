@@ -23,7 +23,7 @@ class WorkingDir(BaseModel):
         description="Path to the working directory where all files will be stored."
     )
     run_dir_name: str = Field(
-        default="dummy/", 
+        default="dummy_run/", 
         description="Name of the run directory where all run-specific files will be stored."
     )
     
