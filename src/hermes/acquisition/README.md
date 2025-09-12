@@ -14,7 +14,7 @@ src/hermes/acquisition/
 ├── serval.py                # Serval server communication
 ├── zaber.py                 # Zaber motor controller interface
 ├── calibrate.py             # Calibration routines
-├── setup.py                 # System setup utilities  
+├── setup.py                 # System setup utilities 
 ├── utils.py                 # General utility functions
 ├── legacy/                  # Legacy code (deprecated)
 │   └── models.py
@@ -66,11 +66,28 @@ Default
 - Create directories, setup logging, initialize hardware connections
 - Accepts `Default` configuration objects and makes them operational
 
-### Hardware Integration
+#### `run.py` - Acquisition Execution Engine
+- Manages acquisition sequences, timing, and synchronization
+- Handles error recovery and graceful shutdown procedures
+- Provides unified interface for executing configured acquisition workflows
+
+### Software Integration
 
 #### `serval.py` - Serval Server Communication
 - Interface for communicating with Serval data acquisition server
 - Handles server connection, data streaming, and control commands
+
+### `epics.py` - EPICS communication 
+- Interface for communicating with various EPICS channels. 
+- Monitoring for acquisition control via EPICS
+
+### Hardware Integration
+
+#### `tpx3Cam.py` - Camera Interface (Evenything not Serval)
+- Interface for TPX3 Timepix3 detector and SPIDR readout system
+- Handles detector configuration, acquisition timing, and data readout
+- Manages pixel matrix settings, bias voltages, and threshold configurations
+- Controls acquisition modes (TOT, TOA, event-driven, continuous)
 
 #### `zaber.py` - Motor Controller Interface  
 - Control Zaber linear actuators and rotation stages
