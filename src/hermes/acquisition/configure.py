@@ -4,8 +4,6 @@ Module for setting, loading, and saving configuration schemas within the HERMES 
 
 from pathlib import Path
 from typing import Dict, Any, Optional, Union, Type, TypeVar
-import json
-import yaml
 from pydantic import ValidationError
 
 from hermes.acquisition.models.schema import Default as HermesDefault
@@ -161,32 +159,12 @@ class ConfigurationManager:
         
         Args:
             config_file: Path to save configuration file
-            format: File format ('json', 'yaml', or 'auto' to detect from extension)
+            format: File format ('json', 'yaml', 'ini', or 'auto' to detect from extension)
         """
-        config_file = Path(config_file)
+        from hermes.acquisition.utils import save_pydantic_model
         
         try:
-            # Determine format
-            if format == "auto":
-                if config_file.suffix.lower() in ['.yaml', '.yml']:
-                    format = "yaml"
-                else:
-                    format = "json"
-            
-            # Get configuration as dictionary
-            config_dict = self.config.model_dump(exclude_none=True)
-            
-            # Ensure parent directory exists
-            config_file.parent.mkdir(parents=True, exist_ok=True)
-            
-            # Save to file
-            with open(config_file, 'w') as f:
-                if format == "yaml":
-                    yaml.dump(config_dict, f, default_flow_style=False, indent=2)
-                else:
-                    json.dump(config_dict, f, indent=2)
-            
-            logger.success(f"Configuration saved to {config_file} ({format} format)")
+            save_pydantic_model(self.config, config_file, format=format)
             
         except Exception as e:
             logger.error(f"Failed to save configuration to {config_file}: {e}")
@@ -202,20 +180,10 @@ class ConfigurationManager:
         Returns:
             HermesDefault: Loaded configuration
         """
-        config_file = Path(config_file)
+        from hermes.acquisition.utils import load_pydantic_model
         
         try:
-            if not config_file.exists():
-                raise FileNotFoundError(f"Configuration file not found: {config_file}")
-            
-            with open(config_file, 'r') as f:
-                if config_file.suffix.lower() in ['.yaml', '.yml']:
-                    config_dict = yaml.safe_load(f)
-                else:
-                    config_dict = json.load(f)
-            
-            # Validate and create configuration
-            self.config = HermesDefault.model_validate(config_dict)
+            self.config = load_pydantic_model(HermesDefault, config_file)
             logger.success(f"Configuration loaded from {config_file}")
             
             return self.config
@@ -330,32 +298,12 @@ def save_individual_model(model: Any, output_file: Union[str, Path],
     Args:
         model: Pydantic model instance to save
         output_file: Path to save file
-        format: File format ('json', 'yaml', or 'auto')
+        format: File format ('json', 'yaml', 'ini', or 'auto')
     """
-    output_file = Path(output_file)
+    from hermes.acquisition.utils import save_pydantic_model
     
     try:
-        # Determine format
-        if format == "auto":
-            if output_file.suffix.lower() in ['.yaml', '.yml']:
-                format = "yaml"
-            else:
-                format = "json"
-        
-        # Get model as dictionary
-        model_dict = model.model_dump(exclude_none=True)
-        
-        # Ensure parent directory exists
-        output_file.parent.mkdir(parents=True, exist_ok=True)
-        
-        # Save to file
-        with open(output_file, 'w') as f:
-            if format == "yaml":
-                yaml.dump(model_dict, f, default_flow_style=False, indent=2)
-            else:
-                json.dump(model_dict, f, indent=2)
-        
-        logger.success(f"Model saved to {output_file} ({format} format)")
+        save_pydantic_model(model, output_file, format=format)
         
     except Exception as e:
         logger.error(f"Failed to save model to {output_file}: {e}")
@@ -373,20 +321,10 @@ def load_individual_model(model_class: Type[ConfigType],
     Returns:
         Instance of the model class
     """
-    input_file = Path(input_file)
+    from hermes.acquisition.utils import load_pydantic_model
     
     try:
-        if not input_file.exists():
-            raise FileNotFoundError(f"Model file not found: {input_file}")
-        
-        with open(input_file, 'r') as f:
-            if input_file.suffix.lower() in ['.yaml', '.yml']:
-                model_dict = yaml.safe_load(f)
-            else:
-                model_dict = json.load(f)
-        
-        # Validate and create model
-        model = model_class.model_validate(model_dict)
+        model = load_pydantic_model(model_class, input_file)
         logger.success(f"Model loaded from {input_file}")
         
         return model
