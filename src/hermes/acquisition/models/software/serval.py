@@ -6,7 +6,8 @@ from pydantic import BaseModel, Field
 from typing import Optional
 
 class ServalConfig(BaseModel):
-    serverurl: str = Field(default="http://localhost", description="URL of the server.")
+    host : str = Field(default="localhost", description="Hostname or IP address for the Serval server.")
+    port: int = Field(default=8080, description="Port number for the Serval server.")
     path_to_server: str = Field(default="./server/", description="Path to the server directory.")
     path_to_server_config_files: str = Field(default="serverConfigFiles/", description="Path to the server config files.")
     destinations_file_name: str = Field(default="initial_server_destinations.json", description="Initial destinations file.")
