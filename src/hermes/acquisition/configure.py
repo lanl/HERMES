@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Dict, Any, Optional, Union, Type, TypeVar
 from pydantic import ValidationError
 
+from hermes.acquisition.utils import save_pydantic_model
 from hermes.acquisition.models.schema import Default as HermesDefault
 from hermes.acquisition.models.software.environment import WorkingDir
 from hermes.acquisition.models.software.serval import ServalConfig
@@ -152,30 +153,26 @@ class ConfigurationManager:
     # File I/O Methods
     # ========================================================================
 
-    def save_to_file(self, config_file: Union[str, Path], format: str = "auto", 
+    def save_config_file(self, config_file: Union[str, Path], format: str = "auto", 
                      config_path: Union[str, Path, None] = None) -> None:
         """
-        Save current configuration to file.
-        If config_file is just a name, saves to the configFiles/ folder in the run directory unless config_path is provided.
+        Save current configuration to disk.
+        By default, saves to camera_info/CameraConfig/acquisition_configs, but if config_path is provided, saves to that directory instead.
         
         Args:
-            config_file: Filename or path to save configuration file
+            config_file: Filename to save configuration file as
             format: File format ('json', 'yaml', 'ini', or 'auto' to detect from extension)
-            config_path: Optional directory to override save location
+            config_path: Optional directory to override the default save location
         """
-        from hermes.acquisition.utils import save_pydantic_model
 
-        config_file = Path(config_file)
-        # If config_path is provided, use it as the directory
+        # Save to override path if provided, else to CameraConfig/acquisition_configs inside the run directory
         if config_path is not None:
-            config_dir = Path(config_path)
-            config_dir.mkdir(parents=True, exist_ok=True)
-            config_file = config_dir / config_file.name
-        elif config_file.parent == Path('.'):
-            run_dir = Path(self.config.environment.path_to_working_dir) / self.config.environment.run_dir_name
-            config_dir = run_dir / "configFiles"
-            config_dir.mkdir(parents=True, exist_ok=True)
-            config_file = config_dir / config_file.name
+            base_dir = Path(config_path)
+        else:
+            run_dir = Path(self.config.environment.path_to_working_dir)
+            base_dir = run_dir / "CameraConfig" / "acquisition_configs"
+        base_dir.mkdir(parents=True, exist_ok=True)
+        config_file = base_dir / Path(config_file).name
 
         try:
             save_pydantic_model(self.config, config_file, format=format)
@@ -347,29 +344,3 @@ def load_individual_model(model_class: Type[ConfigType],
     except Exception as e:
         logger.error(f"Failed to load model from {input_file}: {e}")
         raise
-
-
-if __name__ == "__main__":
-    # Example usage
-    manager = create_default_config()
-    
-    # Setup some configurations
-    manager.setup_environment(
-        path_to_working_dir="/data/experiments",
-        run_dir_name="test_run_001"
-    )
-    
-    manager.setup_zabers(
-        port="/dev/ttyUSB0",
-        debug=True
-    )
-    
-    # Print summary
-    print(manager.summary())
-    
-    # Save configuration
-    manager.save_to_file("example_config.json")
-    
-    # Load it back
-    new_manager = load_config_from_file("example_config.json")
-    print(new_manager.summary())

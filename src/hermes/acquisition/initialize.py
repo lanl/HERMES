@@ -35,6 +35,7 @@ def initialize_logging(
     setup_logger(log_file=log_file, log_level=log_level, enable_console=enable_console)
     logger.success("Logging system initialized successfully")
 
+
 def initialize_working_directory(
     path_to_working_dir: Optional[str] = None,
     run_dir_name: Optional[str] = None,
