@@ -52,6 +52,10 @@ class WorkingDir(BaseModel):
         default="initFiles/", 
         description="Path to the initialization files."
     )
+    path_to_config_files: str = Field(
+        default="configFiles/", 
+        description="Path to the acquisition configuration files."
+    )
     
     # Directory management controls
     create_if_missing: bool = Field(
@@ -68,7 +72,8 @@ class WorkingDir(BaseModel):
     # ========================================================================
     
     @field_validator('path_to_status_files', 'path_to_log_files', 'path_to_image_files', 
-                     'path_to_preview_files', 'path_to_tpx3_files', 'path_to_init_files', mode='before')
+                     'path_to_preview_files', 'path_to_tpx3_files', 'path_to_init_files', 
+                     'path_to_config_files', mode='before')
     @classmethod
     def ensure_relative_path(cls, v):
         """
@@ -197,6 +202,7 @@ class WorkingDir(BaseModel):
             'preview_files_dir': run_dir / values.path_to_preview_files,
             'tpx3_files_dir': run_dir / values.path_to_tpx3_files,
             'init_files_dir': run_dir / values.path_to_init_files,
+            'config_files_dir': run_dir / values.path_to_config_files,
         }
 
         # Handle directory creation and cleanup

@@ -151,24 +151,39 @@ class ConfigurationManager:
     # ========================================================================
     # File I/O Methods
     # ========================================================================
-    
-    def save_to_file(self, config_file: Union[str, Path], 
-                     format: str = "auto") -> None:
+
+    def save_to_file(self, config_file: Union[str, Path], format: str = "auto", 
+                     config_path: Union[str, Path, None] = None) -> None:
         """
         Save current configuration to file.
+        If config_file is just a name, saves to the configFiles/ folder in the run directory unless config_path is provided.
         
         Args:
-            config_file: Path to save configuration file
+            config_file: Filename or path to save configuration file
             format: File format ('json', 'yaml', 'ini', or 'auto' to detect from extension)
+            config_path: Optional directory to override save location
         """
         from hermes.acquisition.utils import save_pydantic_model
-        
+
+        config_file = Path(config_file)
+        # If config_path is provided, use it as the directory
+        if config_path is not None:
+            config_dir = Path(config_path)
+            config_dir.mkdir(parents=True, exist_ok=True)
+            config_file = config_dir / config_file.name
+        elif config_file.parent == Path('.'):
+            run_dir = Path(self.config.environment.path_to_working_dir) / self.config.environment.run_dir_name
+            config_dir = run_dir / "configFiles"
+            config_dir.mkdir(parents=True, exist_ok=True)
+            config_file = config_dir / config_file.name
+
         try:
             save_pydantic_model(self.config, config_file, format=format)
-            
+            logger.info(f"Configuration saved to {config_file}")
         except Exception as e:
             logger.error(f"Failed to save configuration to {config_file}: {e}")
             raise
+
             
     def load_from_file(self, config_file: Union[str, Path]) -> HermesDefault:
         """
