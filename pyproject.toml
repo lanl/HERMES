@@ -101,6 +101,10 @@ plotly = ">=6.3.0,<7"
 seaborn = ">=0.13.2,<0.14"
 pylance = ">=0.33.0,<0.34"
 pip = ">=25.2,<26"
+# Testing dependencies
+pytest = ">=8.0.0,<9"
+pytest-cov = ">=6.0.0,<7"
+pytest-mock = ">=3.14.0,<4"
 
 [tool.pixi.activation]
 env = { cHERMES_DIR = "$PIXI_PROJECT_ROOT/src/chermes", PATH = "$PIXI_PROJECT_ROOT/src/chermes/bin:$PATH"}
@@ -131,6 +135,12 @@ lint = { cmd = "ruff check .", description = "Run linting checks" }
 format = { cmd = "ruff format .", description = "Format code with ruff" }
 pre-commit-install = { cmd = "pre-commit install", description = "Install pre-commit hooks" }
 pre-commit-run = { cmd = "pre-commit run --all-files", description = "Run pre-commit on all files" }
+# Testing tasks
+test = { cmd = "pytest", description = "Run all tests" }
+test-unit = { cmd = "pytest tests/unit", description = "Run unit tests only" }
+test-integration = { cmd = "pytest tests/integration", description = "Run integration tests only" }
+test-cov = { cmd = "pytest --cov=hermes --cov-report=html --cov-report=term", description = "Run tests with coverage" }
+clean-test = { cmd = "rm -rf .pytest_cache __pycache__ .coverage htmlcov", description = "Clean test artifacts" }
 # Clean all
 clean-all = { description = "Clean all build artifacts", depends-on = ["clean-pypi", "clean-conda", "clean-docs", "clean-test", "clean-cpp"] }
 
