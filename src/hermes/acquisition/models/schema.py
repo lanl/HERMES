@@ -29,3 +29,48 @@ class Default(BaseModel):
     
     # Global settings
     log_level: str = Field(default="INFO")
+
+class JustServal(BaseModel):  
+    """
+    Only serval acquisition schema combining minimum software configurations for testing serval setup without hardware.
+    """
+    
+    # Software configuration
+    environment: WorkingDir = Field(default_factory=WorkingDir)
+    serval: ServalConfig = Field(default_factory=ServalConfig)
+    run_settings: RunSettings = Field(default_factory=RunSettings)
+
+    # Global settings
+    log_level: str = Field(default="INFO")
+    
+class JustCamera(BaseModel):  
+    """
+    Only camera acquisition schema combining minimum software configurations for testing camera setup without serval or hardware.
+    """
+    
+    # Software configuration
+    environment: WorkingDir = Field(default_factory=WorkingDir)
+    run_settings: RunSettings = Field(default_factory=RunSettings)
+    
+    # Hardware configuration (optional)
+    hardware: Optional[HardwareConfig] = Field(default=None, description="Hardware configuration (optional)")
+    
+    # Global settings
+    log_level: str = Field(default="INFO")
+    
+class NoEpics(BaseModel):  
+    """
+    Acquisition schema combining all software and hardware configurations except EPICS.
+    """
+    
+    # Software configuration
+    environment: WorkingDir = Field(default_factory=WorkingDir)
+    serval: ServalConfig = Field(default_factory=ServalConfig)
+    run_settings: RunSettings = Field(default_factory=RunSettings)
+    
+    # Hardware configuration (optional)
+    hardware: Optional[HardwareConfig] = Field(default=None, description="Hardware configuration (optional)")
+    zabers: Optional[ZaberConfig] = Field(default=None, description="Zaber motor configuration (optional)")
+    
+    # Global settings
+    log_level: str = Field(default="INFO")
