@@ -37,37 +37,6 @@ class EPICSBeamlineConfig(BaseModel):
         ),
         description="Beam current PV"
     )
-    
-    beam_energy: Optional[EPICSPVConfig] = Field(
-        default_factory=lambda: EPICSPVConfig(
-            name="BEAMLINE:ENERGY",
-            description="Beam energy", 
-            units="keV",
-            min_value=0.0
-        ),
-        description="Beam energy PV"
-    )
-    
-    # Shutters and safety
-    shutter_status: Optional[EPICSPVConfig] = Field(
-        default_factory=lambda: EPICSPVConfig(
-            name="BEAMLINE:SHUTTER:STATUS",
-            description="Shutter status",
-            data_type="enum",
-            enum_values=["OPEN", "CLOSED", "MOVING"]
-        ),
-        description="Main shutter status PV"
-    )
-    
-    safety_interlock: Optional[EPICSPVConfig] = Field(
-        default_factory=lambda: EPICSPVConfig(
-            name="BEAMLINE:SAFETY:INTERLOCK",
-            description="Safety interlock status",
-            data_type="enum", 
-            enum_values=["OK", "FAULT"]
-        ),
-        description="Safety interlock PV"
-    )
 
 class EPICSDetectorConfig(BaseModel):
     """Configuration for detector-related EPICS PVs."""
