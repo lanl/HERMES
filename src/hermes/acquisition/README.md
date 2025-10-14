@@ -4,40 +4,101 @@ The acquisition module provides a comprehensive, schema-based system for configu
 
 ## Module Structure
 
+The acquisition module follows a layered architecture pattern with clear separation of concerns:
+
 ```
 src/hermes/acquisition/
 ├── __init__.py
-├── configure.py              # Configuration management (create, load, save configs)
-├── initialize.py             # System initialization from configurations
-├── acquire.py               # Main acquisition control logic
-├── logger.py                # Centralized logging with loguru
-├── serval.py                # Serval server communication
-├── zaber.py                 # Zaber motor controller interface
-├── calibrate.py             # Calibration routines
-├── setup.py                 # System setup utilities 
-├── utils.py                 # General utility functions
-├── legacy/                  # Legacy code (deprecated)
-│   └── models.py
-└── models/
-    ├── __init__.py
-    ├── schema.py            # Master configuration schema (Default class)
-    ├── software/            # Software configuration models
-    │   ├── __init__.py
-    │   ├── environment.py   # WorkingDir - directory management
-    │   ├── serval.py        # ServalConfig - server settings
-    │   ├── parameters.py    # RunSettings - acquisition parameters
-    │   └── epics.py         # EPICSConfig - process variable settings
-    └── hardware/            # Hardware configuration models
-        ├── __init__.py
-        ├── tpx3Cam.py       # HardwareConfig - detector/SPIDR settings
-        └── zabers.py        # ZaberConfig - motor controller settings
+├── README.md
+├── logger.py
+├── utils.py
+│
+├── models/                          # Data Models Layer - Pure Pydantic validation
+│   ├── __init__.py
+│   ├── schema.py                   # Master configuration schema
+│   ├── hardware/                   # Hardware configuration models
+│   │   ├── __init__.py
+│   │   ├── tpx3Cam.py             # TPX3 detector & SERVAL API models
+│   │   └── zabers.py              # Zaber motion control models
+│   └── software/                   # Software configuration models
+│       ├── __init__.py
+│       ├── environment.py         # Working directory & file structure
+│       ├── epics.py               # EPICS process variable models
+│       ├── parameters.py          # Run settings & metadata models
+│       ├── serval.py              # SERVAL software configuration models
+│       └── serval.notes           # SERVAL API documentation
+│
+├── services/                        # Service Layer - External API communication
+│   ├── __init__.py
+│   ├── serval_client.py            # SERVAL HTTP API client
+│   ├── zaber_client.py             # Zaber motion control client
+│   └── epics_client.py             # EPICS process variable client
+│
+├── controllers/                     # Controller Layer - Business logic orchestration
+│   ├── __init__.py
+│   ├── acquisition_controller.py   # Main acquisition orchestrator
+│   ├── calibration_controller.py   # Detector calibration workflows
+│   └── motion_controller.py        # Motion control workflows
+│
+├── factories/                       # Factory Layer - Object creation & configuration
+│   ├── __init__.py
+│   ├── config_factory.py          # Configuration management & validation
+│   └── client_factory.py          # Service client creation & initialization
+│
+├── workflows/                       # Workflow Layer - Complete procedures
+│   ├── __init__.py
+│   ├── standard_acquisition.py     # Standard measurement workflows
+│   ├── calibration_workflows.py    # Complete calibration procedures
+│   └── scan_workflows.py           # Multi-position scanning workflows
+│
+└── legacy/                          # Legacy support during transition
+    ├── configure.py                # Original configuration management
+    ├── initialize.py               # Original system initialization
+    ├── calibrate.py                # Original calibration routines
+    ├── serval.py                   # Original SERVAL interface
+    ├── setup.py                    # Original setup procedures
+    └── zaber.py                    # Original Zaber motor interface
 ```
+
+## Architecture Layers
+
+The module follows a layered architecture pattern that promotes separation of concerns, testability, and maintainability:
+
+### Models Layer (Data Structure & Validation)
+**Purpose**: Pure data validation and structure definition using Pydantic models
+- **Location**: `models/`
+- **Responsibilities**: Schema validation, type safety, serialization/deserialization
+- **Dependencies**: None (pure data models)
+
+### Services Layer (External Communication)
+**Purpose**: Direct communication with external systems and APIs
+- **Location**: `services/`
+- **Responsibilities**: HTTP clients, device drivers, protocol implementations
+- **Dependencies**: Models for request/response validation
+
+### Controllers Layer (Business Logic)
+**Purpose**: Orchestrate services to implement business workflows
+- **Location**: `controllers/`
+- **Responsibilities**: Coordinate multiple services, implement acquisition logic
+- **Dependencies**: Services and Models
+
+### Factories Layer (Object Creation)
+**Purpose**: Create and configure objects with proper dependency injection
+- **Location**: `factories/`
+- **Responsibilities**: Configuration management, service instantiation
+- **Dependencies**: Models, Services, Controllers
+
+### Workflows Layer (Complete Procedures)
+**Purpose**: End-to-end procedures that users directly interact with
+- **Location**: `workflows/`
+- **Responsibilities**: Complete measurement workflows, user-facing APIs
+- **Dependencies**: All lower layers
 
 ## Core Components
 
-### Configuration Management
+### Data Models (`models/`)
 
-#### `schema.py` - Master Configuration Schema
+#### Master Configuration Schema (`schema.py`)
 - **Purpose**: Define the complete system configuration as a unified data structure
 - **Focus**: Type safety, validation, and structural integrity of all settings
 - **Key Class**: `Default` - combines all software and hardware configurations
@@ -56,153 +117,252 @@ Default
     └── log_level: str
 ```
 
-#### `configure.py` - Configuration Manager
-- Create, modify, validate, and persist configuration objects
-- Load/save configurations from JSON/YAML files
-- Provides `ConfigurationManager` class for managing all configuration aspects
-
-#### `initialize.py` - System Initialization
-- Transform configurations into operational system state
-- Create directories, setup logging, initialize hardware connections
-- Accepts `Default` configuration objects and makes them operational
-
-#### `run.py` - Acquisition Execution Engine
-- Manages acquisition sequences, timing, and synchronization
-- Handles error recovery and graceful shutdown procedures
-- Provides unified interface for executing configured acquisition workflows
-
-### Software Integration
-
-#### `serval.py` - Serval Server Communication
-- Interface for communicating with Serval data acquisition server
-- Handles server connection, data streaming, and control commands
-
-### `epics.py` - EPICS communication 
-- Interface for communicating with various EPICS channels. 
-- Monitoring for acquisition control via EPICS
-
-### Hardware Integration
-
-#### `tpx3Cam.py` - Camera Interface (Evenything not Serval)
-- Interface for TPX3 Timepix3 detector and SPIDR readout system
-- Handles detector configuration, acquisition timing, and data readout
-- Manages pixel matrix settings, bias voltages, and threshold configurations
-- Controls acquisition modes (TOT, TOA, event-driven, continuous)
-
-#### `zaber.py` - Motor Controller Interface  
-- Control Zaber linear actuators and rotation stages
-- Motor positioning, velocity control, and coordinate system management
-
-#### `calibrate.py` - Calibration Routines
-- Detector calibration procedures
-- Energy calibration and geometric corrections
-
-### Data Models
-
 #### Software Configuration Models (`models/software/`)
 - **`environment.py`**: `WorkingDir` - Directory structure and file organization
-- **`serval.py`**: `ServalConfig` - Server connection parameters
+- **`serval.py`**: Multiple models for SERVAL API endpoints and configurations
 - **`parameters.py`**: `RunSettings` - Acquisition run parameters and metadata
 - **`epics.py`**: `EPICSConfig` - EPICS process variable configurations
 
 #### Hardware Configuration Models (`models/hardware/`)
-- **`tpx3Cam.py`**: `HardwareConfig` - TPX3 detector and SPIDR readout settings
+- **`tpx3Cam.py`**: Complete TPX3 detector and SERVAL API models for detector control
 - **`zabers.py`**: `ZaberConfig` - Motor controller configuration and limits
 
-## Usage Workflow
+### Service Layer (`services/`)
 
-### 1. Configure System
+#### SERVAL API Client (`serval_client.py`)
+- **Purpose**: Direct HTTP communication with SERVAL acquisition server
+- **Features**: Type-safe API calls using Pydantic models for validation
+- **Endpoints**: Server control, detector management, measurement control, configuration
+
+#### Hardware Clients
+- **`zaber_client.py`**: Direct communication with Zaber motion controllers
+- **`epics_client.py`**: EPICS process variable monitoring and control
+
+### Controller Layer (`controllers/`)
+
+#### Acquisition Controller (`acquisition_controller.py`)
+- **Purpose**: Orchestrate complete acquisition workflows
+- **Features**: Initialize detectors, configure measurements, monitor progress
+- **Integration**: Combines SERVAL, motion control, and EPICS systems
+
+#### Specialized Controllers
+- **`calibration_controller.py`**: Detector calibration and characterization workflows
+- **`motion_controller.py`**: Complex motion sequences and positioning
+
+### Factory Layer (`factories/`)
+
+#### Configuration Factory (`config_factory.py`)
+- **Purpose**: Enhanced configuration management and object creation
+- **Features**: Load/save configurations, create service clients, validate settings
+- **Evolution**: Replaces and enhances original `configure.py` functionality
+
+#### Client Factory (`client_factory.py`)
+- **Purpose**: Create properly configured service clients
+- **Features**: Dependency injection, connection management, error handling
+
+### Workflow Layer (`workflows/`)
+
+#### Standard Acquisition (`standard_acquisition.py`)
+- **Purpose**: Complete end-to-end measurement procedures
+- **Features**: One-function acquisition, error recovery, data validation
+- **Usage**: Primary user interface for common acquisition tasks
+
+#### Specialized Workflows
+- **`calibration_workflows.py`**: Complete calibration procedures
+- **`scan_workflows.py`**: Multi-position scanning with motion control
+
+### Legacy Support (`legacy/`)
+
+During the transition period, original implementations remain available:
+- **`configure.py`**: Original configuration management
+- **`initialize.py`**: Original system initialization  
+- **`serval.py`**: Original SERVAL interface
+- **`calibrate.py`**, **`setup.py`**, **`zaber.py`**: Original hardware interfaces
+
+## Usage Workflows
+
+### Simple Acquisition (New Workflow Layer)
 ```python
-from hermes.acquisition.configure import create_default_config
+from hermes.acquisition.workflows.standard_acquisition import quick_acquisition
 
-# Create configuration manager
-manager = create_default_config()
+# Single-function acquisition - handles everything internally
+result = quick_acquisition(
+    working_dir="/data/experiments/test_run_001",
+    exposure_time=0.1,
+    n_triggers=100,
+    mode="tot"
+)
+```
 
-# Setup components
-manager.setup_environment(
+### Advanced Configuration (Factory Layer)
+```python
+from hermes.acquisition.factories.config_factory import ConfigurationManager
+from hermes.acquisition.controllers.acquisition_controller import AcquisitionController
+
+# Create and customize configuration
+config_manager = ConfigurationManager()
+config_manager.setup_environment(
     path_to_working_dir="/data/experiments",
     run_dir_name="test_run_001"
 )
-manager.setup_serval(host="192.168.1.100", port=8080)
-manager.setup_zabers(port="/dev/ttyUSB0")
+config_manager.setup_serval(host="192.168.1.100", port=8080)
+config_manager.setup_zabers(port="/dev/ttyUSB0")
 
-# Get complete configuration
-config = manager.get_config()  # Returns Default schema object
+# Use controller for fine-grained control
+with AcquisitionController(config_manager) as controller:
+    controller.initialize_detector()
+    controller.setup_acquisition(exposure_time=0.1, n_triggers=100)
+    controller.run_acquisition()
 ```
 
-### 2. Initialize System
+### Service Layer Access (For Advanced Users)
 ```python
-from hermes.acquisition.initialize import initialize_hermes_system
+from hermes.acquisition.services.serval_client import ServalAPIClient
+from hermes.acquisition.models.software.serval import ServalConfig
 
-# Make configuration operational
-runtime = initialize_hermes_system(config)
-# Creates directories, starts logging, initializes hardware
+# Direct SERVAL API access
+serval_config = ServalConfig(host="192.168.1.100", port=8080)
+with ServalAPIClient(serval_config) as client:
+    detector_info = client.get_detector_info()
+    client.connect_detector()
+    client.start_measurement()
 ```
 
-### 3. Execute Acquisition
+### Migration from Legacy Code
 ```python
-from hermes.acquisition.acquire import run_acquisition
+# Legacy approach (still supported)
+from hermes.acquisition.legacy.configure import create_default_config
+from hermes.acquisition.legacy.initialize import initialize_hermes_system
 
-# Run data acquisition with initialized system
-results = run_acquisition(runtime)
+# Gradually migrate to new architecture
+from hermes.acquisition.workflows.standard_acquisition import migrate_from_legacy
+
+# Automatic migration assistance
+new_result = migrate_from_legacy(legacy_config)
 ```
 
 ## Key Features
 
+### Layered Architecture
+- **Clear separation of concerns** across models, services, controllers, factories, and workflows
+- **Dependency injection** through factory pattern for better testability
+- **Backward compatibility** with legacy code during transition period
+
 ### Type Safety and Validation
 - All configurations use Pydantic models for automatic validation
 - Type hints throughout for IDE support and error catching
-- Runtime validation of configuration parameters
+- Runtime validation of configuration parameters and API responses
 
-### Modular Architecture  
+### SERVAL Integration
+- **Complete API coverage** with type-safe Pydantic models matching SERVAL JSON schemas
+- **Automatic request/response validation** for all SERVAL endpoints
+- **High-level orchestration** combining detector control, measurement, and file management
+
+### Modular Hardware Support
 - Clear separation between software and hardware components
 - Optional hardware components for software-only testing
-- Extensible design for adding new hardware types
+- Extensible design for adding new hardware types (cameras, motion controllers, etc.)
 
-### Configuration Persistence
+### Configuration Management
 - Save/load configurations as JSON or YAML files
 - Version-controlled configuration management
-- Easy deployment of standardized configurations
+- Template-based configuration for common acquisition types
 
-### Comprehensive Logging
-- Centralized logging with loguru for structured output
-- Configurable log levels and file output
-- Integration with directory structure for organized log files
+### Comprehensive Error Handling
+- Graceful error recovery in controllers and workflows
+- Detailed logging with context at each layer
+- Service health monitoring and connection management
+
+### Testing & Development
+- **Unit testable components** at each layer with clear interfaces
+- **Mock services** for testing without hardware
+- **Integration testing** support with real hardware
 
 ## Development Status
 
-### Implemented
-- ✅ Configuration schema architecture
-- ✅ Directory management and validation
-- ✅ Logging system integration
-- ✅ Basic Pydantic model framework
+### Implemented ✅
+- **Models Layer**: Complete Pydantic models for SERVAL API and hardware configuration
+- **Configuration Schema**: Unified `Default` schema combining all system components
+- **Directory Management**: Working directory structure and validation
+- **Logging System**: Centralized logging with loguru integration
+- **SERVAL Models**: Complete type-safe models matching SERVAL API endpoints
 
-### In Progress  
-- 🔄 Serval server integration
-- 🔄 Zaber motor controller implementation
-- 🔄 Hardware initialization routines
-- 🔄 EPICS process variable integration
+### In Progress 🔄
+- **Services Layer**: SERVAL HTTP client, Zaber motion client, EPICS client implementation
+- **Controllers Layer**: Acquisition controller and workflow orchestration
+- **Factory Layer**: Enhanced configuration management and service instantiation
+- **Legacy Migration**: Gradual transition from existing implementation
 
-### Planned
-- 📋 Complete acquisition control logic
-- 📋 Calibration procedure implementation
-- 📋 Error handling and recovery
-- 📋 Performance optimization
+### Planned 📋
+- **Workflows Layer**: Complete end-to-end acquisition procedures
+- **Calibration System**: Automated detector calibration workflows
+- **Scanning Capabilities**: Multi-position acquisition with motion control
+- **Error Recovery**: Advanced error handling and system recovery
+- **Performance Optimization**: Streaming data handling and memory management
+- **Testing Suite**: Comprehensive unit and integration testing
 
 ## Dependencies
 
-- **Pydantic**: Configuration validation and serialization
-- **Loguru**: Advanced logging functionality
+### Core Dependencies
+- **Pydantic v2**: Configuration validation and serialization with type safety
+- **Loguru**: Advanced logging functionality with structured output
 - **PyYAML**: YAML configuration file support
-- **Pathlib**: Modern path handling
+- **Pathlib**: Modern path handling and directory management
+
+### Service Layer Dependencies
+- **httpx**: Async HTTP client for SERVAL API communication
+- **pyepics**: EPICS process variable monitoring and control (optional)
+- **zaber-motion**: Zaber motion controller communication (optional)
+
+### Development Dependencies
+- **pytest**: Unit and integration testing framework
+- **pytest-asyncio**: Async testing support
+- **httpx-mock**: HTTP client mocking for testing
+- **coverage**: Test coverage analysis
 
 ## Contributing
 
-When adding new functionality:
+When adding new functionality to the layered architecture:
 
-1. **Configuration**: Add new models to appropriate `models/software/` or `models/hardware/` directories
-2. **Integration**: Update `schema.py` to include new configuration components  
-3. **Initialization**: Add initialization logic to `initialize.py`
-4. **Documentation**: Update this README and add docstrings
+### 1. **Models Layer** - Adding New Data Models
+- Add new Pydantic models to appropriate `models/software/` or `models/hardware/` directories
+- Update `schema.py` to include new configuration components in the `Default` schema
+- Ensure all models have proper validation and type hints
+- Add model documentation and examples
 
-Follow the established patterns for type hints, validation, and error handling.
+### 2. **Services Layer** - Adding New External Integrations
+- Create new service clients in `services/` following the established pattern
+- Use Pydantic models for all request/response validation
+- Implement proper error handling and connection management
+- Add comprehensive logging for debugging
+
+### 3. **Controllers Layer** - Adding New Business Logic
+- Create controllers in `controllers/` that orchestrate multiple services
+- Focus on business logic rather than protocol implementation
+- Implement proper error recovery and state management
+- Use dependency injection for testability
+
+### 4. **Factories Layer** - Adding Configuration Support
+- Extend `config_factory.py` for new configuration requirements
+- Add client creation methods to `client_factory.py` 
+- Ensure proper validation and default handling
+- Support both programmatic and file-based configuration
+
+### 5. **Workflows Layer** - Adding User-Facing Procedures
+- Create complete end-to-end procedures in `workflows/`
+- Provide simple APIs that hide complexity from users
+- Implement comprehensive error handling and recovery
+- Add progress monitoring and user feedback
+
+### Testing Strategy
+- **Unit Tests**: Test each layer independently with mocking
+- **Integration Tests**: Test layer interactions with real or simulated services
+- **End-to-End Tests**: Test complete workflows with hardware simulation
+- **Documentation Tests**: Ensure all examples in README work correctly
+
+### Code Standards
+- Follow the established patterns for type hints, validation, and error handling
+- Use Pydantic models for all data validation at layer boundaries
+- Implement proper logging with context information
+- Add comprehensive docstrings with examples
+- Maintain backward compatibility during transitions
