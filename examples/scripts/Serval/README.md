@@ -1,52 +1,135 @@
-# Serval Example Scripts
+# SERVAL Examples
 
-This directory contains example scripts demonstrating how to use the HERMES Serval integration.
+This directory contains examples for working with SERVAL using the HERMES acquisition system.
 
 ## Files
 
-- `serval_example.py` - Main example script showing Serval lifecycle
-- `example_config.ini` - Example configuration file
-- `README.md` - This file
+### `initial_serval_check.py`
+A complete, production-ready example that demonstrates:
+- Automatic SERVAL discovery and startup
+- Camera connection timeout handling
+- Health checking and status monitoring
+- Graceful shutdown
 
-## Usage
+This is the **recommended starting point** for new users.
 
-### Basic Example
+### `example_config.ini` *(existing)*
+Configuration file example for SERVAL settings.
 
-Run the basic example that starts Serval, waits 5 seconds, then stops it:
+## Quick Start
 
+### Basic Usage
 ```bash
-cd /Users/alexlong/Programs/HERMES/examples/scripts/Serval/
-python serval_example.py
+# Start SERVAL with auto-discovery and default settings
+python initial_serval_check.py
+
+# Check if SERVAL can be discovered without starting
+python initial_serval_check.py --check-only
 ```
 
-### Prerequisites
+### Advanced Usage
+```bash
+# Start with specific SERVAL path
+python initial_serval_check.py --serval-path /path/to/serval
 
-1. **Java Runtime Environment** - Serval 2.1.6 requires Java to run
-2. **Serval JAR file** - You need the `serv-2.1.6.jar` file in the serval directory
-3. **Python dependencies** - Ensure you have the required Python packages installed
+# Start without requiring camera connection
+python initial_serval_check.py --no-camera
 
-### Expected Output
+# Start with custom timeout and port
+python initial_serval_check.py --timeout 60 --port 8081
+```
 
-When you run the example, you should see output similar to:
+## Key Features
+
+### 🔍 **Automatic Discovery**
+- Searches common installation locations (`/opt/serval/`, `~/Programs/TPX3Cam/Serval/`, etc.)
+- Supports user-provided paths
+- Validates SERVAL installations and Java requirements
+
+### ⏱️ **Camera Connection Timeout**
+- Automatically shuts down SERVAL if camera doesn't connect within timeout (default: 30s)
+- Prevents endless retry loops when no camera is connected
+- Configurable timeout duration
+
+### 🏥 **Health Monitoring**
+- API responsiveness checks
+- Camera connection status monitoring
+- Response time measurement
+
+### 🛡️ **Error Handling**
+- Graceful error handling and reporting
+- Automatic cleanup on failures
+- Clear status messages and recommendations
+
+## Architecture Integration
+
+This example uses the layered HERMES architecture:
+
+- **Models Layer**: `ServalConfig` for type-safe configuration
+- **Services Layer**: `ServalProcessManager` for process lifecycle
+- **Factories Layer**: `ServalFactory` for instantiation and validation
+
+## Requirements
+
+- Python 3.8+
+- Java Runtime Environment (for running SERVAL)
+- SERVAL installation (auto-discovered or user-provided path)
+
+## Expected Output
 
 ```
-2025-08-17 13:30:00,123 - __main__ - INFO - === Serval Example Script Starting ===
-2025-08-17 13:30:00,124 - __main__ - INFO - Creating Serval configuration...
-2025-08-17 13:30:00,125 - __main__ - INFO - Initializing TPX3 Serval interface...
-2025-08-17 13:30:00,126 - __main__ - INFO - Starting Serval application...
-2025-08-17 13:30:01,200 - __main__ - INFO - ✅ Serval started successfully!
-2025-08-17 13:30:01,201 - __main__ - INFO - Serval status: True
-2025-08-17 13:30:01,201 - __main__ - INFO - Waiting for 5 seconds...
-2025-08-17 13:30:01,201 - __main__ - INFO -   5 seconds remaining...
-2025-08-17 13:30:02,202 - __main__ - INFO -   4 seconds remaining...
-2025-08-17 13:30:03,203 - __main__ - INFO -   3 seconds remaining...
-2025-08-17 13:30:04,204 - __main__ - INFO -   2 seconds remaining...
-2025-08-17 13:30:05,205 - __main__ - INFO -   1 seconds remaining...
-2025-08-17 13:30:06,206 - __main__ - INFO - Wait complete!
-2025-08-17 13:30:06,206 - __main__ - INFO - Stopping Serval application...
-2025-08-17 13:30:06,300 - __main__ - INFO - ✅ Serval stopped successfully!
-2025-08-17 13:30:06,300 - __main__ - INFO - === Serval Example Script Complete ===
+🔬 HERMES SERVAL Example
+========================================
+🚀 Starting SERVAL...
+   Camera timeout: 30.0s
+   Camera required: Yes
+   Port: 8080
+✅ SERVAL started successfully!
+
+🔍 Checking SERVAL health...
+   Status: ✅ Healthy
+   API URL: http://localhost:8080
+   Response Time: 25.3ms
+   Camera Connected: ❌ No
+
+⏳ SERVAL is running. Waiting 10 seconds...
+   (In a real application, you would perform your acquisition tasks here)
+
+🔄 Final health check...
+   Final status: ✅ Healthy
+
+🛑 Stopping SERVAL...
+✅ SERVAL stopped successfully
+
+✨ Example completed successfully!
 ```
+
+## Troubleshooting
+
+### Common Issues
+
+1. **"No valid SERVAL installations found"**
+   - Install SERVAL in `/opt/serval/` or use `--serval-path`
+   - Check that JAR files exist in the SERVAL directory
+
+2. **"Java not found or not working"**
+   - Install Java JRE/JDK
+   - Ensure `java` command is in your PATH
+
+3. **"Camera connection timeout"**
+   - This is expected behavior when no camera is connected
+   - Use `--no-camera` flag if you don't need camera connection
+
+4. **"Port already in use"**
+   - Another SERVAL instance may be running
+   - Use `--port` to specify a different port
+   - Check for existing processes: `lsof -i :8080`
+
+### Getting Help
+
+- Use `--help` flag for command line options
+- Check the HERMES documentation for detailed architecture information
+- Review the factory and service layer code for advanced customization
 
 ## Configuration
 
