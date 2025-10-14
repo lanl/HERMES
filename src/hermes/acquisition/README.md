@@ -62,37 +62,63 @@ src/hermes/acquisition/
 
 ## Architecture Layers
 
-The module follows a layered architecture pattern that promotes separation of concerns, testability, and maintainability:
+The acquisition module implements a layered architecture pattern that promotes separation of concerns, testability, and maintainability. Each layer has distinct responsibilities and clear interfaces:
 
-### Models Layer (Data Structure & Validation)
+### Quick Reference
+- **Models**: Data structure definition and validation (*"What does the data look like?"*)
+- **Services**: External system communication and integration (*"How do we communicate with external systems?"*)
+- **Factories**: Object creation and configuration management (*"How do we build and configure system components?"*)
+- **Controllers**: Business logic orchestration and workflow coordination (*"How do we orchestrate services to accomplish complex goals?"*)
+- **Workflows**: Complete end-to-end user procedures (*"What complete tasks can users accomplish?"*)
+
+### Models Layer (`models/`) - Data Structure & Validation
 **Purpose**: Pure data validation and structure definition using Pydantic models
-- **Location**: `models/`
-- **Responsibilities**: Schema validation, type safety, serialization/deserialization
-- **Dependencies**: None (pure data models)
 
-### Services Layer (External Communication)
-**Purpose**: Direct communication with external systems and APIs
-- **Location**: `services/`
-- **Responsibilities**: HTTP clients, device drivers, protocol implementations
+**Key Characteristics**:
+- Pure data models with no external dependencies
+- Comprehensive validation rules and type constraints
+- Schema validation, type safety, serialization/deserialization
+- **Examples**: `ServalConfig`, `DetectorConfig`, schema validation, hardware specifications
+
+### Services Layer (`services/`) - External Communication
+**Purpose**: Direct communication with external systems, APIs, and hardware
+
+**Key Characteristics**:
+- Protocol implementations (HTTP, serial, EPICS)
+- Low-level hardware drivers and API clients
+- Connection management and error handling
 - **Dependencies**: Models for request/response validation
+- **Examples**: SERVAL HTTP API calls, EPICS process variable reads, Zaber motor commands
 
-### Controllers Layer (Business Logic)
-**Purpose**: Orchestrate services to implement business workflows
-- **Location**: `controllers/`
-- **Responsibilities**: Coordinate multiple services, implement acquisition logic
-- **Dependencies**: Services and Models
+### Factories Layer (`factories/`) - Object Creation & Configuration
+**Purpose**: Create properly configured objects with dependency injection and lifecycle management
 
-### Factories Layer (Object Creation)
-**Purpose**: Create and configure objects with proper dependency injection
-- **Location**: `factories/`
-- **Responsibilities**: Configuration management, service instantiation
+**Key Characteristics**:
+- Configuration loading and validation
+- Service client instantiation with proper settings
+- Dependency injection and resource management
 - **Dependencies**: Models, Services, Controllers
+- **Examples**: Creating validated SERVAL clients, loading configurations from files, setting up logging
 
-### Workflows Layer (Complete Procedures)
-**Purpose**: End-to-end procedures that users directly interact with
-- **Location**: `workflows/`
-- **Responsibilities**: Complete measurement workflows, user-facing APIs
+### Controllers Layer (`controllers/`) - Business Logic Orchestration
+**Purpose**: Coordinate multiple services to implement cohesive business workflows
+
+**Key Characteristics**:
+- Multi-service coordination and sequencing
+- Business rule implementation and acquisition logic
+- Error recovery and state management
+- **Dependencies**: Services and Models
+- **Examples**: Initialize detector + configure SERVAL + start acquisition, calibration sequences
+
+### Workflows Layer (`workflows/`) - End-to-End User Procedures
+**Purpose**: Complete procedures that users directly interact with for accomplishing scientific tasks
+
+**Key Characteristics**:
+- High-level user-facing APIs
+- Complete scientific procedures from start to finish
+- Comprehensive error handling and user feedback
 - **Dependencies**: All lower layers
+- **Examples**: `quick_acquisition()`, `calibrate_detector()`, `run_scan()`, measurement campaigns
 
 ## Core Components
 
