@@ -7,7 +7,7 @@ from typing import Dict, Any, Optional, Union, Type, TypeVar
 from pydantic import ValidationError
 
 from hermes.acquisition.utils import save_pydantic_model
-from hermes.acquisition.models.schema import Default as HermesDefault
+from hermes.acquisition.models.schema import Default as Default
 from hermes.acquisition.models.software.environment import WorkingDir
 from hermes.acquisition.models.software.serval import ServalConfig
 from hermes.acquisition.models.software.parameters import RunSettings
@@ -27,15 +27,19 @@ class ConfigurationManager:
     Can work with individual models or default HERMES schema.
     """
     
-    def __init__(self, config: Optional[HermesDefault] = None):
+    def __init__(self, config: Optional[Default] = None):
         """
         Initialize configuration manager.
         
         Args:
             config: Optional pre-existing configuration. If None, creates default.
         """
-        self.config = config or HermesDefault()
-        logger.info("ConfigurationManager initialized")
+        try:
+            self.config = config or Default()
+            logger.info("ConfigurationManager initialized")
+        except ValidationError as e:
+            logger.error(f"Default configuration validation failed: {e}")
+            raise RuntimeError("Failed to initialize ConfigurationManager with a valid Default configuration") from e
         
     # ========================================================================
     # Setup and Creation Methods
@@ -182,7 +186,7 @@ class ConfigurationManager:
             raise
 
             
-    def load_from_file(self, config_file: Union[str, Path]) -> HermesDefault:
+    def load_from_file(self, config_file: Union[str, Path]) -> Default:
         """
         Load configuration from file.
         
@@ -190,12 +194,12 @@ class ConfigurationManager:
             config_file: Path to configuration file
             
         Returns:
-            HermesDefault: Loaded configuration
+            Default: Loaded configuration
         """
         from hermes.acquisition.utils import load_pydantic_model
         
         try:
-            self.config = load_pydantic_model(HermesDefault, config_file)
+            self.config = load_pydantic_model(Default, config_file)
             logger.success(f"Configuration loaded from {config_file}")
             
             return self.config
@@ -204,7 +208,7 @@ class ConfigurationManager:
             logger.error(f"Failed to load configuration from {config_file}: {e}")
             raise
             
-    def load_from_dict(self, config_dict: Dict[str, Any]) -> HermesDefault:
+    def load_from_dict(self, config_dict: Dict[str, Any]) -> Default:
         """
         Load configuration from dictionary.
         
@@ -212,10 +216,10 @@ class ConfigurationManager:
             config_dict: Configuration dictionary
             
         Returns:
-            HermesDefault: Loaded configuration
+            Default: Loaded configuration
         """
         try:
-            self.config = HermesDefault.model_validate(config_dict)
+            self.config = Default.model_validate(config_dict)
             logger.success("Configuration loaded from dictionary")
             return self.config
             
@@ -239,7 +243,7 @@ class ConfigurationManager:
         """
         return self.config.model_dump(exclude_none=exclude_none)
         
-    def get_config(self) -> HermesDefault:
+    def get_config(self) -> Default:
         """Get the current configuration."""
         return self.config
         
@@ -252,16 +256,16 @@ class ConfigurationManager:
         """
         try:
             # Re-validate the current config
-            HermesDefault.model_validate(self.config.model_dump())
+            Default.model_validate(self.config.model_dump())
             logger.info("Configuration validation successful")
             return True
         except ValidationError as e:
             logger.error(f"Configuration validation failed: {e}")
             raise
             
-    def reset_to_defaults(self) -> HermesDefault:
+    def reset_to_defaults(self) -> Default:
         """Reset configuration to defaults."""
-        self.config = HermesDefault()
+        self.config = Default()
         logger.info("Configuration reset to defaults")
         return self.config
         
