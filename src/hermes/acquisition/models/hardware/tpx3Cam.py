@@ -137,7 +137,7 @@ class DACs(BaseModel):
 # Detector configuration (read/write)
 # ---------------------------------------------------------------------------
 
-TriggerMode = Literal[
+TriggerModeType = Literal[
     "PEXSTART_NEXSTOP",
     "NEXSTART_PEXSTOP",
     "PEXSTART_TIMERSTOP",
@@ -148,8 +148,8 @@ TriggerMode = Literal[
     "SOFTWARESTART_SOFTWARESTOP",
 ]
 
-Polarity = Literal["Positive", "Negative"]
-ChainMode = Literal["NONE", "LEADER", "FOLLOWER"]
+PolarityType = Literal["Positive", "Negative"]
+ChainModeType = Literal["NONE", "LEADER", "FOLLOWER"]
 
 
 class DetectorConfig(BaseModel):
@@ -161,11 +161,11 @@ class DetectorConfig(BaseModel):
     # Bias
     BiasVoltage: float = Field(default=40.0, ge=0, le=140)
     BiasEnabled: bool = Field(default=True)
-    Polarity: Polarity = Field(default="Positive")
+    Polarity: PolarityType = Field(default="Positive")
 
     # Clock and sync
     PeriphClk80: bool = Field(default=True, description="80 MHz readout for single-chip TPX3")
-    ChainMode: ChainMode = Field(default="NONE")
+    ChainMode: ChainModeType = Field(default="NONE")
 
     # Trigger IO
     TriggerIn: int = Field(default=0, ge=0, le=6)
@@ -175,7 +175,7 @@ class DetectorConfig(BaseModel):
     TriggerPeriod: float = Field(default=0.15, gt=0, le=50.0)
     ExposureTime: float = Field(default=0.10, gt=0, le=10.0)
     TriggerDelay: float = Field(default=0.0, ge=0, le=1.0)
-    TriggerMode: TriggerMode = Field(default="AUTOTRIGSTART_TIMERSTOP")
+    TriggerMode: TriggerModeType = Field(default="AUTOTRIGSTART_TIMERSTOP")
     nTriggers: int = Field(default=11, ge=0)
 
     # TDC and timestamps
