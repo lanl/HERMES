@@ -186,6 +186,12 @@ class ServalConfig(BaseModel):
     port: int = Field(default=8080, description="Port number for the Serval server.")
     version: str = Field(default="3.3.0", description="SERVAL software version for reference.")
 
+    # HTTP client settings
+    timeout: float = Field(default=10.0, description="HTTP request timeout in seconds")
+    max_retries: int = Field(default=3, description="Maximum number of HTTP request retries")
+    retry_delay: float = Field(default=1.0, description="Delay between HTTP retries in seconds")
+    health_check_interval: float = Field(default=30.0, description="Health check interval in seconds")
+
     # Optional paths to local resources. These are not sent to SERVAL.
     path_to_serval: Optional[str] = Field(default=None, description="Path to the serval directory.")
     path_to_serval_config_files: Optional[str] = Field(default=None, description="Path to config files directory.")
