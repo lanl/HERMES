@@ -263,7 +263,7 @@ class ServalFactory:
         self,
         serval_config: Optional[ServalConfig] = None,
         process_config: Optional[ServalProcessConfig] = None,
-        validate_before_creation: bool = True,
+        validate_before_creation: bool = False,  # Changed default to False - process manager does its own validation
         **config_overrides
     ) -> ServalProcessManager:
         """
