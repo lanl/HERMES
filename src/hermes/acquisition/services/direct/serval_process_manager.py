@@ -599,8 +599,10 @@ class ServalProcessManager(ProcessManagedService):
         Returns:
             True if API returns welcome message
         """
+        # Create session if not exists
         if self._session is None:
-            return False
+            timeout = aiohttp.ClientTimeout(total=self._request_timeout)
+            self._session = aiohttp.ClientSession(timeout=timeout)
         
         try:
             url = f"http://{self.serval_config.host}:{self.serval_config.port}/"
@@ -608,7 +610,9 @@ class ServalProcessManager(ProcessManagedService):
                 if response.status == 200:
                     text = await response.text()
                     # SERVAL 2.1.6 should return some HTML content
-                    return len(text) > 0 and ("serval" in text.lower() or "timepix" in text.lower() or "<html>" in text.lower())
+                    # Check for case-insensitive "serval" or other indicators
+                    text_lower = text.lower()
+                    return len(text) > 0 and ("serval" in text_lower or "timepix" in text_lower or "<html>" in text_lower or "amsterdam scientific" in text_lower)
                 return False
         except Exception as e:
             logger.debug(f"SERVAL API check failed: {e}")
@@ -677,9 +681,10 @@ class ServalProcessManager(ProcessManagedService):
             installations = await discover_serval_installations()
             result["installations_found"] = [str(inst) for inst in installations]
             
-            # Try to find JAR
+            # Try to find JAR using already discovered installations
             jar_path = await find_serval_jar(
-                user_provided_path=Path(self.serval_config.path_to_serval) if self.serval_config.path_to_serval else None
+                user_provided_path=Path(self.serval_config.path_to_serval) if self.serval_config.path_to_serval else None,
+                discovered_installations=installations  # Pass the installations to avoid re-discovery
             )
             
             if jar_path:
@@ -821,9 +826,18 @@ class ServalProcessManager(ProcessManagedService):
                     await asyncio.wait_for(self._process.wait(), timeout=10.0)
                     logger.info("SERVAL shut down gracefully")
                     self._process = None
+                    # Clean up HTTP session after graceful shutdown
+                    if self._session:
+                        await self._session.close()
+                        self._session = None
                     return
                 except asyncio.TimeoutError:
                     logger.warning("SERVAL graceful shutdown timed out")
+        
+        # Clean up HTTP session before forceful termination
+        if self._session:
+            await self._session.close()
+            self._session = None
         
         # Fall back to parent class termination
         await super().stop_process()
@@ -956,13 +970,15 @@ async def discover_serval_installations() -> List[ServalVersion]:
 
 
 async def find_serval_jar(user_provided_path: Optional[Path] = None, 
-                         search_paths: List[Path] = None) -> Optional[Path]:
+                         search_paths: List[Path] = None,
+                         discovered_installations: Optional[List[ServalVersion]] = None) -> Optional[Path]:
     """
     Find SERVAL JAR file implementing the 4-step discovery process.
     
     Args:
         user_provided_path: User-specified path to SERVAL (step 2)
         search_paths: Additional paths to search
+        discovered_installations: Pre-discovered installations to avoid re-discovery
         
     Returns:
         Path to SERVAL JAR file if found, None otherwise
@@ -977,8 +993,11 @@ async def find_serval_jar(user_provided_path: Optional[Path] = None,
         else:
             logger.warning(f"User-provided SERVAL path is invalid: {user_provided_path}")
     
-    # Step 1: Discover installations automatically
-    installations = await discover_serval_installations()
+    # Step 1: Use pre-discovered installations or discover them
+    if discovered_installations is not None:
+        installations = discovered_installations
+    else:
+        installations = await discover_serval_installations()
     
     if installations:
         # Use the first valid installation (could add version preference logic here)
