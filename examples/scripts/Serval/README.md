@@ -2,21 +2,20 @@
 
 This directory contains examples for working with SERVAL using the HERMES acquisition system.
 
-## Files
+## Overview
 
-### `initial_serval_check.py`
-A complete, production-ready example that demonstrates:
-- Automatic SERVAL discovery and startup
-- Camera connection timeout handling
-- Health checking and status monitoring
-- Graceful shutdown
+The examples demonstrate different aspects of SERVAL integration:
+- **Process lifecycle management** (startup, monitoring, shutdown)
+- **HTTP API integration** (dashboard retrieval, data export)
+- **Error handling and resource cleanup**
+- **Production-ready patterns and best practices**
 
-This is the **recommended starting point** for new users.
+---
 
-### `example_config.ini` *(existing)*
-Configuration file example for SERVAL settings.
+## Example 1: `initial_serval_check.py`
 
-## Quick Start
+### Purpose
+A complete, production-ready example that demonstrates SERVAL process lifecycle management with automatic discovery, camera timeout handling, and health monitoring. This is the **recommended starting point** for new users.
 
 ### Basic Usage
 ```bash
@@ -39,31 +38,71 @@ python initial_serval_check.py --no-camera
 python initial_serval_check.py --timeout 60 --port 8081
 ```
 
-## Key Features
+### Key Features
+- **Automatic Discovery**: Searches common installation locations and validates SERVAL installations
+- **Camera Connection Timeout**: Automatically shuts down SERVAL if camera doesn't connect within timeout (default: 30s)
+- **Health Monitoring**: API responsiveness checks, camera connection status monitoring, response time measurement
+- **Error Handling**: Graceful error handling and reporting with automatic cleanup on failures
 
-### 🔍 **Automatic Discovery**
-- Searches common installation locations (`/opt/serval/`, `~/Programs/TPX3Cam/Serval/`, etc.)
-- Supports user-provided paths
-- Validates SERVAL installations and Java requirements
+### What You Learn
+- How to implement SERVAL discovery and validation
+- Process lifecycle management patterns
+- Camera timeout handling for production environments
+- Health checking and monitoring techniques
+- Resource cleanup and graceful shutdown
 
-### ⏱️ **Camera Connection Timeout**
-- Automatically shuts down SERVAL if camera doesn't connect within timeout (default: 30s)
-- Prevents endless retry loops when no camera is connected
-- Configurable timeout duration
+---
 
-### 🏥 **Health Monitoring**
-- API responsiveness checks
-- Camera connection status monitoring
-- Response time measurement
+## Example 2: `serval_http_demo.py`
 
-### 🛡️ **Error Handling**
-- Graceful error handling and reporting
-- Automatic cleanup on failures
-- Clear status messages and recommendations
+### Purpose
+A comprehensive demonstration of SERVAL HTTP API integration that showcases dashboard data retrieval, JSON export, and complete workflow management. This example is **ideal for understanding HTTP API capabilities** and data retrieval patterns.
+
+### Basic Usage
+```bash
+# Run HTTP API demo with dashboard information
+python serval_http_demo.py
+
+# Run HTTP demo with verbose JSON structure output
+python serval_http_demo.py --verbose
+```
+
+### Advanced Usage
+```bash
+# HTTP demo with custom port and verbose output
+python serval_http_demo.py --port 8081 --verbose
+
+# Save dashboard to custom filename
+# (modify script to change default filename)
+```
+
+### Key Features
+- **Complete Lifecycle Management**: Startup → connection → data retrieval → shutdown
+- **Dashboard Information Retrieval**: Server info, detector status, measurement data, disk space, notifications
+- **JSON Data Export**: Save dashboard data to files for persistence and analysis
+- **Formatted Output**: Human-readable display with detailed server, detector, and measurement information
+- **Resource Cleanup**: Proper session management and graceful shutdown
+
+### What You Learn
+- HTTP API integration patterns with SERVAL
+- Dashboard data parsing and presentation
+- JSON export and data persistence techniques
+- Session management and resource cleanup
+- Error handling for HTTP operations
+- Structured data display and formatting
+
+---
+
+## Supporting Files
+
+### `example_config.ini` *(existing)*
+Configuration file example for SERVAL settings.
+
+---
 
 ## Architecture Integration
 
-This example uses the layered HERMES architecture:
+These examples use the layered HERMES architecture:
 
 - **Models Layer**: `ServalConfig` for type-safe configuration
 - **Services Layer**: `ServalProcessManager` for process lifecycle
@@ -75,8 +114,9 @@ This example uses the layered HERMES architecture:
 - Java Runtime Environment (for running SERVAL)
 - SERVAL installation (auto-discovered or user-provided path)
 
-## Expected Output
+## Expected Output Examples
 
+### `initial_serval_check.py` Output
 ```
 🔬 HERMES SERVAL Example
 ========================================
@@ -102,6 +142,49 @@ This example uses the layered HERMES architecture:
 ✅ SERVAL stopped successfully
 
 ✨ Example completed successfully!
+```
+
+### `serval_http_demo.py` Output
+```
+SERVAL HTTP Information Demo
+==================================================
+Starting SERVAL on port 8080...
+SERVAL started successfully on port 8080
+Connecting to SERVAL HTTP API...
+Connected to SERVAL HTTP API
+
+Retrieving Dashboard Information...
+Dashboard retrieved successfully
+
+============================================================
+SERVAL DASHBOARD INFORMATION
+============================================================
+
+SERVER INFO:
+   Software Version: 2.1.6
+   Build Timestamp: 2021/05/21 07:55
+
+DISK SPACE (4 location(s)):
+   1. /
+      Free: 245.2 GB / Total: 494.4 GB (50.4% used)
+   2. /System/Volumes/Data
+      Free: 245.2 GB / Total: 494.4 GB (50.4% used)
+
+CURRENT MEASUREMENT: None active
+DETECTOR: Not connected
+============================================================
+
+Saving dashboard to serval_dashboard_demo.json...
+Dashboard saved to: /Users/alexlong/Programs/HERMES/serval_dashboard_demo.json
+
+Demo completed successfully!
+   SERVAL version: 2.1.6
+   Port: 8080
+   Dashboard keys: ['Server', 'Measurement', 'Detector']
+
+Cleaning up...
+HTTP client disconnected
+SERVAL process stopped
 ```
 
 ## Troubleshooting
@@ -133,26 +216,21 @@ This example uses the layered HERMES architecture:
 
 ## Configuration
 
-The example uses default Serval 2.1.6 settings but you can modify the configuration in the script or use the provided `example_config.ini` file as a template.
+The examples use default SERVAL 2.1.6 settings but you can modify the configuration in the scripts or use the provided `example_config.ini` file as a template.
 
 ### Key Configuration Options
 
-- **httpPort**: Port for Serval HTTP interface (default: 8080)
+- **httpPort**: Port for SERVAL HTTP interface (default: 8080)
 - **spidrNet**: IP address for SPIDR network (default: 192.168.100.10)
 - **httpLog**: Path for HTTP access log (default: /tmp/serval_example.log)
 
-## Troubleshooting
-
-1. **"Java not found"** - Install Java Runtime Environment
-2. **"serv-2.1.6.jar not found"** - Ensure the JAR file is in the correct path
-3. **"Port already in use"** - Change the httpPort in configuration or stop other services using port 8080
-4. **Import errors** - Make sure you're running from the correct directory and the HERMES package is installed
-
 ## Next Steps
 
-After running this basic example, you can:
+After running these examples, you can:
 
-1. Modify the configuration to match your hardware setup
-2. Integrate Serval startup/shutdown into your data acquisition workflows
-3. Use the ServalManager class directly for more advanced control
-4. Add error handling and monitoring specific to your use case
+1. **Modify configurations** to match your hardware setup
+2. **Integrate lifecycle management** into your data acquisition workflows
+3. **Use the factory classes directly** for more advanced control
+4. **Add custom error handling** and monitoring specific to your use case
+5. **Extend the HTTP client** to support additional SERVAL endpoints
+6. **Combine both patterns** for comprehensive SERVAL integration
