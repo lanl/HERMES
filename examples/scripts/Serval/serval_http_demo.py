@@ -232,7 +232,7 @@ class ServalInfoDemo:
         except Exception as e:
             print(f"   Caught expected error: {e}")
     
-    async def save_dashboard_to_file(self, filename: str = "serval_dashboard_demo.json") -> bool:
+    async def save_dashboard_to_file(self, filename: str = "http_demo_results.json") -> bool:
         """
         Save dashboard information to a JSON file.
         
