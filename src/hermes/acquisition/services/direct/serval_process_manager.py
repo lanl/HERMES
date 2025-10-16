@@ -126,7 +126,7 @@ class ServalProcessManager(ProcessManagedService):
     
     async def _discover_serval_jar(self) -> Path:
         """
-        Implement the 4-step SERVAL discovery process.
+        Get the SERVAL JAR path, using cached result if available.
         
         Returns:
             Path to SERVAL JAR file
@@ -134,11 +134,12 @@ class ServalProcessManager(ProcessManagedService):
         Raises:
             ServalProcessError: If no valid SERVAL JAR found
         """
-        # Use cached discovery result if available
+        # Use cached discovery result if available from previous validation
         if self._discovered_jar_path and self._discovered_jar_path.exists():
+            logger.debug(f"Using cached SERVAL JAR path: {self._discovered_jar_path}")
             return self._discovered_jar_path
         
-        logger.info("Starting SERVAL discovery process...")
+        logger.info("Running SERVAL discovery process...")
         
         # Step 1 & 2: Discover SERVAL installations
         jar_path = await find_serval_jar(
@@ -327,7 +328,7 @@ class ServalProcessManager(ProcessManagedService):
             logger.info("SERVAL process is already running")
             return True
         
-        logger.info("Starting SERVAL process with discovery and validation...")
+        logger.info("Starting SERVAL process...")
         
         try:
             # Reset timeout state
@@ -677,21 +678,21 @@ class ServalProcessManager(ProcessManagedService):
             if not result["java_available"]:
                 result["validation_errors"].append("Java not found or not working")
             
-            # Discover installations
+            # Discover installations once
             installations = await discover_serval_installations()
             result["installations_found"] = [str(inst) for inst in installations]
             
-            # Try to find JAR using already discovered installations
+            # Try to find JAR using the discovered installations (avoids re-discovery)
             jar_path = await find_serval_jar(
                 user_provided_path=Path(self.serval_config.path_to_serval) if self.serval_config.path_to_serval else None,
-                discovered_installations=installations  # Pass the installations to avoid re-discovery
+                discovered_installations=installations  # Pass pre-discovered installations
             )
             
             if jar_path:
                 result["jar_found"] = True
                 result["jar_path"] = str(jar_path)
-                self._discovered_jar_path = jar_path
-                logger.info(f"SERVAL validation successful: {jar_path}")
+                self._discovered_jar_path = jar_path  # Cache the result for later use
+                logger.info(f"SERVAL discovery completed successfully - using JAR: {jar_path}")
             else:
                 result["validation_errors"].append("No valid SERVAL JAR file found")
                 
@@ -711,7 +712,7 @@ class ServalProcessManager(ProcessManagedService):
         """
         logger.info("Starting SERVAL with full validation (4-step process)...")
         
-        # Run discovery and validation first
+        # Run discovery and validation first - this caches the result
         validation_result = await self.discover_and_validate_serval()
         
         if not validation_result["jar_found"]:
@@ -720,11 +721,8 @@ class ServalProcessManager(ProcessManagedService):
                 logger.error(f"  - {error}")
             return False
         
-        logger.info("SERVAL discovery completed successfully")
-        logger.info(f"Found installations: {validation_result['installations_found']}")
-        logger.info(f"Using JAR: {validation_result['jar_path']}")
-        
         # Start process with output capture and camera checking
+        # The JAR path is now cached in self._discovered_jar_path
         success = await self.start_process_with_output_capture()
         
         if success:
