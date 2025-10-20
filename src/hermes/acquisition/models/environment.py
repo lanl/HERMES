@@ -13,7 +13,7 @@ from typing import List, Optional
 
 from pydantic import Field, field_validator, model_validator
 
-from .tpx_serval.common import HermesBaseModel, HermesImmutableModel, JsonPath
+from .tpx_serval.common import HermesBaseModel, HermesImmutableModel, JsonPath, Port
 
 _RUN_ID_PATTERN = r"run_\d{3}"
 
@@ -33,7 +33,16 @@ class NetworkEndpoint(HermesBaseModel):
 
     name: str = Field(..., alias="Name", min_length=1, description="Human-readable label (e.g., 'camera').")
     host: str = Field(..., alias="Host", min_length=1, description="Hostname or IP address to reach.")
-    reachable: bool = Field(..., alias="Reachable", description="True when the endpoint responded to the latest probe.")
+    port: Optional[Port] = Field(
+        None,
+        alias="Port",
+        description="Optional TCP port that should be reachable on the host.",
+    )
+    reachable: bool = Field(
+        False,
+        alias="Reachable",
+        description="True when the endpoint responded to the latest probe.",
+    )
     latency_ms: Optional[float] = Field(
         None,
         alias="LatencyMs",
@@ -45,24 +54,47 @@ class NetworkEndpoint(HermesBaseModel):
 class ServalDeployment(HermesImmutableModel):
     """Location of the Serval control application and its resources."""
 
-    host: str = Field(..., alias="Host", min_length=1, description="Hostname/IP where Serval runs.")
+    host: str = Field(
+        "localhost",
+        alias="Host",
+        min_length=1,
+        description="Hostname/IP where Serval runs (defaults to localhost).",
+    )
+    port: Port = Field(8080, alias="Port", description="TCP port used by the Serval control application.")
     install_dir: JsonPath = Field(..., alias="InstallDir", description="Path to the Serval installation root.")
-    virtualenv_dir: Optional[JsonPath] = Field(
-        None,
-        alias="VirtualEnvDir",
-        description="Optional Python virtual environment used for Serval dependencies.",
-    )
-    binary_path: Optional[JsonPath] = Field(
-        None,
-        alias="BinaryPath",
-        description="Explicit path to the Serval executable if not under InstallDir/bin.",
-    )
     config_dir: Optional[JsonPath] = Field(
         None,
         alias="ConfigDir",
         description="Directory containing Serval configuration templates.",
     )
+    camera_setting_dir: Optional[JsonPath] = Field(
+        None,
+        alias="CameraSettingDir",
+        description="Directory containing camera setting files.",
+    )
+    reachable: bool = Field(
+        False,
+        alias="Reachable",
+        description="True when the Serval control service responded to the latest probe.",
+    )
 
+    @model_validator(mode="before")
+    @classmethod
+    def _default_config_dir(cls, values: object) -> object:
+        data = dict(values) if isinstance(values, dict) else values
+        if not isinstance(data, dict):
+            return data
+
+        if data.get("ConfigDir") is not None or data.get("config_dir") is not None:
+            return data
+
+        install_value = data.get("InstallDir") or data.get("install_dir")
+        if install_value is None:
+            return data
+
+        install_path = _coerce_path(install_value)
+        data["ConfigDir"] = install_path / "initFiles"
+        return data
 
 class RunDirectoryLayout(HermesImmutableModel):
     """Derived directory layout for a single acquisition run (e.g., ``run_001``)."""
@@ -89,14 +121,21 @@ class RunDirectoryLayout(HermesImmutableModel):
         if not isinstance(data, dict):
             return data
 
-        workspace_value = data.get("WorkspaceDir") or data.get("workspace_dir")
+        def _pop(data_dict: dict, alias: str, field: str):
+            if alias in data_dict:
+                return data_dict.pop(alias)
+            return data_dict.pop(field, None)
+
+        workspace_value = _pop(data, "WorkspaceDir", "workspace_dir")
         if workspace_value is None:
             raise ValueError("WorkspaceDir is required to derive run paths.")
         workspace_path = _coerce_path(workspace_value)
+        data.setdefault("WorkspaceDir", workspace_path)
 
-        run_id = data.get("RunId") or data.get("run_id")
+        run_id = _pop(data, "RunId", "run_id")
         if run_id is None:
             raise ValueError("RunId is required to derive run paths.")
+        data.setdefault("RunId", run_id)
 
         run_path = workspace_path / run_id
         data.setdefault("RunDir", run_path)
@@ -104,10 +143,11 @@ class RunDirectoryLayout(HermesImmutableModel):
         data.setdefault("ConfigFilesDir", run_path / "configFiles")
         data.setdefault("LogsDir", run_path / "logs")
 
-        include_images = data.get("IncludeImages")
+        include_images = _pop(data, "IncludeImages", "include_images")
         if include_images is None:
             include_images = True
-            data["IncludeImages"] = include_images
+
+        data["IncludeImages"] = include_images
 
         if include_images:
             data.setdefault("ImagesDir", run_path / "images")
@@ -222,7 +262,8 @@ class AcquisitionEnvironment(HermesImmutableModel):
         seen = set[str]()
         unique: List[NetworkEndpoint] = []
         for check in checks:
-            key = check.host.lower()
+            port = check.port or ""
+            key = f"{check.host.lower()}:{port}"
             if key in seen:
                 continue
             seen.add(key)
