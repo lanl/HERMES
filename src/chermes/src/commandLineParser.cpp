@@ -123,6 +123,7 @@ bool parseCommandLineFlags(int argc, char* argv[], configParameters& configParam
     bool clusterPixelsSpecified = false;
     bool writeOutPhotons = false;
     bool writeOutPhotonsSpecified = false;
+    bool batchModeSpecified = false;
     int verboseLevel = 1;
     uint32_t maxPackets = 0;
     uint8_t epsSpatial = 0;
