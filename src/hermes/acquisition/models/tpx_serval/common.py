@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Annotated, Literal, Optional
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, field_serializer
+from pydantic import BaseModel, ConfigDict, Field, field_validator, field_serializer, model_validator
 
 
 # =============================================================================
@@ -31,7 +31,6 @@ class HermesBaseModel(BaseModel):
         extra="forbid",                 # reject unknown fields
         populate_by_name=True,          # allow field names and aliases
         validate_assignment=True,       # revalidate on mutation
-        ser_json_inf_nan=False,         # forbid NaN/Inf in JSON
         arbitrary_types_allowed=False,  # only JSON-serializable fields
         frozen=False,                   # may be made immutable in subclasses
     )
@@ -39,7 +38,7 @@ class HermesBaseModel(BaseModel):
 
 class HermesImmutableModel(HermesBaseModel):
     """Immutable variant used for static configurations."""
-    model_config = ConfigDict(**HermesBaseModel.model_config, frozen=True)
+    model_config = dict(HermesBaseModel.model_config, frozen=True)
 
 
 class HermesRuntimeModel(HermesBaseModel):
@@ -58,7 +57,7 @@ class HermesRuntimeModel(HermesBaseModel):
 
 class HermesAPIPayloadModel(HermesBaseModel):
     """Lenient variant that ignores unknown keys (useful for Serval responses)."""
-    model_config = ConfigDict(**HermesBaseModel.model_config, extra="ignore")
+    model_config = dict(HermesBaseModel.model_config, extra="ignore")
 
 
 class HermesValueModel(HermesImmutableModel):
@@ -159,6 +158,15 @@ class Size2D(HermesValueModel):
 class JsonPath(HermesValueModel):
     """Filesystem path that serializes to a POSIX string in JSON."""
     path: Path
+
+    @model_validator(mode="before")
+    @classmethod
+    def _wrap(cls, value):
+        if isinstance(value, cls):
+            return value
+        if isinstance(value, (str, Path)):
+            return {"path": value}
+        return value
 
     @field_validator("path", mode="before")
     @classmethod
