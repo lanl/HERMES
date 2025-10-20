@@ -18,14 +18,14 @@ from .tpx_serval.common import HermesBaseModel, HermesImmutableModel, JsonPath, 
 _RUN_ID_PATTERN = r"run_\d{3}"
 
 
-def _coerce_path(value: object) -> Path:
+def _path_from(value: object) -> Path:
     if isinstance(value, JsonPath):
         return value.path
     if isinstance(value, Path):
         return value
     if isinstance(value, str):
         return Path(value)
-    raise TypeError("Expected str, Path, or JsonPath instance.")
+    raise TypeError("Expected a filesystem path or JsonPath")
 
 
 class NetworkEndpoint(HermesBaseModel):
@@ -61,7 +61,11 @@ class ServalDeployment(HermesImmutableModel):
         description="Hostname/IP where Serval runs (defaults to localhost).",
     )
     port: Port = Field(8080, alias="Port", description="TCP port used by the Serval control application.")
-    install_dir: JsonPath = Field(..., alias="InstallDir", description="Path to the Serval installation root.")
+    install_dir: JsonPath = Field(
+        JsonPath(path=Path("/opt/serval")),
+        alias="InstallDir",
+        description="Path to the Serval installation root.",
+    )
     config_dir: Optional[JsonPath] = Field(
         None,
         alias="ConfigDir",
@@ -77,6 +81,16 @@ class ServalDeployment(HermesImmutableModel):
         alias="Reachable",
         description="True when the Serval control service responded to the latest probe.",
     )
+    default_version: str = Field(
+        "2.1.6",
+        alias="DefaultVersion",
+        description="Default Serval software version expected on this deployment.",
+    )
+    executable_prefixes: List[str] = Field(
+        default_factory=lambda: ["serv"],
+        alias="ExecutablePrefixes",
+        description="Filename prefixes used when deriving Serval executable JAR names.",
+    )
 
     @model_validator(mode="before")
     @classmethod
@@ -85,16 +99,84 @@ class ServalDeployment(HermesImmutableModel):
         if not isinstance(data, dict):
             return data
 
-        if data.get("ConfigDir") is not None or data.get("config_dir") is not None:
-            return data
-
         install_value = data.get("InstallDir") or data.get("install_dir")
-        if install_value is None:
-            return data
-
-        install_path = _coerce_path(install_value)
-        data["ConfigDir"] = install_path / "initFiles"
+        install_path = _path_from(install_value) if install_value is not None else Path("/opt/serval")
+        if data.get("ConfigDir") is None and data.get("config_dir") is None:
+            data["ConfigDir"] = install_path / "initFiles"
+        if data.get("CameraSettingDir") is None and data.get("camera_setting_dir") is None:
+            data["CameraSettingDir"] = install_path / "CameraSettingFiles"
         return data
+
+    @field_validator("executable_prefixes")
+    @classmethod
+    def _normalize_prefixes(cls, prefixes: List[str]) -> List[str]:
+        seen = set[str]()
+        normalized: List[str] = []
+        for prefix in prefixes:
+            value = prefix.strip()
+            if not value:
+                continue
+            lower = value.lower()
+            if lower in seen:
+                continue
+            seen.add(lower)
+            normalized.append(value)
+        if not normalized:
+            raise ValueError("ExecutablePrefixes must contain at least one prefix.")
+        return normalized
+
+    @property
+    def executable_glob_patterns(self) -> List[str]:
+        """Glob patterns for known Serval executable filenames."""
+
+        return [f"{prefix}-*.jar" for prefix in self.executable_prefixes]
+
+    def executable_names_for(self, version: Optional[str] = None) -> List[str]:
+        """Derive executable jar names for the provided Serval version."""
+
+        target_version = version or self.default_version
+        return [f"{prefix}-{target_version}.jar" for prefix in self.executable_prefixes]
+
+    @property
+    def default_executable_names(self) -> List[str]:
+        """Default executable jar filenames for the configured default version."""
+
+        return self.executable_names_for(self.default_version)
+
+    @property
+    def default_executable_paths(self) -> List[Path]:
+        """Candidate filesystem paths for the default Serval executable(s)."""
+
+        base_dir = self.install_dir.path
+        return [base_dir / name for name in self.default_executable_names]
+
+    @property
+    def primary_executable_path(self) -> Path:
+        """First candidate path to the Serval executable for convenience."""
+
+        return self.default_executable_paths[0]
+
+
+class ServalInstallationStatus(HermesImmutableModel):
+    """Static description of a Serval installation's filesystem state."""
+
+    path: JsonPath = Field(..., alias="Path", description="Directory that was scanned for Serval artifacts.")
+    exists: bool = Field(..., alias="Exists", description="True when the directory exists on disk.")
+    available_versions: List[str] = Field(
+        default_factory=list,
+        alias="AvailableVersions",
+        description="Sorted semantic versions inferred from Serval JAR filenames.",
+    )
+    default_version: str = Field(
+        "2.1.6",
+        alias="DefaultVersion",
+        description="Nominal Serval version expected to be available by default.",
+    )
+    default_available: bool = Field(
+        False,
+        alias="DefaultAvailable",
+        description="True when the default Serval version JAR is present in this directory.",
+    )
 
 class RunDirectoryLayout(HermesImmutableModel):
     """Derived directory layout for a single acquisition run (e.g., ``run_001``)."""
@@ -129,7 +211,7 @@ class RunDirectoryLayout(HermesImmutableModel):
         workspace_value = _pop(data, "WorkspaceDir", "workspace_dir")
         if workspace_value is None:
             raise ValueError("WorkspaceDir is required to derive run paths.")
-        workspace_path = _coerce_path(workspace_value)
+        workspace_path = _path_from(workspace_value)
         data.setdefault("WorkspaceDir", workspace_path)
 
         run_id = _pop(data, "RunId", "run_id")
