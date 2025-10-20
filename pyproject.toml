@@ -97,6 +97,7 @@ cxx-compiler = "*"
 make = "*"
 tqdm = ">=4.67.1,<5"
 ruff = "*"
+pytest = "*"
 
 [tool.pixi.activation]
 env = { cHERMES_DIR = "$PIXI_PROJECT_ROOT/src/chermes", PATH = "$PIXI_PROJECT_ROOT/src/chermes/bin:$PATH"}
