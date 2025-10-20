@@ -39,26 +39,16 @@ def build_demo_environment(base_dir: Path) -> AcquisitionEnvironment:
 
     camera_endpoint = NetworkEndpoint(
         name="TPX3 Camera",
-        host="192.168.100.10",
-        port=50000,
+        host="192.168.100.10"
     )
 
-    auxiliary_endpoint = NetworkEndpoint(
-        name="NAS",
-        host="nas.local",
-    )
-
-    serval = ServalDeployment(
-        host="192.168.100.1",
-        port=8080,
-        install_dir=base_dir / "serval",
-    )
+    serval = ServalDeployment()
 
     return AcquisitionEnvironment(
         name="lab-tpx3-demo",
         workspace=workspace,
         camera_endpoint=camera_endpoint,
-        network_checks=[auxiliary_endpoint],
+        network_checks=[],
         serval=serval,
     )
 
@@ -108,6 +98,19 @@ def demo_environment_service() -> None:
         serval_service=None,  # Replace with a real ServalHTTPService to perform live health checks.
     )
     pprint(status.model_dump())
+
+    print("\nServal installation survey:")
+    if status.serval_installations:
+        for installation in status.serval_installations:
+            location = installation.path.path
+            availability = "present" if installation.exists else "missing"
+            versions = ", ".join(installation.available_versions) or "<none detected>"
+            default_state = "available" if installation.default_available else "missing"
+            print(f"  - {location}: {availability}")
+            print(f"      versions: {versions}")
+            print(f"      default ({installation.default_version}): {default_state}")
+    else:
+        print("  No Serval installations detected.")
 
     if status.serval_health is None:
         print(
