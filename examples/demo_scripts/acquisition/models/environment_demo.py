@@ -26,23 +26,17 @@ def build_environment() -> AcquisitionEnvironment:
 
     workspace = WorkspaceLayout(name="demo_workspace", base_dir=Path("/tmp"))
 
-    camera = NetworkEndpoint(name="TPX3 Camera", host="192.168.0.10", reachable=True, latency_ms=1.8)
-    servers = [
-        NetworkEndpoint(name="DAQ Server", host="192.168.0.11", reachable=True),
-        NetworkEndpoint(name="Storage", host="192.168.0.12", reachable=False),
-    ]
+    camera = NetworkEndpoint(name="TPX3 Camera", host="192.168.0.10", latency_ms=1.8)
 
     serval = ServalDeployment(
-        host="192.168.0.11",
         install_dir=Path("/opt/serval"),
-        config_dir=Path("/opt/serval/config"),
+        port=8080,
     )
 
     return AcquisitionEnvironment(
         name="lab-tpx3-demo",
         workspace=workspace,
         camera_endpoint=camera,
-        network_checks=servers,
         serval=serval,
     )
 
@@ -83,7 +77,12 @@ def main() -> None:
     print("All endpoints to ping:")
     for endpoint in env.all_endpoints:
         status = "reachable" if endpoint.reachable else "unreachable"
-        print(f"  - {endpoint.name} ({endpoint.host}) -> {status}")
+        address = endpoint.host if endpoint.port is None else f"{endpoint.host}:{endpoint.port}"
+        print(f"  - {endpoint.name} ({address}) -> {status}")
+
+    print()
+    serval_status = "reachable" if env.serval.reachable else "unreachable"
+    print(f"Serval host: {env.serval.host}:{env.serval.port} -> {serval_status}")
 
 
 if __name__ == "__main__":
