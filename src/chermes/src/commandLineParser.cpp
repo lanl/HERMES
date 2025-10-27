@@ -124,6 +124,7 @@ bool parseCommandLineFlags(int argc, char* argv[], configParameters& configParam
     bool writeOutPhotons = false;
     bool writeOutPhotonsSpecified = false;
     bool batchModeSpecified = false;
+    bool verboseSpecified = false;
     int verboseLevel = 1;
     uint32_t maxPackets = 0;
     uint8_t epsSpatial = 0;
@@ -164,6 +165,7 @@ bool parseCommandLineFlags(int argc, char* argv[], configParameters& configParam
         }
         else if ((arg == "-v" || arg == "--verbose") && i + 1 < argc) {
             verboseLevel = parseIntOrDefault(argv[++i], 1);
+            verboseSpecified = true;
         }
         else if (arg == "-w" || arg == "--writeRawSignals") {
             configParams.writeRawSignals = true;
@@ -265,11 +267,13 @@ bool parseCommandLineFlags(int argc, char* argv[], configParameters& configParam
     }
     
     // Set verbose level (override config if specified)
-    if (verboseLevel >= 0 && verboseLevel <= 3) {
-        configParams.verboseLevel = verboseLevel;
-    } else {
-        cout << "Warning: Invalid verbose level " << verboseLevel 
+    if (verboseSpecified) {
+        if (verboseLevel >= 0 && verboseLevel <= 3) {
+            configParams.verboseLevel = verboseLevel;
+        } else {
+            cout << "Warning: Invalid verbose level " << verboseLevel
                  << ". Using default: " << configParams.verboseLevel << endl;
+        }
     }
     
     // Set sorting option (override config if specified)
