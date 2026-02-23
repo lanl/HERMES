@@ -98,41 +98,41 @@ def test_connection(spidr_ip: str, spidr_port: int, local_ip: str, local_port: i
 
         with open(output_file, "wb") as f:
 
-        #Start acquisition
-        timepix.start()
+            #Start acquisition
+            timepix.start()
 
-        while True:
-            try:
-                #Poll
-                data_type,data = timepix.poll()
-            except pymepix.PollBufferEmpty:
-                #If empty then just loop
-                continue
+            while True:
+                try:
+                    #Poll
+                    data_type,data = timepix.poll()
+                except pymepix.PollBufferEmpty:
+                    #If empty then just loop
+                    continue
 
-            #Handle Raw
-            if data_type is MessageType.RawData:
+                #Handle Raw
+                if data_type is MessageType.RawData:
 
-                print('UDP PACKET')
+                    print('UDP PACKET')
 
-                packets,longtime = data
+                    packets,longtime = data
 
-                print('Packet ',packets)
-                print('Time', longtime)
+                    print('Packet ',packets)
+                    print('Time', longtime)
 
-            #Handle Pixels
-            elif data_type is MessageType.PixelData:
+                #Handle Pixels
+                elif data_type is MessageType.PixelData:
 
-                print('I GOT PIXELS!!!!')
+                    print('I GOT PIXELS!!!!')
 
-                x,y,toa,tot = data
+                    x,y,toa,tot = data
 
-                print('x',x)
-                print('y', y)
-                print('toa', toa)
-                print('tot',tot)
+                    print('x',x)
+                    print('y', y)
+                    print('toa', toa)
+                    print('tot',tot)
 
-        #Stop
-        timepix.stop()
+            #Stop
+            timepix.stop()
 
     except Exception as e:
         print(f"  ✗ Failed during acquisition: {e}")
