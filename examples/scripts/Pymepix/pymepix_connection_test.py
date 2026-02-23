@@ -97,14 +97,14 @@ def test_connection(spidr_ip: str, spidr_port: int, local_ip: str, local_port: i
         output_file = os.path.join(output_dir, "acquired_data.tpx3")
 
         with open(output_file, "wb") as f:
-            tpx.start_acquisition()
+            tpx.start()
             print("  ✓ Acquisition started")
 
             # Acquire data for 5 seconds
             time.sleep(5)
 
             # Stop acquisition
-            tpx.stop_acquisition()
+            tpx.stop()
             print("  ✓ Acquisition stopped")
 
             # Save data to file
