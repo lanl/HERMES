@@ -3,7 +3,11 @@ from pymepix.processing import MessageType
 import numpy as np
 
 #Connect to SPIDR
-timepix = pymepix.pymepix_connection.PymepixConnection(('192.168.100.1', '192.168.100.10', 50000))
+timepix = pymepix.pymepix_connection.PymepixConnection(
+    spidr_address=('192.168.100.10', 50000),  # SPIDR IP and port
+    udp_ip_port=('192.168.100.1', 8192),      # Local IP and UDP port
+    pc_ip='192.168.100.1'                     # Local IP
+)
 
 #Set bias voltage
 timepix.biasVoltage = 50
