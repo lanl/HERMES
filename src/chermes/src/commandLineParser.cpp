@@ -3,6 +3,7 @@
  * @brief Implementation of command-line parsing utilities
  */
 
+#include <algorithm>
 #include <fstream>
 #include <iostream>
 #include <filesystem>
