@@ -53,7 +53,7 @@ def test_connection(spidr_ip: str, spidr_port: int, local_ip: str, local_port: i
     # --- Step 2: Connect to SPIDR ---
     print(f"\n[2/6] Connecting to SPIDR at {spidr_ip}:{spidr_port}...")
     try:
-        tpx = PymepixConnection(
+        timepix = PymepixConnection(
             spidr_address=(spidr_ip, spidr_port),
             udp_ip_port=(local_ip, local_port),
             pc_ip=local_ip,
@@ -65,7 +65,7 @@ def test_connection(spidr_ip: str, spidr_port: int, local_ip: str, local_port: i
         sys.exit(1)
 
     # --- Step 3: Query devices ---
-    num_devices = len(tpx)
+    num_devices = len(timepix)
     print(f"\n[3/6] Querying Timepix devices...")
     print(f"  Found {num_devices} device(s)")
 
@@ -78,7 +78,7 @@ def test_connection(spidr_ip: str, spidr_port: int, local_ip: str, local_port: i
     # --- Step 4: Read device info ---
     print(f"\n[4/6] Device information:")
     for i in range(num_devices):
-        device = tpx[i]
+        device = timepix[i]
         print(f"\n  --- Device {i} ---")
         try:
             print(f"  Device ID   : {device.devIdToString()}")
@@ -98,19 +98,41 @@ def test_connection(spidr_ip: str, spidr_port: int, local_ip: str, local_port: i
 
         with open(output_file, "wb") as f:
 
-            tpx.enablePolling(maxlen=1000)
+        #Start acquisition
+        timepix.start()
 
-            tpx.start()
-            print("  ✓ Acquisition started")
+        while True:
+            try:
+                #Poll
+                data_type,data = timepix.poll()
+            except pymepix.PollBufferEmpty:
+                #If empty then just loop
+                continue
 
-            # Acquire data for 5 seconds
-            time.sleep(5)
+            #Handle Raw
+            if data_type is MessageType.RawData:
 
-            # Stop acquisition
-            tpx.stop()
-            print("  ✓ Acquisition stopped")
+                print('UDP PACKET')
 
-            tpx.poll()
+                packets,longtime = data
+
+                print('Packet ',packets)
+                print('Time', longtime)
+
+            #Handle Pixels
+            elif data_type is MessageType.PixelData:
+
+                print('I GOT PIXELS!!!!')
+
+                x,y,toa,tot = data
+
+                print('x',x)
+                print('y', y)
+                print('toa', toa)
+                print('tot',tot)
+
+        #Stop
+        timepix.stop()
 
     except Exception as e:
         print(f"  ✗ Failed during acquisition: {e}")
