@@ -97,6 +97,9 @@ def test_connection(spidr_ip: str, spidr_port: int, local_ip: str, local_port: i
         output_file = os.path.join(output_dir, "acquired_data.tpx3")
 
         with open(output_file, "wb") as f:
+
+            tpx.enablePolling(maxlen=1000)
+
             tpx.start()
             print("  ✓ Acquisition started")
 
@@ -107,11 +110,8 @@ def test_connection(spidr_ip: str, spidr_port: int, local_ip: str, local_port: i
             tpx.stop()
             print("  ✓ Acquisition stopped")
 
-            # Save data to file
-            for packet in tpx.read_data():
-                f.write(packet)
+            tpx.poll()
 
-        print(f"  ✓ Data saved to {output_file}")
     except Exception as e:
         print(f"  ✗ Failed during acquisition: {e}")
         sys.exit(1)
