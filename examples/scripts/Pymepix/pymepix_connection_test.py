@@ -24,7 +24,9 @@ Usage:
 """
 
 import argparse
+import os
 import sys
+import time
 
 
 def test_connection(spidr_ip: str, spidr_port: int, local_ip: str, local_port: int, camera_gen: int):
@@ -40,7 +42,7 @@ def test_connection(spidr_ip: str, spidr_port: int, local_ip: str, local_port: i
     print()
 
     # --- Step 1: Import pymepix ---
-    print("[1/4] Importing pymepix...")
+    print("[1/6] Importing pymepix...")
     try:
         from pymepix.pymepix_connection import PymepixConnection
         print("  ✓ pymepix imported successfully")
@@ -49,7 +51,7 @@ def test_connection(spidr_ip: str, spidr_port: int, local_ip: str, local_port: i
         sys.exit(1)
 
     # --- Step 2: Connect to SPIDR ---
-    print(f"\n[2/4] Connecting to SPIDR at {spidr_ip}:{spidr_port}...")
+    print(f"\n[2/6] Connecting to SPIDR at {spidr_ip}:{spidr_port}...")
     try:
         tpx = PymepixConnection(
             spidr_address=(spidr_ip, spidr_port),
@@ -64,7 +66,7 @@ def test_connection(spidr_ip: str, spidr_port: int, local_ip: str, local_port: i
 
     # --- Step 3: Query devices ---
     num_devices = len(tpx)
-    print(f"\n[3/4] Querying Timepix devices...")
+    print(f"\n[3/6] Querying Timepix devices...")
     print(f"  Found {num_devices} device(s)")
 
     if num_devices == 0:
@@ -74,7 +76,7 @@ def test_connection(spidr_ip: str, spidr_port: int, local_ip: str, local_port: i
         sys.exit(1)
 
     # --- Step 4: Read device info ---
-    print(f"\n[4/4] Device information:")
+    print(f"\n[4/6] Device information:")
     for i in range(num_devices):
         device = tpx[i]
         print(f"\n  --- Device {i} ---")
@@ -87,10 +89,37 @@ def test_connection(spidr_ip: str, spidr_port: int, local_ip: str, local_port: i
         except Exception as e:
             print(f"  Device name : (error: {e})")
 
+    # --- Step 5: Start acquisition ---
+    print(f"\n[5/6] Starting acquisition...")
+    try:
+        output_dir = os.path.join(os.path.dirname(__file__), "../../workspace")
+        os.makedirs(output_dir, exist_ok=True)
+        output_file = os.path.join(output_dir, "acquired_data.tpx3")
+
+        with open(output_file, "wb") as f:
+            tpx.start_acquisition()
+            print("  ✓ Acquisition started")
+
+            # Acquire data for 5 seconds
+            time.sleep(5)
+
+            # Stop acquisition
+            tpx.stop_acquisition()
+            print("  ✓ Acquisition stopped")
+
+            # Save data to file
+            for packet in tpx.read_data():
+                f.write(packet)
+
+        print(f"  ✓ Data saved to {output_file}")
+    except Exception as e:
+        print(f"  ✗ Failed during acquisition: {e}")
+        sys.exit(1)
+
     # --- Done ---
     print()
     print("=" * 60)
-    print("Connection test PASSED")
+    print("Acquisition test COMPLETED")
     print("=" * 60)
 
 
