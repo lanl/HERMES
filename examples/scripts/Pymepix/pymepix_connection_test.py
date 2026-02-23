@@ -51,21 +51,12 @@ def test_connection(spidr_ip: str, spidr_port: int, local_ip: str, local_port: i
     # --- Step 2: Connect to SPIDR ---
     print(f"\n[2/4] Connecting to SPIDR at {spidr_ip}:{spidr_port}...")
     try:
-        # pymepix renamed src_ip_port to udp_ip_port in newer versions
-        import inspect
-        sig = inspect.signature(PymepixConnection.__init__)
-        if "udp_ip_port" in sig.parameters:
-            tpx = PymepixConnection(
-                spidr_address=(spidr_ip, spidr_port),
-                udp_ip_port=(local_ip, local_port),
-                camera_generation=camera_gen,
-            )
-        else:
-            tpx = PymepixConnection(
-                spidr_address=(spidr_ip, spidr_port),
-                src_ip_port=(local_ip, local_port),
-                camera_generation=camera_gen,
-            )
+        tpx = PymepixConnection(
+            spidr_address=(spidr_ip, spidr_port),
+            udp_ip_port=(local_ip, local_port),
+            pc_ip=local_ip,
+            camera_generation=camera_gen,
+        )
         print(f"  ✓ Connected to SPIDR")
     except Exception as e:
         print(f"  ✗ Failed to connect: {e}")
