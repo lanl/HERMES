@@ -337,3 +337,9 @@ target/
 # IPython
 profile_default/
 ipython_config.py
+
+# ignore anything in .agent directory
+.agent/
+
+# ignore anything in .deprecated directory
+.deprecated/
