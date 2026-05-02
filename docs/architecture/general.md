@@ -59,7 +59,7 @@ HERMES/
 │       │   ├── __init__.py     # makes hermes.state_service a Python package. Keep __init__.py empty!
 │       │   ├── state_manager.py    # core logic for managing state access, change proposals, validation, and approval workflow
 │       │   ├── change_requests.py  # the ChangeRequest data model and related logic for tracking proposed changes
-│       │   ├── state_io.py         # functions for loading and saving the state to/from config files (e.g. YAML)
+│       │   ├── state_io.py         # functions for loading and saving HermesRecord YAML files
 │       │   ├── payload_store.py    # writes large state-owned payloads and returns ExternalPayloadRef values
 │       │   ├── state_logger.py     # functions for logging state changes and maintaining an audit trail
 │       │   └── shared_types.py     # shared types and enums for the state service

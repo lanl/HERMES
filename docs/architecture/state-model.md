@@ -1,7 +1,7 @@
 # State Model
 
 `src/hermes/state/` owns the Pydantic state of record. These models should be
-durable enough to save to JSON and load later.
+durable enough to save to YAML and load later.
 
 The central object in HERMES is a Pydantic model that records:
 
@@ -37,7 +37,11 @@ Operational logs are not the source of truth for reconstructing state. They may
 reference state paths, hashes, and payload references, but they should not
 duplicate full state payloads.
 
-The final model is saved to disk as a JSON file for later reference.
+The final `HermesRecord` should be saved to disk as a YAML file for later
+reference. YAML is the primary persisted record format because it is readable and
+practical for user-authored run inputs. JSON may still be supported as an
+optional export format for tools that need strict machine-readable records, but
+the Pydantic `HermesRecord` schema remains the canonical contract.
 
 ## Expected model groups ###
 Expected model groups and their responsibilities include:

@@ -51,7 +51,7 @@ Responsibilities
     7. High-Level Actions
         - Provide safe operations that encapsulate common workflows
         Examples:
-        - load_state_from_yaml("LC-20231023.yaml")
+        - load_hermes_record_from_yaml("LC-20231023.yaml")
         - set_acquisition_mode("serval")
         - update_working_dir("/data/LC-20231023")
 
@@ -101,11 +101,18 @@ The `src/hermes/state_service/` module is organized into several key components:
     - StateManager owns the in-memory pending-change workflow.
 
 - `state_io.py`: 
-    - functions for loading and saving the state to/from config files (e.g. YAML).
-    - handles serialization and deserialization of the MeasurementState object, ensuring that the state can be persisted across sessions and easily edited by users if needed.
+    - functions for loading and saving `HermesRecord` YAML files.
+    - handles serialization and deserialization of the `HermesRecord` object,
+      ensuring that the state can be persisted across sessions and easily edited
+      by users if needed.
+    - parses YAML safely, validates loaded data through the Pydantic
+      `HermesRecord` model, and writes predictable YAML without relying on
+      advanced YAML features such as anchors.
+    - may support JSON import/export as a secondary machine-readable format, but
+      YAML is the primary persisted run-record format.
     - functions include:
-        - `load_state_from_yaml(file_path)`: loads the state from a YAML file and returns a MeasurementState object.
-        - `save_state_to_yaml(state, file_path)`: saves the given MeasurementState object to a YAML file.
+        - `load_hermes_record_from_yaml(file_path)`: loads a `HermesRecord` from a YAML file.
+        - `save_hermes_record_to_yaml(record, file_path)`: saves the given `HermesRecord` to a YAML file.
 
 - `payload_store.py`:
     - writes large state-owned payloads to the run state payload directory.
@@ -138,7 +145,7 @@ src/
         ├── __init__.py         # makes hermes.state_service a Python package. Keep __init__.py empty!
         ├── state_manager.py    # core logic for managing state access, change proposals, validation, and approval workflow
         ├── change_requests.py  # the ChangeRequest data model and related logic for tracking proposed changes
-        ├── state_io.py         # functions for loading and saving the state to/from config files (e.g. YAML)
+        ├── state_io.py         # functions for loading and saving HermesRecord YAML files
         ├── payload_store.py    # writes large state-owned payloads and returns ExternalPayloadRef values
         ├── state_logger.py     # functions for logging state changes and maintaining an audit trail
         └── shared_types.py     # shared types and enums for the state service

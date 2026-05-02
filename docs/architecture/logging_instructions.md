@@ -48,8 +48,8 @@ A practical run directory layout is:
 ```text
 working_dir/
 └── logs/
-    ├── hermes-record.initial.json  # initial state record log
-    ├── hermes-record.final.json    # final state record log
+    ├── hermes-record.initial.yaml  # initial HermesRecord snapshot
+    ├── hermes-record.final.yaml    # final HermesRecord snapshot
     ├── state.jsonl                 # live log with all appended state events
     ├── acquisition.serval.jsonl    # acquisition logs filtered for acquisition backend
     ├── workflow.jsonl              # workflow logs filtered for workflow domain  
