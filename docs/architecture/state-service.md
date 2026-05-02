@@ -40,8 +40,8 @@ Responsibilities
         - Log all approved (and optionally rejected) changes
         - Maintain audit trail for experiments
     6. External Payload Handling
-        - Store large durable state values as state-owned payload files when
-          they should not be duplicated inline
+        - Store large durable state values as payload files under
+          `logs/payloads/` when they should not be duplicated inline
         - Compute payload size and hash
         - Replace the proposed state value with an ExternalPayloadRef before
           applying and logging the change
@@ -115,7 +115,8 @@ The `src/hermes/state_service/` module is organized into several key components:
         - `save_hermes_record_to_yaml(record, file_path)`: saves the given `HermesRecord` to a YAML file.
 
 - `payload_store.py`:
-    - writes large state-owned payloads to the run state payload directory.
+    - writes large state-owned payloads to the run `logs/payloads/` directory.
+    - does not use or create a separate `state_payload_dir`.
     - computes `sha256`, `size_bytes`, media type, creation timestamp, and a
       stable relative path.
     - returns an `ExternalPayloadRef` that can be stored in the HERMES record and
@@ -146,7 +147,7 @@ src/
         ├── state_manager.py    # core logic for managing state access, change proposals, validation, and approval workflow
         ├── change_requests.py  # the ChangeRequest data model and related logic for tracking proposed changes
         ├── state_io.py         # functions for loading and saving HermesRecord YAML files
-        ├── payload_store.py    # writes large state-owned payloads and returns ExternalPayloadRef values
+        ├── payload_store.py    # writes large state-owned payloads under logs/payloads and returns ExternalPayloadRef values
         ├── state_logger.py     # functions for logging state changes and maintaining an audit trail
         └── shared_types.py     # shared types and enums for the state service
 ``` 

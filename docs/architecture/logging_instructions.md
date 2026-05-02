@@ -54,7 +54,7 @@ working_dir/
     ├── acquisition.serval.jsonl    # acquisition logs filtered for acquisition backend
     ├── workflow.jsonl              # workflow logs filtered for workflow domain  
     ├── analysis.jsonl              # analysis logs filtered for analysis domain  
-    └── payloads/                   # large external payload files referenced by the state record and state log 
+    └── payloads/                   # all external payload files referenced by the state record and state log
         ├── detector_pixel_config_<hash>.bpc
         └── detector_dacs_<hash>.json
 ```
@@ -270,7 +270,8 @@ when useful, but not full payloads.
 
 Large configuration payloads are handled differently from data products. If they
 are needed for reproducibility, they are durable state values and may be stored
-inline or as external state payloads referenced by `ExternalPayloadRef`.
+inline or as external state payloads under `logs/payloads/` referenced by
+`ExternalPayloadRef`. HERMES should not define a separate `state_payload_dir`.
 
 ## Anti-Patterns
 

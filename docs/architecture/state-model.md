@@ -30,8 +30,8 @@ Large configuration structures that are part of reproducibility, such as SERVAL
 `PixelConfig` or DAC settings, are still state values. They should be recorded
 when they first enter state and only recorded again if they change. If a value is
 too large or awkward to duplicate inline in the state log, the value may be saved
-as a separate state-owned payload file and represented in the record and state
-log by an `ExternalPayloadRef`.
+as a separate payload file under `logs/payloads/` and represented in the record
+and state log by an `ExternalPayloadRef`.
 
 Operational logs are not the source of truth for reconstructing state. They may
 reference state paths, hashes, and payload references, but they should not
@@ -68,8 +68,9 @@ HermesRecord
 ```
 
 #### ExternalPayloadRef ####
-Large durable state values may be externalized into files under the run's state
-payload directory. In that case, the state field should contain an
+Large durable state values may be externalized into files under the run's
+`logs/payloads/` directory. There should not be a separate `state_payload_dir`.
+In that case, the state field should contain an
 `ExternalPayloadRef` rather than a bare path string.
 
 ```python
