@@ -15,3 +15,7 @@ Analysis workflows should accept artifact references and Pydantic plans, then
 return structured analysis results and new artifacts. Any durable state updates
 must be applied through `hermes.state_service`; analysis code should not mutate
 the record directly.
+
+Analysis workflows must not require acquisition state to be present. For
+analysis-only use, input data should be represented as analysis input artifact
+references in the `HermesRecord`.
