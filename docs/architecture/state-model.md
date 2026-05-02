@@ -5,13 +5,13 @@ durable enough to save to YAML and load later.
 
 The central object in HERMES is a Pydantic model that records:
 
-- what acquisition was requested
-- what detector, SERVAL, and run configuration was used
+- what acquisition was requested, when HERMES is used for acquisition
+- what detector, SERVAL, and run configuration was used, when available
 - what runtime environment, tool locations, tool versions, and directories were used
 - what actually happened during acquisition
 - what files and derived artifacts were produced
-- what analysis was requested
-- what analysis actually ran
+- what analysis was requested, when HERMES is used for analysis
+- what analysis actually ran, when available
 - what summary results, warnings, and errors were produced
 
 The model should contain metadata, configuration, provenance, and summary
@@ -47,8 +47,8 @@ the Pydantic `HermesRecord` schema remains the canonical contract.
 Expected model groups and their responsibilities include:
 - MeasurementInfo: metadata about the measurement, including measurement ID, run number, beamline, proposal ID, image intensifier serial number, scintillator serial number, sample name, operator name, log notes, and any other relevant metadata fields that are important for provenance and record-keeping.
 - RuntimeEnvironment: information about the runtime environment used for the measurement, including `Path` fields for working directory, data directory, raw data directory, analyzed data directory, log directory, preview directory, optional config directory, executable paths, and any other relevant environment information.
-- AcquisitionState: modality-specific information about the acquisition process, using discriminated unions to allow for different fields based on the acquisition modes (e.g. serval, pymepix, mcp2hist).
-- AnalysisState: modality-specific information about the analysis process, using discriminated unions to allow for different fields based on the analysis modes (e.g. empir, hermes_tpx3_spidr).
+- AcquisitionState: optional modality-specific information about the acquisition process, using discriminated unions to allow for different fields based on the acquisition modes (e.g. serval, pymepix, mcp2hist).
+- AnalysisState: optional modality-specific information about the analysis process, using discriminated unions to allow for different fields based on the analysis modes (e.g. empir, hermes_tpx3_spidr).
 
 The models should use discriminated unions for modality-specific acquisition and analysis plans once the modalities are known.
 
@@ -57,15 +57,24 @@ The top-level record should explicitly include environment state:
 ### Expected model structures ###
 
 #### HermesRecord ####
-The top-level record should explicitly include measurement metadata, acquisition state, analysis state, and environment state. This keeps all durable information about the run in one place and makes it easy to save and load the complete record.
+The top-level record should explicitly include measurement metadata and
+environment state. Acquisition state and analysis state are optional because
+HERMES may be used to acquire data only, analyze existing data only, or do both
+in one run. This keeps all durable information that exists for the run in one
+place and makes it easy to save and load the complete record.
 
 ```python
 HermesRecord
   measurement_info: MeasurementInfo
   environment: RuntimeEnvironment
-  acquisition: AcquisitionState
-  analysis: AnalysisState
+  acquisition: AcquisitionState | None = None
+  analysis: AnalysisState | None = None
 ```
+
+An acquisition-only record should leave `analysis` unset. An analysis-only record
+should leave `acquisition` unset and record input files as analysis input
+artifacts, not as fake acquisition state. A full acquisition-to-analysis workflow
+may populate both fields.
 
 #### ExternalPayloadRef ####
 Large durable state values may be externalized into files under the run's
@@ -234,6 +243,6 @@ src/
             │   ├── pymepix.py              # PyMEPIX acquisition environment, configuration, and related settings
             │   └── mcp2hist.py             # MCP2Hist acquisition environment, configuration, and related settings
             ├── detector.py                 # TPX3Cam, SERVAL, chip, layout, health, and detector config metadata
-            ├── environment.py              # working directories, data directories, log directories, preview directories, analysis directories, and config directories
+            ├── environment.py              # Path fields for working, data, raw data, analyzed data, log, preview, config, and tool paths
             └── shared_models.py            # shared models and enums for the state models
 ``` 
