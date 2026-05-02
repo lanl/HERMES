@@ -20,6 +20,7 @@ for each major boundary live in separate files:
 - [State](state-model.md)
 - [State Services](state-service.md)
 - [Workflows](workflows.md)
+- [Logging](logging_instructions.md)
 - [Open Questions](open-questions.md)
 
 ## Design Principles
@@ -96,9 +97,9 @@ HERMES/
 │   │   ├── acquisition.md
 │   │   ├── unpacker.md
 │   │   ├── analysis.md
-│   │   ├── artifacts.md
-│   │   ├── state_service.md
+│   │   ├── state-service.md
 │   │   ├── workflows.md
+│   │   ├── logging_instructions.md
 │   │   ├── open-questions.md
 │   └── decisions/
 │
