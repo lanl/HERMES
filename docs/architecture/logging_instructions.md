@@ -12,8 +12,8 @@ that state was reached and what happened around it.
 
 ## Key Rule
 
-Loguru exposes one global `logger`. Configure it exactly once during application
-startup. Domain-specific loggers such as `StateLogger`, `AcquisitionLogger`, and
+Loguru exposes one global `logger`. Configure it exactly once during HERMES
+process startup. Domain-specific loggers such as `StateLogger`, `AcquisitionLogger`, and
 `AnalysisLogger` are thin wrappers around `logger.bind(...)`; they must not call
 `logger.add(...)`.
 
@@ -38,10 +38,12 @@ acquisition
 
 analysis
   unpacking, processing, external tool execution, and analysis runtime detail
-
-app
-  general application diagnostics that do not belong to a run-specific domain
 ```
+
+Do not define a catch-all `app` domain or unfiltered `app.log` sink. A future web
+GUI launched for HERMES may add a dedicated GUI logging domain and filtered sink,
+but only when that GUI workflow exists and through the same centralized Loguru
+configuration.
 
 A practical run directory layout is:
 
@@ -61,7 +63,7 @@ working_dir/
 
 ## Startup Configuration
 
-Logging is initialized once at application startup:
+Logging is initialized once at HERMES process startup:
 
 ```python
 from pathlib import Path
@@ -109,12 +111,6 @@ def configure_logging(log_dir: Path) -> None:
         rotation="100 MB",
         retention="90 days",
         filter=_domain_filter("analysis"),
-    )
-    logger.add(
-        log_dir / "app.log",
-        enqueue=True,
-        rotation="20 MB",
-        retention="30 days",
     )
 ```
 
@@ -283,6 +279,7 @@ Avoid:
 - logging full SERVAL `PixelConfig` or DAC payloads in acquisition logs
 - logging raw images, decoded event tables, or large stdout/stderr
 - treating backend communication logs as state record fields
+- adding a catch-all `app` logging domain or unfiltered `app.log` sink
 - relying on unstructured free-text messages when structured fields are known
 
 ## Summary
