@@ -28,7 +28,7 @@ Use separate logging domains instead of separate Loguru instances:
 
 ```text
 state
-  canonical audit trail for HERMES record changes
+  canonical audit trail for the initial HERMES record and later record changes
 
 workflow
   high-level run progress and step transitions
@@ -48,11 +48,15 @@ A practical run directory layout is:
 ```text
 working_dir/
 └── logs/
-    ├── state.jsonl
-    ├── workflow.jsonl
-    ├── acquisition.serval.jsonl
-    ├── analysis.jsonl
-    └── app.log
+    ├── hermes-record.initial.json  # initial state record log
+    ├── hermes-record.final.json    # final state record log
+    ├── state.jsonl                 # live log with all appended state events
+    ├── acquisition.serval.jsonl    # acquisition logs filtered for acquisition backend
+    ├── workflow.jsonl              # workflow logs filtered for workflow domain  
+    ├── analysis.jsonl              # analysis logs filtered for analysis domain  
+    └── payloads/                   # large external payload files referenced by the state record and state log 
+        ├── detector_pixel_config_<hash>.bpc
+        └── detector_dacs_<hash>.json
 ```
 
 ## Startup Configuration
@@ -153,6 +157,7 @@ analysis_log = logger.bind(domain="analysis", measurement_id=measurement_id, run
 
 Responsibilities:
 
+- log the initial `HermesRecord`
 - log proposed, approved, applied, rejected, and failed changes
 - log state load and save events
 - log validation failures tied to state paths
@@ -161,9 +166,11 @@ Responsibilities:
 - avoid configuring Loguru
 - avoid mutating state
 
-For small scalar or bounded structured values, state logs may include old and new
-values. For large fields, state logs should include a summary, digest, size, and
-state path instead of duplicating the full payload.
+For small scalar or bounded structured values, state logs may include old and
+new values inline. Large durable values, such as PixelConfig or DAC structures,
+should be logged inline only when that is practical. Otherwise, the state value
+should be externalized first and the state log should record the resulting
+`ExternalPayloadRef`.
 
 ## WorkflowLogger
 
@@ -220,7 +227,8 @@ The HERMES record should contain durable run facts:
 - resolved environment and output paths
 - requested and applied acquisition configuration
 - detector snapshots needed for provenance
-- PixelConfig, if needed for reproducibility, recorded once under detector state
+- PixelConfig and DAC settings, if needed for reproducibility, recorded once
+  under detector state and recorded again only if changed
 - artifact references, sizes, hashes, and summary metrics
 - final acquisition and analysis status
 
@@ -233,9 +241,17 @@ Operational logs should contain process detail:
 - warnings, retries, failures, and timing
 
 Do not duplicate large durable state payloads into operational logs. If
-PixelConfig is part of the state record, acquisition logs should reference it by
-state path, length, and digest rather than logging the full PixelConfig. State
-change logs should follow the same rule for large fields.
+PixelConfig or DAC settings are part of the state record, acquisition logs should
+reference them by state path, length, digest, or `ExternalPayloadRef` rather than
+logging the full payload.
+
+State logs are different: they record state values. If a large value is stored
+inline in the state, it may appear in the initial state log or in the change log
+when that field changes. If the value is externalized, the state log records the
+`ExternalPayloadRef` instead of the full payload.
+
+The state service should decide whether to store a value inline or externalize
+it before applying and logging the state change.
 
 ## Payload Policy
 
@@ -252,6 +268,10 @@ Store large data products as artifacts on disk and record references, sizes,
 hashes, formats, and summaries. Logs may include bounded excerpts or summaries
 when useful, but not full payloads.
 
+Large configuration payloads are handled differently from data products. If they
+are needed for reproducibility, they are durable state values and may be stored
+inline or as external state payloads referenced by `ExternalPayloadRef`.
+
 ## Anti-Patterns
 
 Avoid:
@@ -259,7 +279,7 @@ Avoid:
 - calling `logger.add(...)` outside centralized startup configuration
 - creating sinks inside `StateLogger`, `AcquisitionLogger`, `AnalysisLogger`, or
   workflow code
-- logging full SERVAL `PixelConfig` payloads in acquisition logs
+- logging full SERVAL `PixelConfig` or DAC payloads in acquisition logs
 - logging raw images, decoded event tables, or large stdout/stderr
 - treating backend communication logs as state record fields
 - relying on unstructured free-text messages when structured fields are known
@@ -272,5 +292,6 @@ Use domain wrappers for state, workflow, acquisition, and analysis.
 Write each domain to filtered structured sinks.
 Keep durable state in the HERMES record.
 Keep operational detail in domain logs.
-Reference large payloads by path, size, hash, and state path.
+Use ExternalPayloadRef for large state-owned payload files.
+Reference large operational payloads by path, size, hash, and state path.
 ```
