@@ -48,8 +48,8 @@ HERMES/
 │   └── hermes-tpx3-spidr/
 │       ├── Cargo.toml      # crate file for the SPIDR unpacker 
 │       ├── src/            # Rust source code for the SPIDR unpacker
-│       ├── lib.rs          # main library file for the SPIDR unpacker
-│       ├── main.rs         # main executable file for the SPIDR unpacker
+│       │   ├── lib.rs      # main library file for the SPIDR unpacker
+│       │   └── main.rs     # main executable file for the SPIDR unpacker
 │       └── tests/          # tests for the SPIDR unpacker
 │
 ├── src/
