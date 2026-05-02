@@ -43,10 +43,13 @@ hermes.acquisition.serval -> SERVAL HTTP API
 hermes.acquisition.pymepix -> PyMEPix API
 ```
 
-`hermes.state_service` is the mutation, validation, approval, and audit gate for
-the HERMES record. It should not own detector I/O or the full acquisition procedure.
-The acquisition workflow should call `hermes.state_service` whenever the run record
-needs to be initialized, validated, updated, or persisted.
+`hermes.state_service` is the mutation, validation, approval policy, and audit
+gate for the HERMES record. It should not own detector I/O or the full
+acquisition procedure. The acquisition workflow should call
+`hermes.state_service` whenever the run record needs to be initialized,
+validated, updated, or persisted. Trusted workflow updates may be applied after
+validation without per-change approval only when the state service approval
+bypass setting allows it.
 
 ## Shared Responsibilities
 

@@ -161,8 +161,8 @@ Responsibilities:
 - log proposed, approved, applied, rejected, and failed changes
 - log state load and save events
 - log validation failures tied to state paths
-- include state paths, change IDs, status, proposer, approver, timestamps, and
-  concise value summaries
+- include state paths, change IDs, status, proposer, origin, approver or
+  approval-bypass marker, timestamps, and concise value summaries
 - avoid configuring Loguru
 - avoid mutating state
 

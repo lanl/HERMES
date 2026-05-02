@@ -6,7 +6,7 @@ The `src/hermes/state_service/` module is the control layer that manages all int
 Purpose
 - Provide controlled access to the state
 - Enforce validation and consistency
-- Implement approval workflows for changes
+- Implement approval workflows for user- and AI-originated changes
 - Track history and ensure traceability
 - Prevent direct mutation by external components (especially AI)
 
@@ -21,8 +21,13 @@ Responsibilities
         Example:
         - propose_change(path, new_value)
     3. Approval Workflow
-        - Require explicit approval before applying changes
+        - Require explicit approval before applying user- and AI-originated changes
+        - Allow trusted workflow code to apply validated changes when an
+          approval-bypass setting is enabled
+        - Record whether each applied change was explicitly approved or applied
+          through a trusted workflow bypass
         Example:
+        - approve_change(change_id)
         - apply_change(change_id)
         - reject_change(change_id)
     4. Validation
@@ -52,9 +57,30 @@ Responsibilities
 
 State_Service Module Design Principles
 - Single entry point for mutation: no direct state edits allowed elsewhere
-- AI safety: Future AI agents can propose changes but cannot apply them
+- AI safety: Future AI agents can propose changes but cannot apply them without
+  explicit approval
+- Trusted workflows may apply validated changes without per-change approval only
+  when the approval-bypass setting is enabled
 - Auditability: every change is tracked and reversible (if designed)
 - Extensibility: can later integrate hardware triggers or side effects
+
+## Approval Policy
+
+All durable state changes must go through `StateManager`; the approval
+requirement depends on the origin of the change:
+
+- `user` and `ai` changes must be proposed as `ChangeRequest` objects and
+  explicitly approved before they are applied.
+- `trusted_workflow` changes may be applied after validation without explicit
+  per-change approval when a controlled approval-bypass setting is enabled.
+- If the approval-bypass setting is disabled, trusted workflow changes should
+  create pending `ChangeRequest` objects like any other proposed change.
+
+The approval-bypass setting should be explicit in the state service
+configuration, for example `allow_trusted_workflow_bypass`. Bypassed changes are
+not direct mutations: they still pass validation, go through `StateManager`, and
+are logged with their source, validation result, bypass flag, proposer, and
+timestamp.
 
 ### module structure ###
 The `src/hermes/state_service/` module is organized into several key components:
@@ -66,12 +92,12 @@ The `src/hermes/state_service/` module is organized into several key components:
         - `get_value(path)`: returns the value at the specified path in the state.
         - `propose_change(path, new_value)`: creates a new ChangeRequest for the proposed change.
         - `approve_change(change_id)`: approves a pending ChangeRequest and can apply it immediately.
-        - `apply_change(change_id)`: applies the proposed change if it passes validation and is approved.
+        - `apply_change(change_id)`: applies the proposed change if it passes validation and is approved, or if it is a trusted workflow change and approval bypass is enabled.
         - `reject_change(change_id)`: rejects the proposed change and logs the rejection.
 
 - `change_requests.py`: 
     - the ChangeRequest data model and related logic for tracking proposed changes.
-    - includes fields for change ID, path, new value, proposer, timestamp, status (pending/approved/rejected), and optional justification.
+    - includes fields for change ID, path, new value, proposer, origin, timestamp, status (pending/approved/rejected/applied), optional approver, optional approval bypass flag, and optional justification.
     - StateManager owns the in-memory pending-change workflow.
 
 - `state_io.py`: 

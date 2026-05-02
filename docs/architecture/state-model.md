@@ -21,9 +21,10 @@ stacks, generated plots, detector data files, or build products.
 ## How model is used to keep a record of acquisition and analysis
 The initial `HermesRecord` is recorded by the state logger. Every later durable
 state change is also logged with the changed state path, previous value, new
-value, status, proposer, approver, and timestamps. This creates an audit trail
-that can reconstruct the state at any point in the measurement, assuming any
-external payload files referenced by the state are still available.
+value, status, proposer, origin, approver or approval-bypass marker, and
+timestamps. This creates an audit trail that can reconstruct the state at any
+point in the measurement, assuming any external payload files referenced by the
+state are still available.
 
 Large configuration structures that are part of reproducibility, such as SERVAL
 `PixelConfig` or DAC settings, are still state values. They should be recorded
