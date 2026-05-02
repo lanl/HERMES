@@ -19,7 +19,24 @@ results. It should not contain large raw arrays, full decoded event tables, imag
 stacks, generated plots, detector data files, or build products.
 
 ## How model is used to keep a record of acquisition and analysis
-The initial model is recorded in a log, then every change to the model is logged with initial and final values. This creates a complete reconstructable model at any point in time during the acquisition and analysis process. The final model is saved to disk as a JSON file for later reference.
+The initial `HermesRecord` is recorded by the state logger. Every later durable
+state change is also logged with the changed state path, previous value, new
+value, status, proposer, approver, and timestamps. This creates an audit trail
+that can reconstruct the state at any point in the measurement, assuming any
+external payload files referenced by the state are still available.
+
+Large configuration structures that are part of reproducibility, such as SERVAL
+`PixelConfig` or DAC settings, are still state values. They should be recorded
+when they first enter state and only recorded again if they change. If a value is
+too large or awkward to duplicate inline in the state log, the value may be saved
+as a separate state-owned payload file and represented in the record and state
+log by an `ExternalPayloadRef`.
+
+Operational logs are not the source of truth for reconstructing state. They may
+reference state paths, hashes, and payload references, but they should not
+duplicate full state payloads.
+
+The final model is saved to disk as a JSON file for later reference.
 
 ## Expected model groups ###
 Expected model groups and their responsibilities include:
@@ -44,6 +61,39 @@ HermesRecord
   acquisition: AcquisitionState
   analysis: AnalysisState
 ```
+
+#### ExternalPayloadRef ####
+Large durable state values may be externalized into files under the run's state
+payload directory. In that case, the state field should contain an
+`ExternalPayloadRef` rather than a bare path string.
+
+```python
+ExternalPayloadRef
+  kind: Literal["external_payload_ref"]
+  path: Path
+  media_type: str
+  sha256: str
+  size_bytes: int
+  created_at: datetime
+  description: str | None
+  source_path: Path | None
+```
+
+The `path` should be relative to the run `working_dir` or to the persisted
+record location so the record can be moved as a bundle. The hash and size make
+the external payload verifiable when reconstructing or reloading state.
+
+Fields that may be large should use a typed union rather than loose `Any`. For
+example:
+
+```python
+pixel_config: str | ExternalPayloadRef
+dacs: list[dict[str, int]] | ExternalPayloadRef
+```
+
+The Pydantic model should validate the shape of `ExternalPayloadRef`, but it
+should not write files. External payload file creation belongs in
+`hermes.state_service`.
 
 #### MeasurementInfo ####
 MeasurementInfo should capture all relevant metadata about the measurement, including:
@@ -160,6 +210,7 @@ src/
         └── models/
             ├── __init__.py                 # makes models a Python package. Keep __init__.py empty!
             ├── measurement.py              # measurement info and metadata
+            ├── payloads.py                 # external payload reference models
             ├── analysis/                   # analysis environments that are unioned in the top-level record
             │   ├── empir.py                # EMPIR analysis environment, configuration, and related settings
             │   └── hermes_tpx3_spidr.py    # TPX3 SPIDR analysis environment, configuration, and related settings
