@@ -230,7 +230,8 @@ src/
             │   └── hermes_tpx3_spidr.py    # TPX3 SPIDR analysis environment, configuration, and related settings
             ├── acquisition/                # acquisition environments that are unioned in the top-level record
             │   ├── serval.py               # SERVAL acquisition environment, configuration, and related settings
-            │   └── pymepix.py              # PyMEPIX acquisition environment, configuration, and related settings
+            │   ├── pymepix.py              # PyMEPIX acquisition environment, configuration, and related settings
+            │   └── mcp2hist.py             # MCP2Hist acquisition environment, configuration, and related settings
             ├── detector.py                 # TPX3Cam, SERVAL, chip, layout, health, and detector config metadata
             ├── environment.py              # working directories, data directories, log directories, preview directories, analysis directories, and config directories
             └── shared_models.py            # shared models and enums for the state models

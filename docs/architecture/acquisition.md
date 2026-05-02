@@ -3,7 +3,7 @@
 `src/hermes/acquisition/` owns runtime interaction with acquisition backends and
 detector-facing APIs. Acquisition is mode-specific: each supported acquisition
 mode should live in its own subpackage, with SERVAL implemented first and
-PyMEPix left as a future mode.
+PyMEPix and MCP2Hist left as future modes.
 
 The acquisition package should provide focused client operations and small
 runtime helpers. End-to-end orchestration belongs in `src/hermes/workflows/`.
@@ -21,7 +21,8 @@ src/
         │   ├── calibration.py     # helpers for loading SoPhy/ASI-generated BPC/DAC files into SERVAL
         │   ├── destination.py     # raw/image/preview destination helpers
         │   └── run.py             # start, stop, polling, and run snapshots
-        └── pymepix/               # reserved for a future PyMEPix acquisition mode
+        ├── pymepix/               # reserved for a future PyMEPix acquisition mode
+        └── mcp2hist/              # reserved for a future MCP2Hist acquisition mode
 ```
 
 This layout is a target shape, not a requirement to create every file
@@ -29,9 +30,10 @@ immediately. Add modules when the first concrete workflow needs them.
 
 Mode-specific code may use backend-native concepts directly. For example,
 `hermes.acquisition.serval` may use ASI SERVAL endpoints and destination JSON
-structures, while a `hermes.acquisition.pymepix` package can use PyMEPix APIs
-and concepts. The rest of the codebase should interact through HERMES models,
-state services, and workflow functions.
+structures, while future `hermes.acquisition.pymepix` and
+`hermes.acquisition.mcp2hist` packages can use their backend-native APIs and
+concepts. The rest of the codebase should interact through HERMES models, state
+services, and workflow functions.
 
 The intended dependency direction is:
 
@@ -41,6 +43,7 @@ hermes.workflows -> hermes.state_service
 hermes.state_service -> hermes.state
 hermes.acquisition.serval -> SERVAL HTTP API
 hermes.acquisition.pymepix -> PyMEPix API
+hermes.acquisition.mcp2hist -> MCP2Hist API or file interface
 ```
 
 `hermes.state_service` is the mutation, validation, approval policy, and audit
@@ -235,10 +238,27 @@ SERVAL:
 - update the HERMES record only through `hermes.state_service`
 - add PyMEPix-specific state models under `hermes.state.models.acquisition`
 
+## MCP2Hist Mode
+
+`src/hermes/acquisition/mcp2hist/` is reserved for a future MCP2Hist acquisition
+mode. Do not build a broad MCP2Hist abstraction until there is a concrete
+MCP2Hist workflow and known state requirements.
+
+When that workflow exists, this package should follow the same boundary as
+SERVAL:
+
+- keep MCP2Hist-specific API calls or file-interface logic inside
+  `hermes.acquisition.mcp2hist`
+- return structured snapshots, configuration results, acquisition status, and
+  artifact metadata to the workflow
+- update the HERMES record only through `hermes.state_service`
+- add MCP2Hist-specific state models under `hermes.state.models.acquisition`
+
 ## Boundary Notes
 
-- Acquisition code should wrap backend operations such as SERVAL HTTP requests
-  or future PyMEPix API calls, and should emit acquisition-domain log events.
+- Acquisition code should wrap backend operations such as SERVAL HTTP requests,
+  future PyMEPix API calls, or future MCP2Hist calls/file operations, and should
+  emit acquisition-domain log events.
 - Workflow code should decide the order of operations, call `hermes.state_service`, and
   coordinate artifact discovery.
 - State models should remain durable Pydantic records. They should not create
