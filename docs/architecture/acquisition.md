@@ -18,7 +18,7 @@ src/
     └── acquisition/
         ├── serval/
         │   ├── client.py          # SERVAL HTTP client operations
-        │   ├── calibration.py     # BPC/DAC load helpers (NOTE: NOT CURRENTLY SUPPORTED, please use SoPhy)
+        │   ├── calibration.py     # helpers for loading SoPhy/ASI-generated BPC/DAC files into SERVAL
         │   ├── destination.py     # raw/image/preview destination helpers
         │   └── run.py             # start, stop, polling, and run snapshots
         └── pymepix/               # reserved for a future PyMEPix acquisition mode
@@ -94,6 +94,25 @@ Expected SERVAL responsibilities:
 - collect final acquisition status and artifact metadata for the workflow to
   record
 
+## Calibration Boundary
+
+HERMES should not generate detector calibration files. Chip calibration is done
+outside HERMES in SoPhy, which produces `.dacs` and `.bpc` files. HERMES should
+accept those files as acquisition-plan inputs, validate that the paths are
+present and usable, record their provenance in the HERMES record, and provide
+them to SERVAL through `/config/load`.
+
+Calibration inputs should be treated as durable run configuration. The record
+should capture the requested `.bpc` and `.dacs` paths, applied calibration status,
+file sizes and hashes when practical, and any SERVAL response summaries. If the
+calibration payloads are captured as state values rather than artifact
+references, large values may be externalized through `hermes.state_service` and
+represented by `ExternalPayloadRef`.
+
+SoPhy and SERVAL should not be run against the detector at the same time. A
+HERMES acquisition workflow may require the user to provide existing SoPhy output
+files before it configures SERVAL.
+
 ## SERVAL Logging
 
 SERVAL communication belongs in the acquisition logging domain, not as free-form
@@ -159,9 +178,10 @@ logs to reproduce or debug the run.
    SERVAL host, disk space is sufficient, and the requested acquisition plan is
    compatible with the detected hardware.
 7. Load chip calibration files.
-   Load the `.bpc` pixel configuration and `.dacs` DAC file with SERVAL
-   `/config/load`. SoPhy may be used to generate or manage calibration files,
-   but SoPhy and SERVAL should not run at the same time.
+   Load the user-provided `.bpc` pixel configuration and `.dacs` DAC files with
+   SERVAL `/config/load`. These files are generated outside HERMES by SoPhy or
+   supplied by ASI; HERMES is responsible for validating, recording, and handing
+   them to SERVAL.
 8. Apply detector acquisition configuration.
    Update `/detector/config` with the run-specific trigger mode, trigger count,
    exposure time, trigger period, bias settings, TDC settings, and any other
