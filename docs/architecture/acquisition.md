@@ -112,10 +112,10 @@ SERVAL acquisition log events should include:
 
 The HERMES state record should contain durable run facts, including requested and
 applied detector configuration, destination configuration, detector snapshots,
-artifact references, final status, and PixelConfig if needed for
-reproducibility. If PixelConfig is captured in the state record, acquisition logs
-should reference it by state path, length, and digest rather than logging the
-full PixelConfig payload.
+artifact references, final status, and PixelConfig or DAC settings if needed for
+reproducibility. If PixelConfig or DAC settings are captured in the state record,
+acquisition logs should reference them by state path, length, digest, or
+`ExternalPayloadRef` rather than logging the full payload.
 
 Do not log raw image data, decoded event tables, large raw detector payloads, or
 large stdout/stderr streams. Store large data products as artifacts and log their
@@ -146,8 +146,10 @@ logs to reproduce or debug the run.
 5. Snapshot initial SERVAL and detector state.
    Read `/dashboard`, `/detector/info`, `/detector/health`,
    `/detector/layout`, `/detector/config`, and `/server/destination`. Durable
-   detector fields needed for reproducibility, such as PixelConfig, should be
-   recorded in the HERMES record rather than duplicated in acquisition logs.
+   detector fields needed for reproducibility, such as PixelConfig and DAC
+   settings, should be recorded in the HERMES record rather than duplicated in
+   acquisition logs. Large configuration fields may be externalized through
+   `hermes.state_service` and represented by `ExternalPayloadRef`.
 6. Validate pre-run conditions.
    Confirm a detector is present, the measurement status is idle, health
    readings are within configured limits, output paths are usable from the
@@ -169,8 +171,9 @@ logs to reproduce or debug the run.
 10. Read back and validate applied configuration.
     Re-read `/detector/config` and `/server/destination`, compare them with the
     requested plan, and update the HERMES record with the applied values. For
-    large fields, record the durable value once in state and use summaries or
-    digests in logs.
+    large fields, record the durable value once in state or as an external state
+    payload reference, then use summaries, digests, or state paths in operational
+    logs.
 11. Start measurement.
     Call `/measurement/start` only after the applied configuration and
     destinations have been validated.
