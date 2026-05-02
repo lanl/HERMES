@@ -46,7 +46,7 @@ the Pydantic `HermesRecord` schema remains the canonical contract.
 ## Expected model groups ###
 Expected model groups and their responsibilities include:
 - MeasurementInfo: metadata about the measurement, including measurement ID, run number, beamline, proposal ID, image intensifier serial number, scintillator serial number, sample name, operator name, log notes, and any other relevant metadata fields that are important for provenance and record-keeping.
-- RuntimeEnvironment: information about the runtime environment used for the measurement, including working directory, data directory, log directory, preview directory, analysis directory, and any other relevant environment information.
+- RuntimeEnvironment: information about the runtime environment used for the measurement, including `Path` fields for working directory, data directory, raw data directory, analyzed data directory, log directory, preview directory, optional config directory, executable paths, and any other relevant environment information.
 - AcquisitionState: modality-specific information about the acquisition process, using discriminated unions to allow for different fields based on the acquisition modes (e.g. serval, pymepix, mcp2hist).
 - AnalysisState: modality-specific information about the analysis process, using discriminated unions to allow for different fields based on the analysis modes (e.g. empir, hermes_tpx3_spidr).
 
@@ -128,20 +128,29 @@ MeasurementInfo
 ```
 
 #### RuntimeEnvironment ####
-The RuntimeEnvironment model should capture all relevant information about the runtime environment used for the measurement, including:
-- working directory
-- data directory
-- log directory
-- preview directory
-- analysis directory
+The RuntimeEnvironment model should capture all relevant information about the
+runtime environment used for the measurement. Directory and executable path
+fields should be `Path` values in the model, not loose strings. The canonical
+directory field names are:
+- `working_dir`
+- `data_dir`
+- `raw_data_dir`
+- `analyzed_data_dir`
+- `log_dir`
+- `preview_dir`
+- `config_dir`, if needed
 
 ```python
 RuntimeEnvironment
-  working_directory: str
-  data_directory: str
-  log_directory: str
-  preview_directory: str
-  analysis_directory: str
+  working_dir: Path
+  data_dir: Path
+  raw_data_dir: Path
+  analyzed_data_dir: Path
+  log_dir: Path
+  preview_dir: Path
+  config_dir: Path | None
+  empir_path: Path | None
+  hermes_tpx3_spidr_binary: Path
   ...
 ```
 
@@ -166,7 +175,7 @@ serval
 
 ServalEnvironment
   version: str
-  path: str
+  serval_url: str
   destination_configuration: DestinationConfig
   detector_info: DetectorInfo 
   ...

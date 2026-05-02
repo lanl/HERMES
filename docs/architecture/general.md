@@ -79,7 +79,7 @@ HERMES/
 │       │       │   ├── serval.py               # SERVAL acquisition environment, configuration, and related settings
 │       │       │   └── pymepix.py              # PyMEPIX acquisition environment, configuration, and related settings
 │       │       ├── detector.py                 # TPX3Cam, SERVAL, chip, layout, health, and detector config metadata
-│       │       ├── environment.py              # working directories, data directories, log directories, preview directories, analysis directories, and config directories
+│       │       ├── environment.py              # Path fields for working, data, raw data, analyzed data, log, preview, config, and tool paths
 │       │       └── shared_models.py            # shared models and enums for the state models
 │       │
 │       ├── acquisition/        # acquisition mode packages such as hermes.acquisition.serval
