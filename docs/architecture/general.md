@@ -62,7 +62,8 @@ src/
       paths.py
       records.py
     models/
-      acquisition.py
+      acquisition/
+        several.py
       analysis.py
       artifacts.py
       detector.py
