@@ -10,5 +10,8 @@
 - Use /tmp for temporary files that are not useful for development and should be cleaned up regularly.
 - If Python code is added, prefer typed APIs, focused pytest coverage, and Pixi-managed environments.
 - reference .agent/resources and .agent/examples for context on interfaces with the TPX3Cam, data formats from SPIDR readouts, and EMPIR data analysis.
-- The central structure of the codebase is a pydantic model that represents a state of record for both acquisition and analysis.
+- Strictly follow the architecture laid out in the docs/architecture directory.
+- If the achitecture is unclear, ask for clarification or propose a change to the architecture docs before proceeding.
+- If the architecture is missing details necessary to implement a workflow, ask for clarification or propose a change to the architecture docs before proceeding.
+- If requests do not align with the architecture, ask for clarification or propose a change to the architecture docs before proceeding.
 - Loguru is used for logging, and logs should be structured and informative to aid in debugging and understanding the flow of data through the system.
