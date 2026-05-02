@@ -1,6 +1,6 @@
 # State Model
 
-`src/hermes/models/` owns the Pydantic state of record. These models should be
+`src/state/` owns the Pydantic state of record. These models should be
 durable enough to save to JSON and load later.
 
 The central object in HERMES is a Pydantic model that records:
@@ -23,17 +23,12 @@ The initial model is recorded in a log, then every change to the model is logged
 
 ## Expected model groups ###
 Expected model groups and their responsibilities include:
+- MeasurementInfo: metadata about the measurement, including measurement ID, run number, beamline, proposal ID, image intensifier serial number, scintillator serial number, sample name, operator name, log notes, and any other relevant metadata fields that are important for provenance and record-keeping.
+- RuntimeEnvironment: information about the runtime environment used for the measurement, including working directory, data directory, log directory, preview directory, analysis directory, and any other relevant environment information.
+- AcquisitionState: modality-specific information about the acquisition process, using discriminated unions to allow for different fields based on the acquisition modes (e.g. serval, pymepix, mcp2hist).
+- AnalysisState: modality-specific information about the analysis process, using discriminated unions to allow for different fields based on the analysis modes (e.g. empir, hermes_tpx3_spidr).
 
-- `record.py`: top-level run or experiment record
-- `infomation.py`: measurement info like measurement ID, run number, beamline, proposal ID, image intensifier sn, and other metadata
-- `acquisition/serval.py` and `acquisition/pymepix.py`: acquisition environments, configurations, and other metadata pertinent to acquisition state and provenance
-- `analysis/empir.py` and `analysis/hermes_tpx3_spidr.py`: analysis evnvironment, configurations, and other metadata pertinent to analysis state and provenance
-- `detector.py`: TPX3Cam, SERVAL, chip, layout, health, and detector config metadata
-- `environment.py`: working directories, data directories, log directories, preview directories, analysis directories, and config directories 
-- `enums.py`: shared enums for status, artifact kinds, acquisition modes, and analysis modes
-
-The models should use discriminated unions for modality-specific acquisition and
-analysis plans once the modalities are known.
+The models should use discriminated unions for modality-specific acquisition and analysis plans once the modalities are known.
 
 The top-level record should explicitly include environment state:
 
@@ -151,3 +146,25 @@ empir
   exporter_config: ExporterConfig
   ...
 ```
+
+## Expected file structure of state/ ###
+The `state/` directory should be organized into a top-level `state.py` file that defines the top-level aggregate model (e.g. `HermesRecord`) and a `models/` subdirectory that contains the individual models for measurement info, acquisition state, analysis state, environment state, and any shared models or enums.
+
+```text
+state/
+├── __init__.py         # makes state a Python package. Keep __init__.py empty!
+├── state.py            # top-level aggregate model
+│
+└── models/
+    ├── __init__.py                 # makes models a Python package. Keep __init__.py empty!
+    ├── measurement.py              # measurement info and metadata
+    ├── analysis/                   # analysis environments that are unioned in the top-level record
+    │   ├── empir.py                # EMPIR analysis environment, configuration, and related settings
+    │   └── hermes_tpx3_spidr.py    # TPX3 SPIDR analysis environment, configuration, and related settings
+    ├── acquisition/                # acquisition environments that are unioned in the top-level record
+    │   ├── serval.py               # SERVAL acquisition environment, configuration, and related settings
+    │   └── pymepix.py              # PyMEPIX acquisition environment, configuration, and related settings
+    ├── detector.py                 # TPX3Cam, SERVAL, chip, layout, health, and detector config metadata
+    ├── environment.py              # working directories, data directories, log directories, preview directories, analysis directories, and config directories
+    └── shared_models.py            # shared models and enums for the state models
+``` 
