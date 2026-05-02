@@ -42,7 +42,7 @@ for each major boundary live in separate files:
 
 ```text
 
-hermes/
+HERMES/
 ├── Cargo.toml  # Rust workspace file for SPIDR unpacker and related crates
 ├── crates/                 # Rust crates for SPIDR unpacking and related functionality
 │   └── hermes-tpx3-spidr/
@@ -53,32 +53,37 @@ hermes/
 │       └── tests/          # tests for the SPIDR unpacker
 │
 ├── src/
-│   ├── state_service/          # state management, change proposal, validation, and approval workflow 
-│   │   ├── __init__.py         # makes state_service a Python package. Keep __init__.py empty!
-│   │   ├── state_manager.py    # core logic for managing state access, change proposals, validation, and approval workflow
-│   │   ├── change_requests.py  # the ChangeRequest data model and related logic for tracking proposed changes
-│   │   ├── state_io.py         # functions for loading and saving the state to/from config files (e.g. YAML)
-│   │   ├── state_logger.py     # functions for logging state changes and maintaining an audit trail
-│   │   └── shared_types.py     # shared types and enums for the state service
-│   │
-│   ├── state/
-│   │   ├── __init__.py         # makes state a Python package. Keep __init__.py empty!
-│   │   ├── state.py            # top-level aggregate model
-│   │   │
-│   │   └── models/
-│   │       ├── __init__.py                 # makes models a Python package. Keep __init__.py empty!
-│   │       ├── measurement.py              # measurement info and metadata
-│   │       ├── analysis/                   # analysis environments that are unioned in the top-level record
-│   │       │   ├── empir.py                # EMPIR analysis environment, configuration, and related settings
-│   │       │   └── hermes_tpx3_spidr.py    # TPX3 SPIDR analysis environment, configuration, and related settings
-│   │       ├── acquisition/                # acquisition environments that are unioned in the top-level record
-│   │       │   ├── serval.py               # SERVAL acquisition environment, configuration, and related settings
-│   │       │   └── pymepix.py              # PyMEPIX acquisition environment, configuration, and related settings
-│   │       ├── detector.py                 # TPX3Cam, SERVAL, chip, layout, health, and detector config metadata
-│   │       ├── environment.py              # working directories, data directories, log directories, preview directories, analysis directories, and config directories
-│   │       └── shared_models.py            # shared models and enums for the state models
-│   │
-│   └── logging.py    # setup for Loguru logging across the codebase
+│   └── hermes/
+│       ├── __init__.py         # makes hermes the Python import package
+│       ├── state_service/      # state management, change proposal, validation, and approval workflow 
+│       │   ├── __init__.py     # makes hermes.state_service a Python package. Keep __init__.py empty!
+│       │   ├── state_manager.py    # core logic for managing state access, change proposals, validation, and approval workflow
+│       │   ├── change_requests.py  # the ChangeRequest data model and related logic for tracking proposed changes
+│       │   ├── state_io.py         # functions for loading and saving the state to/from config files (e.g. YAML)
+│       │   ├── state_logger.py     # functions for logging state changes and maintaining an audit trail
+│       │   └── shared_types.py     # shared types and enums for the state service
+│       │
+│       ├── state/
+│       │   ├── __init__.py         # makes hermes.state a Python package. Keep __init__.py empty!
+│       │   ├── state.py            # top-level aggregate model
+│       │   │
+│       │   └── models/
+│       │       ├── __init__.py                 # makes models a Python package. Keep __init__.py empty!
+│       │       ├── measurement.py              # measurement info and metadata
+│       │       ├── analysis/                   # analysis environments that are unioned in the top-level record
+│       │       │   ├── empir.py                # EMPIR analysis environment, configuration, and related settings
+│       │       │   └── hermes_tpx3_spidr.py    # TPX3 SPIDR analysis environment, configuration, and related settings
+│       │       ├── acquisition/                # acquisition environments that are unioned in the top-level record
+│       │       │   ├── serval.py               # SERVAL acquisition environment, configuration, and related settings
+│       │       │   └── pymepix.py              # PyMEPIX acquisition environment, configuration, and related settings
+│       │       ├── detector.py                 # TPX3Cam, SERVAL, chip, layout, health, and detector config metadata
+│       │       ├── environment.py              # working directories, data directories, log directories, preview directories, analysis directories, and config directories
+│       │       └── shared_models.py            # shared models and enums for the state models
+│       │
+│       ├── acquisition/        # acquisition mode packages such as hermes.acquisition.serval
+│       ├── analysis/           # analysis mode execution and wrappers
+│       ├── workflows/          # end-to-end acquisition-to-analysis orchestration
+│       └── logging.py          # setup for Loguru logging across the codebase
 │
 ├── tests/
 ├── docs/

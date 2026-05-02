@@ -13,37 +13,39 @@ The initial package shape should be:
 ## Acquisition Package Structure 
 
 ```text
-src/hermes/acquisition/
-├── serval/
-│   ├── client.py          # SERVAL HTTP client operations
-│   ├── calibration.py     # BPC/DAC load helpers (NOTE: NOT CURRENTLY SUPPORTED, please use SoPhy)
-│   ├── destination.py     # raw/image/preview destination helpers
-│   └── run.py             # start, stop, polling, and run snapshots
-└── pymepix/               # reserved for a future PyMEPix acquisition mode
+src/
+└── hermes/
+    └── acquisition/
+        ├── serval/
+        │   ├── client.py          # SERVAL HTTP client operations
+        │   ├── calibration.py     # BPC/DAC load helpers (NOTE: NOT CURRENTLY SUPPORTED, please use SoPhy)
+        │   ├── destination.py     # raw/image/preview destination helpers
+        │   └── run.py             # start, stop, polling, and run snapshots
+        └── pymepix/               # reserved for a future PyMEPix acquisition mode
 ```
 
 This layout is a target shape, not a requirement to create every file
 immediately. Add modules when the first concrete workflow needs them.
 
 Mode-specific code may use backend-native concepts directly. For example,
-`acquisition/serval/` may use ASI SERVAL endpoints and destination JSON
-structures, while a `acquisition/pymepix/` package can use PyMEPix APIs
+`hermes.acquisition.serval` may use ASI SERVAL endpoints and destination JSON
+structures, while a `hermes.acquisition.pymepix` package can use PyMEPix APIs
 and concepts. The rest of the codebase should interact through HERMES models,
 state services, and workflow functions.
 
 The intended dependency direction is:
 
 ```text
-workflow -> acquisition mode package
-workflow -> state_service
-state_service -> state
-acquisition/serval -> SERVAL HTTP API
-acquisition/pymepix -> PyMEPix API
+hermes.workflows -> hermes.acquisition mode package
+hermes.workflows -> hermes.state_service
+hermes.state_service -> hermes.state
+hermes.acquisition.serval -> SERVAL HTTP API
+hermes.acquisition.pymepix -> PyMEPix API
 ```
 
-`state_service` is the mutation, validation, approval, and audit gate for the
-HERMES record. It should not own detector I/O or the full acquisition procedure.
-The acquisition workflow should call `state_service` whenever the run record
+`hermes.state_service` is the mutation, validation, approval, and audit gate for
+the HERMES record. It should not own detector I/O or the full acquisition procedure.
+The acquisition workflow should call `hermes.state_service` whenever the run record
 needs to be initialized, validated, updated, or persisted.
 
 ## Shared Responsibilities
@@ -64,7 +66,7 @@ run that mode safely:
   record
 
 Acquisition mode packages should return structured data that can be placed into
-the HERMES record by the workflow through `state_service`. They should not
+the HERMES record by the workflow through `hermes.state_service`. They should not
 directly mutate the state record.
 
 ## SERVAL Mode
@@ -190,7 +192,7 @@ logs to reproduce or debug the run.
 Each major step should produce structured Loguru events. Workflow progress should
 use the `workflow` domain. SERVAL communication and polling should use the
 `acquisition` domain with `backend="serval"`. State mutations should go through
-`state_service` and be logged by `StateLogger`.
+`hermes.state_service` and be logged by `StateLogger`.
 
 ## PyMEPix Mode
 
@@ -201,21 +203,21 @@ workflow and known state requirements.
 When that workflow exists, this package should follow the same boundary as
 SERVAL:
 
-- keep PyMEPix-specific API calls inside `acquisition/pymepix/`
+- keep PyMEPix-specific API calls inside `hermes.acquisition.pymepix`
 - return structured snapshots, configuration results, acquisition status, and
   artifact metadata to the workflow
-- update the HERMES record only through `state_service`
-- add PyMEPix-specific state models under `state/models/acquisition/`
+- update the HERMES record only through `hermes.state_service`
+- add PyMEPix-specific state models under `hermes.state.models.acquisition`
 
 ## Boundary Notes
 
 - Acquisition code should wrap backend operations such as SERVAL HTTP requests
   or future PyMEPix API calls, and should emit acquisition-domain log events.
-- Workflow code should decide the order of operations, call `state_service`, and
+- Workflow code should decide the order of operations, call `hermes.state_service`, and
   coordinate artifact discovery.
 - State models should remain durable Pydantic records. They should not create
   directories, call SERVAL, or mutate detector state.
-- `state_service` should validate and apply changes to the HERMES record, but it
+- `hermes.state_service` should validate and apply changes to the HERMES record, but it
   should not directly call detector APIs.
 - Operational logs should summarize or reference large durable state fields such
   as PixelConfig. They should not duplicate those full payloads.

@@ -1,6 +1,6 @@
 # State Model
 
-`src/state/` owns the Pydantic state of record. These models should be
+`src/hermes/state/` owns the Pydantic state of record. These models should be
 durable enough to save to JSON and load later.
 
 The central object in HERMES is a Pydantic model that records:
@@ -147,24 +147,26 @@ empir
   ...
 ```
 
-## Expected file structure of state/ ###
-The `state/` directory should be organized into a top-level `state.py` file that defines the top-level aggregate model (e.g. `HermesRecord`) and a `models/` subdirectory that contains the individual models for measurement info, acquisition state, analysis state, environment state, and any shared models or enums.
+## Expected file structure of src/hermes/state/ ###
+The `src/hermes/state/` directory should be organized into a top-level `state.py` file that defines the top-level aggregate model (e.g. `HermesRecord`) and a `models/` subdirectory that contains the individual models for measurement info, acquisition state, analysis state, environment state, and any shared models or enums.
 
 ```text
-state/
-├── __init__.py         # makes state a Python package. Keep __init__.py empty!
-├── state.py            # top-level aggregate model
-│
-└── models/
-    ├── __init__.py                 # makes models a Python package. Keep __init__.py empty!
-    ├── measurement.py              # measurement info and metadata
-    ├── analysis/                   # analysis environments that are unioned in the top-level record
-    │   ├── empir.py                # EMPIR analysis environment, configuration, and related settings
-    │   └── hermes_tpx3_spidr.py    # TPX3 SPIDR analysis environment, configuration, and related settings
-    ├── acquisition/                # acquisition environments that are unioned in the top-level record
-    │   ├── serval.py               # SERVAL acquisition environment, configuration, and related settings
-    │   └── pymepix.py              # PyMEPIX acquisition environment, configuration, and related settings
-    ├── detector.py                 # TPX3Cam, SERVAL, chip, layout, health, and detector config metadata
-    ├── environment.py              # working directories, data directories, log directories, preview directories, analysis directories, and config directories
-    └── shared_models.py            # shared models and enums for the state models
+src/
+└── hermes/
+    └── state/
+        ├── __init__.py         # makes state a Python package. Keep __init__.py empty!
+        ├── state.py            # top-level aggregate model
+        │
+        └── models/
+            ├── __init__.py                 # makes models a Python package. Keep __init__.py empty!
+            ├── measurement.py              # measurement info and metadata
+            ├── analysis/                   # analysis environments that are unioned in the top-level record
+            │   ├── empir.py                # EMPIR analysis environment, configuration, and related settings
+            │   └── hermes_tpx3_spidr.py    # TPX3 SPIDR analysis environment, configuration, and related settings
+            ├── acquisition/                # acquisition environments that are unioned in the top-level record
+            │   ├── serval.py               # SERVAL acquisition environment, configuration, and related settings
+            │   └── pymepix.py              # PyMEPIX acquisition environment, configuration, and related settings
+            ├── detector.py                 # TPX3Cam, SERVAL, chip, layout, health, and detector config metadata
+            ├── environment.py              # working directories, data directories, log directories, preview directories, analysis directories, and config directories
+            └── shared_models.py            # shared models and enums for the state models
 ``` 

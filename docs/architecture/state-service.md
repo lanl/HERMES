@@ -1,7 +1,7 @@
 # State_Service Module #
 
 ## Overview ##
-The state_service module is the control layer that manages all interaction with the measurement state. It acts as a gatekeeper to ensure safe, validated, and auditable changes.
+The `src/hermes/state_service/` module is the control layer that manages all interaction with the measurement state. It acts as a gatekeeper to ensure safe, validated, and auditable changes.
 
 Purpose
 - Provide controlled access to the state
@@ -48,7 +48,7 @@ State_Service Module Design Principles
 - Extensibility: can later integrate hardware triggers or side effects
 
 ### module structure ###
-The state_service module is organized into several key components:
+The `src/hermes/state_service/` module is organized into several key components:
 - `state_manager.py`: 
     - core logic for managing state access, change proposals, validation, and approval workflow.
     - provides the main interface for other components to interact with the state.
@@ -80,3 +80,17 @@ The state_service module is organized into several key components:
 
 - `shared_types.py`: 
     - common types and enums used across the state service (e.g. ChangeStatus).
+
+## State-Service Module Structure 
+
+```text
+src/
+└── hermes/
+    └── state_service/          # state management, change proposal, validation, and approval workflow
+        ├── __init__.py         # makes hermes.state_service a Python package. Keep __init__.py empty!
+        ├── state_manager.py    # core logic for managing state access, change proposals, validation, and approval workflow
+        ├── change_requests.py  # the ChangeRequest data model and related logic for tracking proposed changes
+        ├── state_io.py         # functions for loading and saving the state to/from config files (e.g. YAML)
+        ├── state_logger.py     # functions for logging state changes and maintaining an audit trail
+        └── shared_types.py     # shared types and enums for the state service
+``` 
