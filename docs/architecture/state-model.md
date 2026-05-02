@@ -21,7 +21,7 @@ stacks, generated plots, detector data files, or build products.
 ## How model is used to keep a record of acquisition and analysis
 The initial model is recorded in a log, then every change to the model is logged with initial and final values. This creates a complete reconstructable model at any point in time during the acquisition and analysis process. The final model is saved to disk as a JSON file for later reference.
 
-### Expected model groups
+## Expected model groups ###
 Expected model groups and their responsibilities include:
 
 - `record.py`: top-level run or experiment record
@@ -37,13 +37,33 @@ analysis plans once the modalities are known.
 
 The top-level record should explicitly include environment state:
 
-```text
+### Expected model structures ###
+
+#### HermesRecord ####
+The top-level record should explicitly include measurement metadata, acquisition state, analysis state, and environment state. This keeps all durable information about the run in one place and makes it easy to save and load the complete record.
+
+```python
 HermesRecord
   measurement_info: MeasurementInfo
   environment: RuntimeEnvironment
   acquisition: AcquisitionState
   analysis: AnalysisState
+```
 
+#### MeasurementInfo ####
+MeasurementInfo should capture all relevant metadata about the measurement, including:
+- measurement ID
+- run number
+- beamline
+- proposal ID
+- image intensifier serial number
+- scintillator serial number
+- sample name
+- operator name
+- log notes
+- any other relevant metadata fields that are important for provenance and record-keeping
+
+```python
 MeasurementInfo
   measurement_id: str
   run_number: int
@@ -53,9 +73,19 @@ MeasurementInfo
   scintillator_sn: str | None
   sample_name: str | None
   operator_name: str | None
-  log_note: str | None
+  log_notes: str | None
   ...
+```
 
+#### RuntimeEnvironment ####
+The RuntimeEnvironment model should capture all relevant information about the runtime environment used for the measurement, including:
+- working directory
+- data directory
+- log directory
+- preview directory
+- analysis directory
+
+```python
 RuntimeEnvironment
   working_directory: str
   data_directory: str
@@ -63,29 +93,25 @@ RuntimeEnvironment
   preview_directory: str
   analysis_directory: str
   ...
+```
 
+#### AcquisitionState ####
+AcquisitionState should capture modality-specific information about the acquisition process. It should use discriminated unions to allow for different fields based on the acquisition modes.
+
+```python
 AcquisitionState
   mode: serval | pymepix | mcp2hist
   ...
+```
 
+Depending on the mode, the AcquisitionState may include different fields. For example, if the mode is `serval`, it may include fields for SERVAL environment, configuration, and detector information:
+
+##### ServalAcquisitionState ####
+```python 
 serval
   serval_environment: ServalEnvironment
   destination_configuration: DestinationConfig
   detector_info: DetectorInfo 
-  ...
-
-AnalysisState
-  mode: hermes_tpx3_spidr | empir
-  
-hermes_tpx3_spidr
-  cluster_config: ClusterConfig
-
-empir
-  empir_environment: EmpirEnvironment
-  empir_config: EmpirConfig
-  pixel_to_photon_config: PixelToPhotonConfig
-  photon_to_event_config: PhotonToEventConfig
-  exporter_config: ExporterConfig
   ...
 
 ServalEnvironment
@@ -94,11 +120,34 @@ ServalEnvironment
   destination_configuration: DestinationConfig
   detector_info: DetectorInfo 
   ...
-
+```
 NOTE: for ServalEnviroment fields and submodels please reference 20231023_ASIServer_TPX3_manual_V3.3.pdf
 
+#### AnalysisState ####
+AnalysisState should capture modality-specific information about the analysis process. It should use discriminated unions to allow for different fields based on the analysis modes.
+
+```python
+AnalysisState
+  mode: hermes_tpx3_spidr | empir
 ```
 
-This keeps runtime paths, external tool locations, and versions in the durable
-state model instead of scattering them across scripts or logs.
+Depending on the mode, the AnalysisState may include different fields. For example, if the mode is `hermes_tpx3_spidr`, it may include fields for the HERMES TPX3 SPIDR analysis environment, configuration, and cluster configuration:
 
+##### HermesTpx3SpidrAnalysisState ####
+```python
+hermes_tpx3_spidr
+  cluster_config: ClusterConfig
+```
+
+If the mode is `empir`, it may include fields for the EMPIR analysis environment, configuration, and related settings:
+
+##### EmpirAnalysisState ####
+```python
+empir
+  empir_environment: EmpirEnvironment
+  empir_config: EmpirConfig
+  pixel_to_photon_config: PixelToPhotonConfig
+  photon_to_event_config: PhotonToEventConfig
+  exporter_config: ExporterConfig
+  ...
+```
