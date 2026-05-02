@@ -17,8 +17,8 @@ for each major boundary live in separate files:
 - [Acquisition](acquisition.md)
 - [TPX3 SPIDR Unpacker](unpacker.md)
 - [Analysis](analysis.md)
-- [Artifacts](artifacts.md)
-- [I/O](io.md)
+- [State](state-model.md)
+- [State Services](state-service.md)
 - [Workflows](workflows.md)
 - [Open Questions](open-questions.md)
 
@@ -41,58 +41,65 @@ for each major boundary live in separate files:
 ## Proposed Repository Layout
 
 ```text
-Cargo.toml
-crates/
-  hermes-tpx3-spidr/
-    Cargo.toml
-    src/
-      lib.rs
-      main.rs
-    tests/
 
-src/
-  hermes/
-    acquisition/
-      serval_client.py
-      workflows.py
-    analysis/
-      tpx3_spidr.py
-      workflows.py
-    io/
-      paths.py
-      records.py
-    models/
-      acquisition/
-        several.py
-      analysis.py
-      artifacts.py
-      detector.py
-      environment.py
-      enums.py
-      record.py
-    logging.py
-
-tests/
-docs/
-  architecture.md
-  architecture/
-    general.md
-    state-model.md
-    environment.md
-    acquisition.md
-    unpacker.md
-    analysis.md
-    artifacts.md
-    io.md
-    workflows.md
-    open-questions.md
-  decisions/
-
-.agent/
-  resources/
-  examples/
-
-.scratch/
+hermes/
+├── Cargo.toml  # Rust workspace file for SPIDR unpacker and related crates
+├── crates/                 # Rust crates for SPIDR unpacking and related functionality
+│   └── hermes-tpx3-spidr/
+│       ├── Cargo.toml      # crate file for the SPIDR unpacker 
+│       ├── src/            # Rust source code for the SPIDR unpacker
+│       ├── lib.rs          # main library file for the SPIDR unpacker
+│       ├── main.rs         # main executable file for the SPIDR unpacker
+│       └── tests/          # tests for the SPIDR unpacker
+│
+├── src/
+│   ├── state_service/          # state management, change proposal, validation, and approval workflow 
+│   │   ├── __init__.py         # makes state_service a Python package. Keep __init__.py empty!
+│   │   ├── state_manager.py    # core logic for managing state access, change proposals, validation, and approval workflow
+│   │   ├── change_requests.py  # the ChangeRequest data model and related logic for tracking proposed changes
+│   │   ├── state_io.py         # functions for loading and saving the state to/from config files (e.g. YAML)
+│   │   ├── state_logger.py     # functions for logging state changes and maintaining an audit trail
+│   │   └── shared_types.py     # shared types and enums for the state service
+│   │
+│   ├── state/
+│   │   ├── __init__.py         # makes state a Python package. Keep __init__.py empty!
+│   │   ├── state.py            # top-level aggregate model
+│   │   │
+│   │   └── models/
+│   │       ├── __init__.py                 # makes models a Python package. Keep __init__.py empty!
+│   │       ├── measurement.py              # measurement info and metadata
+│   │       ├── analysis/                   # analysis environments that are unioned in the top-level record
+│   │       │   ├── empir.py                # EMPIR analysis environment, configuration, and related settings
+│   │       │   └── hermes_tpx3_spidr.py    # TPX3 SPIDR analysis environment, configuration, and related settings
+│   │       ├── acquisition/                # acquisition environments that are unioned in the top-level record
+│   │       │   ├── serval.py               # SERVAL acquisition environment, configuration, and related settings
+│   │       │   └── pymepix.py              # PyMEPIX acquisition environment, configuration, and related settings
+│   │       ├── detector.py                 # TPX3Cam, SERVAL, chip, layout, health, and detector config metadata
+│   │       ├── environment.py              # working directories, data directories, log directories, preview directories, analysis directories, and config directories
+│   │       └── shared_models.py            # shared models and enums for the state models
+│   │
+│   └── logging.py    # setup for Loguru logging across the codebase
+│
+├── tests/
+├── docs/
+│   ├── architecture/
+│   │   ├── general.md
+│   │   ├── state-model.md
+│   │   ├── environment.md
+│   │   ├── acquisition.md
+│   │   ├── unpacker.md
+│   │   ├── analysis.md
+│   │   ├── artifacts.md
+│   │   ├── state_service.md
+│   │   ├── workflows.md
+│   │   ├── open-questions.md
+│   └── decisions/
+│
+├── .agent/
+│   ├── resources/  # vendor manuals, SERVAL documentation, example unpacking code, and other reference materials for agents and developers
+│   └── examples/   # example acquisition and analysis scripts, Jupyter notebooks, and other reference materials for agents and developers
+│
+└── .scratch/ # non-tracked files that are useful for development but not part of the core codebase
 ```
 
 This layout is a target shape, not a requirement to create every file
