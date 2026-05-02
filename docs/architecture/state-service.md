@@ -97,7 +97,7 @@ The `src/hermes/state_service/` module is organized into several key components:
 
 - `change_requests.py`: 
     - the ChangeRequest data model and related logic for tracking proposed changes.
-    - includes fields for change ID, path, new value, proposer, origin, timestamp, status (pending/approved/rejected/applied), optional approver, optional approval bypass flag, and optional justification.
+    - includes fields for change ID, path, new value, proposer, origin, timestamp, status (pending/approved/rejected/applied/failed), optional approver, optional approval bypass flag, and optional justification.
     - StateManager owns the in-memory pending-change workflow.
 
 - `state_io.py`: 
@@ -132,7 +132,7 @@ The `src/hermes/state_service/` module is organized into several key components:
       externalized.
     - does not configure Loguru sinks or write external payload files.
     - functions include:
-        - `log_change(change_request)`: logs the details of a ChangeRequest when it is proposed, approved, or rejected.
+        - `log_change(change_request)`: logs the details of a ChangeRequest when it is proposed, approved, applied, rejected, or failed.
 
 - `shared_types.py`: 
     - common types and enums used across the state service (e.g. ChangeStatus).
