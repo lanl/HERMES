@@ -10,7 +10,7 @@ The Rust crate should own low-level `.tpx3` packet decoding. It should keep the
 core decoding logic in `src/lib.rs` and expose a CLI in `src/main.rs`.
 
 The Python package should treat the unpacker as an external analysis engine. A
-Python wrapper in `src/hermes/analysis/tpx3_spidr.py` can call the binary,
+Python wrapper in `src/hermes/analysis/hermes_tpx3_spidr.py` can call the binary,
 validate its summary output, and use `hermes.state_service` to update the
 central Pydantic record. The wrapper must not directly mutate the record.
 
