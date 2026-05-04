@@ -54,6 +54,30 @@ validated, updated, or persisted. Trusted workflow updates may be applied after
 validation without per-change approval only when the state service approval
 bypass setting allows it.
 
+## Detector And SERVAL Boundary
+
+TPX3Cam detector state is the durable description of the physical detector and
+the detector configuration applied for a run. It should include hardware
+identity, chip identity, layout, health readings, and detector configuration
+values needed to reproduce or audit acquisition. Reproducibility-critical chip
+configuration such as `PixelConfig` and DAC settings remains detector-owned
+state, either inline when reasonably small or through `ExternalPayloadRef` when
+the value is too large for the record or state log.
+
+SERVAL state is the durable description of the acquisition backend session. It
+should include SERVAL URL and version, `/dashboard` snapshots, destination
+configuration, measurement lifecycle state, `/config/load` activity, polling
+results, and produced artifacts. `/dashboard` is SERVAL-owned state because it
+combines server, measurement, and detector summary fields and is designed as a
+fast backend status endpoint. Detector summaries from `/dashboard` may be copied
+into detector state only when they are confirmed by detector-specific endpoints
+such as `/detector/info`, `/detector/health`, `/detector/layout`, or
+`/detector/config`.
+
+Acquisition code may read and write detector-facing SERVAL endpoints, but it
+returns structured snapshots and results to the workflow. Durable HERMES record
+updates still flow through `hermes.state_service`.
+
 ## Shared Responsibilities
 
 Each acquisition mode package should expose the operations needed by workflows to

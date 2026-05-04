@@ -26,12 +26,13 @@ timestamps. This creates an audit trail that can reconstruct the state at any
 point in the measurement, assuming any external payload files referenced by the
 state are still available.
 
-Large configuration structures that are part of reproducibility, such as SERVAL
-`PixelConfig` or DAC settings, are still state values. They should be recorded
-when they first enter state and only recorded again if they change. If a value is
-too large or awkward to duplicate inline in the state log, the value may be saved
-as a separate payload file under `logs/payloads/` and represented in the record
-and state log by an `ExternalPayloadRef`.
+Large configuration structures that are part of reproducibility, such as the
+detector `PixelConfig` or DAC settings observed through SERVAL, are still state
+values. They should be recorded when they first enter state and only recorded
+again if they change. If a value is too large or awkward to duplicate inline in
+the state log, the value may be saved as a separate payload file under
+`logs/payloads/` and represented in the record and state log by an
+`ExternalPayloadRef`.
 
 Operational logs are not the source of truth for reconstructing state. They may
 reference state paths, hashes, and payload references, but they should not
@@ -47,6 +48,7 @@ the Pydantic `HermesRecord` schema remains the canonical contract.
 Expected model groups and their responsibilities include:
 - MeasurementInfo: metadata about the measurement, including measurement ID, run number, beamline, proposal ID, image intensifier serial number, scintillator serial number, sample name, operator name, log notes, and any other relevant metadata fields that are important for provenance and record-keeping.
 - RuntimeEnvironment: information about the runtime environment used for the measurement, including `Path` fields for working directory, data directory, raw data directory, analyzed data directory, log directory, preview directory, optional config directory, executable paths, and any other relevant environment information.
+- DetectorSnapshot: TPX3Cam hardware identity, chip identity, layout, health, and applied detector configuration read from detector-specific endpoints.
 - AcquisitionState: optional modality-specific information about the acquisition process, using discriminated unions to allow for different fields based on the acquisition modes (e.g. serval, pymepix, mcp2hist).
 - AnalysisState: optional modality-specific information about the analysis process, using discriminated unions to allow for different fields based on the analysis modes (e.g. empir, hermes_tpx3_spidr).
 
@@ -164,6 +166,33 @@ RuntimeEnvironment
   ...
 ```
 
+#### DetectorSnapshot ####
+DetectorSnapshot should capture durable TPX3Cam facts and detector-facing state
+needed to reproduce or audit a run. It should not represent the SERVAL backend
+session as a whole. In SERVAL mode, detector snapshots are populated from
+detector-specific endpoints:
+
+```python
+DetectorSnapshot
+  captured_at: datetime
+  info: DetectorInfo | None
+  health: DetectorHealth | None
+  layout: DetectorLayout | None
+  configuration: DetectorConfiguration | None
+```
+
+Detector-owned state includes:
+- hardware identity and firmware/readout identity from `/detector/info`
+- chip count, chip IDs, chip names, board IDs, and detector pixel layout
+- detector health readings from `/detector/health`
+- orientation, original layout, and rotated layout from `/detector/layout`
+- applied detector configuration from `/detector/config`
+- `PixelConfig` and DAC settings when they are needed for reproducibility
+
+SERVAL `/dashboard` should not live inside `DetectorSnapshot`. It is a SERVAL
+backend status snapshot because it combines server, measurement, disk,
+notification, and detector summary fields.
+
 #### AcquisitionState ####
 AcquisitionState should capture modality-specific information about the acquisition process. It should use discriminated unions to allow for different fields based on the acquisition modes.
 
@@ -173,24 +202,47 @@ AcquisitionState
   ...
 ```
 
-Depending on the mode, the AcquisitionState may include different fields. For example, if the mode is `serval`, it may include fields for SERVAL environment, configuration, and detector information:
+Depending on the mode, the AcquisitionState may include different fields. For
+example, if the mode is `serval`, it may include fields for the SERVAL backend
+session, requested and applied acquisition configuration, detector snapshots, and
+measurement results:
 
 ##### ServalAcquisitionState ####
 ```python 
 serval
   serval_environment: ServalEnvironment
-  destination_configuration: DestinationConfig
-  detector_info: DetectorInfo 
-  ...
+  requested_plan: ServalAcquisitionPlan | None
+  requested_detector_config: DetectorConfiguration | None
+  requested_destination_configuration: DestinationConfiguration | None
+  applied_detector_config: DetectorConfiguration | None
+  applied_destination_configuration: DestinationConfiguration | None
+  initial_detector_snapshot: DetectorSnapshot | None
+  final_detector_snapshot: DetectorSnapshot | None
+  calibration: CalibrationState | None
+  result: ServalAcquisitionResult | None
 
 ServalEnvironment
-  version: str
   serval_url: str
-  destination_configuration: DestinationConfig
-  detector_info: DetectorInfo 
-  ...
+  version: str | None
+  dashboard: ServalDashboard | None
 ```
-NOTE: for ServalEnviroment fields and submodels please reference 20231023_ASIServer_TPX3_manual_V3.3.pdf
+
+SERVAL-owned state includes:
+- SERVAL URL, software version, build metadata, disk-space summaries, and notifications
+- `/dashboard` snapshots and measurement polling state
+- `/server/destination` readback and requested destination configuration
+- `/config/load` requests and responses for `.bpc` and `.dacs` files
+- measurement lifecycle state from `/measurement/start`, `/measurement/stop`,
+  `/measurement`, and `/dashboard`
+- artifact references for raw `.tpx3`, preview, image, and other SERVAL outputs
+
+SERVAL models may preserve backend-native endpoint shapes where that improves
+round-tripping and validation. Destination `Base` values should remain URI-like
+strings because SERVAL accepts `file:`, `http:`, and `tcp:` destinations that are
+not all local HERMES filesystem paths.
+
+NOTE: for `ServalEnvironment` fields and submodels please reference
+`20231023_ASIServer_TPX3_manual_V3.3.pdf`.
 
 #### AnalysisState ####
 AnalysisState should capture modality-specific information about the analysis process. It should use discriminated unions to allow for different fields based on the analysis modes.
@@ -242,7 +294,7 @@ src/
             │   ├── serval.py               # SERVAL acquisition environment, configuration, and related settings
             │   ├── pymepix.py              # PyMEPIX acquisition environment, configuration, and related settings
             │   └── mcp2hist.py             # MCP2Hist acquisition environment, configuration, and related settings
-            ├── detector.py                 # TPX3Cam, SERVAL, chip, layout, health, and detector config metadata
+            ├── detector.py                 # TPX3Cam chip, layout, health, and detector config metadata
             ├── environment.py              # Path fields for working, data, raw data, analyzed data, log, preview, config, and tool paths
             └── shared_models.py            # shared models and enums for the state models
 ``` 
