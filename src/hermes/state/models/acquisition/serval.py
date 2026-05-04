@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
-from typing import Literal
+from typing import Literal, TypeAlias
 
 from pydantic import Field
 
@@ -18,12 +18,15 @@ AcquisitionRunStatus = Literal[
     "stopped",
     "unknown",
 ]
+ServalDashboardSnapshot: TypeAlias = SnapshotPayload
 
 
 class ServalEnvironment(StrictBaseModel):
+    """SERVAL backend identity and latest backend status snapshot."""
+
     serval_url: str = Field(min_length=1)
     version: str | None = None
-    dashboard: SnapshotPayload | None = None
+    dashboard: ServalDashboardSnapshot | None = None
 
 
 class ServalDestination(StrictBaseModel):
@@ -66,7 +69,7 @@ class ServalAcquisitionResult(StrictBaseModel):
     warnings: list[str] = Field(default_factory=list)
     errors: list[str] = Field(default_factory=list)
     artifacts: list[ArtifactRef] = Field(default_factory=list)
-    final_dashboard: SnapshotPayload | None = None
+    final_dashboard: ServalDashboardSnapshot | None = None
 
 
 class ServalAcquisitionState(StrictBaseModel):

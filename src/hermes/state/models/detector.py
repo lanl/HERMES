@@ -38,9 +38,10 @@ class DetectorConfiguration(StrictBaseModel):
 
 
 class DetectorSnapshot(StrictBaseModel):
+    """Detector-specific state from `/detector/*` endpoints."""
+
     captured_at: datetime = Field(default_factory=utc_now)
     info: DetectorInfo | None = None
     health: DetectorHealth | None = None
     layout: DetectorLayout | None = None
     configuration: DetectorConfiguration | None = None
-    dashboard: SnapshotPayload | None = None
