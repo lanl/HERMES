@@ -181,6 +181,70 @@ DetectorSnapshot
   configuration: DetectorConfiguration | None
 ```
 
+`DetectorInfo`, `DetectorHealth`, and `DetectorLayout` should model the SERVAL
+detector endpoint payloads with aliases for backend JSON keys and Pythonic field
+names in HERMES code:
+
+```python
+DetectorInfo
+  iface_name: str | None
+  software_version: str | None
+  firmware_version: str | None
+  pixel_count: int | None
+  row_length: int | None
+  number_of_chips: int | None
+  number_of_rows: int | None
+  medipix_type: int | None
+  boards: list[DetectorInfoBoard]
+  supported_acquisition_modes: int | None
+  clock_readout_mhz: float | None
+  max_pulse_count: int | None
+  max_pulse_height: float | None
+  max_pulse_period_s: float | None
+  timer_max_s: float | None
+  timer_min_s: float | None
+  timer_step_s: float | None
+  clock_timepix_mhz: float | None
+
+DetectorInfoBoard
+  chipboard_id: str | None
+  ip_address: str | None
+  firmware_version: str | None
+  chips: list[DetectorInfoChip]
+
+DetectorInfoChip
+  index: int
+  id: int
+  name: str
+
+DetectorHealth
+  local_temperature_c: float | None
+  fpga_temperature_c: float | None
+  chip_temperatures_c: list[int]
+  fan1_speed_rpm: int | None
+  fan2_speed_rpm: int | None
+  avdd: list[float] | None
+  vdd: list[float] | None
+  bias_voltage_v: float | None
+  humidity_percent: int | None
+
+DetectorLayout
+  detector_orientation: UP | RIGHT | DOWN | LEFT | *_MIRRORED | None
+  original: DetectorLayoutCanvas | None
+  rotated: DetectorLayoutCanvas | None
+
+DetectorLayoutCanvas
+  width: int
+  height: int
+  chips: list[DetectorLayoutChip]
+
+DetectorLayoutChip
+  chip: int
+  x: int
+  y: int
+  orientation: LtRBtT | RtLBtT | LtRTtB | RtLTtB | BtTLtR | TtBLtR | BtTRtL | TtBRtL
+```
+
 Detector-owned state includes:
 - hardware identity and firmware/readout identity from `/detector/info`
 - chip count, chip IDs, chip names, board IDs, and detector pixel layout
