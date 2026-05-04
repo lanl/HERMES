@@ -8,6 +8,7 @@ from hermes.state.models.acquisition.serval import (
     ServalEnvironment,
 )
 from hermes.state.models.detector import (
+    DetectorConfiguration,
     DetectorHealth,
     DetectorInfo,
     DetectorLayout,
@@ -168,3 +169,79 @@ def test_detector_layout_accepts_pythonic_field_names() -> None:
 def test_detector_layout_rejects_invalid_orientation() -> None:
     with pytest.raises(ValidationError, match="DetectorOrientation"):
         DetectorLayout.model_validate({"DetectorOrientation": "UPSIDE_DOWN"})
+
+
+def test_detector_configuration_validates_manual_alias_payload() -> None:
+    config = DetectorConfiguration.model_validate(
+        {
+            "LogLevel": 1,
+            "Fan1PWM": 100,
+            "Fan2PWM": 100,
+            "BiasVoltage": 50,
+            "BiasEnabled": True,
+            "Polarity": "Positive",
+            "PeriphClk80": False,
+            "ChainMode": "NONE",
+            "TriggerIn": 0,
+            "TriggerOut": 0,
+            "TriggerPeriod": 0.016666666666666666,
+            "ExposureTime": 0.0002,
+            "TriggerDelay": 0.0,
+            "TriggerMode": "AUTOTRIGSTART_TIMERSTOP",
+            "nTriggers": 100,
+            "Tdc": ["PN0123", "PN0123"],
+            "GlobalTimestampInterval": 10.0,
+            "ExternalReferenceClock": False,
+        }
+    )
+
+    assert config.bias_voltage_v == 50
+    assert config.trigger_mode == "AUTOTRIGSTART_TIMERSTOP"
+    assert config.n_triggers == 100
+    assert config.tdc == ["PN0123", "PN0123"]
+
+    dumped = config.model_dump(mode="json", by_alias=True)
+    assert dumped["BiasVoltage"] == 50
+    assert dumped["TriggerMode"] == "AUTOTRIGSTART_TIMERSTOP"
+    assert dumped["nTriggers"] == 100
+
+
+def test_detector_configuration_accepts_pythonic_field_names() -> None:
+    config = DetectorConfiguration.model_validate(
+        {
+            "trigger_mode": "PEXSTART_TIMERSTOP",
+            "trigger_in": 1,
+            "trigger_out": 2,
+            "exposure_time_s": 0.5,
+            "tdc": ["P0", "N0"],
+            "global_timestamp_interval_s": 0,
+            "pixel_config": "binary-pixel-config-reference",
+            "dacs": [{"Vthreshold_fine": 216}],
+        }
+    )
+
+    assert config.trigger_mode == "PEXSTART_TIMERSTOP"
+    assert config.trigger_in == 1
+    assert config.tdc == ["P0", "N0"]
+    assert config.global_timestamp_interval_s == 0
+    assert config.dacs == [{"Vthreshold_fine": 216}]
+
+
+def test_detector_configuration_rejects_invalid_trigger_mode() -> None:
+    with pytest.raises(ValidationError, match="TriggerMode"):
+        DetectorConfiguration.model_validate({"TriggerMode": "AUTO"})
+
+
+def test_detector_configuration_rejects_invalid_tdc_shape() -> None:
+    with pytest.raises(ValidationError, match="Tdc"):
+        DetectorConfiguration.model_validate({"Tdc": ["P0"]})
+
+
+def test_detector_configuration_rejects_invalid_tdc_channel() -> None:
+    with pytest.raises(ValidationError, match="Tdc"):
+        DetectorConfiguration.model_validate({"Tdc": ["P0", "NP0"]})
+
+
+def test_detector_configuration_rejects_small_global_timestamp_interval() -> None:
+    with pytest.raises(ValidationError, match="GlobalTimestampInterval"):
+        DetectorConfiguration.model_validate({"GlobalTimestampInterval": 0.0005})

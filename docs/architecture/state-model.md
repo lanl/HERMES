@@ -243,7 +243,38 @@ DetectorLayoutChip
   x: int
   y: int
   orientation: LtRBtT | RtLBtT | LtRTtB | RtLTtB | BtTLtR | TtBLtR | BtTRtL | TtBRtL
+
+DetectorConfiguration
+  log_level: 0 | 1 | 2 | None
+  fan1_pwm: int | None
+  fan2_pwm: int | None
+  bias_voltage_v: float | None
+  bias_enabled: bool | None
+  polarity: Negative | Positive | None
+  periph_clk_80: bool | None
+  chain_mode: NONE | LEADER | FOLLOWER | None
+  trigger_in: int | None
+  trigger_out: int | None
+  trigger_period_s: float | None
+  exposure_time_s: float | None
+  trigger_delay_s: float | None
+  trigger_mode: DetectorTriggerMode | None
+  n_triggers: int | None
+  tdc: list[str] | None
+  global_timestamp_interval_s: float | None
+  external_reference_clock: bool | None
+  pixel_config: str | ExternalPayloadRef | None
+  dacs: list[dict[str, int]] | ExternalPayloadRef | None
 ```
+
+Detector configuration constraints should mirror the SERVAL manual ranges:
+fan PWM values in `[0, 100]`, bias voltage in `[0, 140]`, trigger input and
+output in `[0, 6]` to allow the manual's disabled/example value `0`, trigger
+period in `[0, 50]` seconds, exposure time in `[0, 10]` seconds, trigger delay
+in `[0, 1]` seconds, and global timestamp interval either disabled with `<= 0`
+or enabled with `[0.001, 10E6]` seconds. The TDC field should be a two-item
+array of SERVAL edge strings such as `["P0", "N0"]`, `["PN0123", "PN0123"]`, or
+`["", ""]`.
 
 Detector-owned state includes:
 - hardware identity and firmware/readout identity from `/detector/info`

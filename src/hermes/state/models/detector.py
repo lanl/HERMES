@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Annotated, Literal
 
-from pydantic import ConfigDict, Field
+from pydantic import ConfigDict, Field, field_validator
 
 from hermes.state.models.payloads import ExternalPayloadRef
 from hermes.state.models.shared_models import JsonObject, StrictBaseModel, utc_now
@@ -29,6 +29,24 @@ DetectorChipOrientation = Literal[
     "TtBLtR",
     "BtTRtL",
     "TtBRtL",
+]
+DetectorLogLevel = Literal[0, 1, 2]
+DetectorPolarity = Literal["Negative", "Positive"]
+DetectorChainMode = Literal["NONE", "LEADER", "FOLLOWER"]
+DetectorTriggerMode = Literal[
+    "PEXSTART_NEXSTOP",
+    "NEXSTART_PEXSTOP",
+    "PEXSTART_TIMERSTOP",
+    "NEXSTART_TIMERSTOP",
+    "AUTOTRIGSTART_TIMERSTOP",
+    "CONTINUOUS",
+    "SOFTWARESTART_TIMERSTOP",
+    "SOFTWARESTART_SOFTWARESTOP",
+]
+DetectorTdcChannel = Annotated[str, Field(pattern=r"^(?:|(?:P|N|PN)[0-3]{1,4})$")]
+DetectorTdcConfig = Annotated[
+    list[DetectorTdcChannel],
+    Field(min_length=2, max_length=2),
 ]
 
 
@@ -123,10 +141,63 @@ class DetectorLayout(DetectorApiModel):
     raw: SnapshotPayload | None = None
 
 
-class DetectorConfiguration(StrictBaseModel):
+class DetectorConfiguration(DetectorApiModel):
+    log_level: DetectorLogLevel | None = Field(default=None, alias="LogLevel")
+    fan1_pwm: int | None = Field(default=None, ge=0, le=100, alias="Fan1PWM")
+    fan2_pwm: int | None = Field(default=None, ge=0, le=100, alias="Fan2PWM")
+    bias_voltage_v: float | None = Field(
+        default=None,
+        ge=0,
+        le=140,
+        alias="BiasVoltage",
+    )
+    bias_enabled: bool | None = Field(default=None, alias="BiasEnabled")
+    polarity: DetectorPolarity | None = Field(default=None, alias="Polarity")
+    periph_clk_80: bool | None = Field(default=None, alias="PeriphClk80")
+    chain_mode: DetectorChainMode | None = Field(default=None, alias="ChainMode")
+    trigger_in: int | None = Field(default=None, ge=0, le=6, alias="TriggerIn")
+    trigger_out: int | None = Field(default=None, ge=0, le=6, alias="TriggerOut")
+    trigger_period_s: float | None = Field(
+        default=None,
+        ge=0,
+        le=50,
+        alias="TriggerPeriod",
+    )
+    exposure_time_s: float | None = Field(
+        default=None,
+        ge=0,
+        le=10,
+        alias="ExposureTime",
+    )
+    trigger_delay_s: float | None = Field(
+        default=None,
+        ge=0,
+        le=1,
+        alias="TriggerDelay",
+    )
+    trigger_mode: DetectorTriggerMode | None = Field(default=None, alias="TriggerMode")
+    n_triggers: int | None = Field(default=None, ge=0, alias="nTriggers")
+    tdc: DetectorTdcConfig | None = Field(default=None, alias="Tdc")
+    global_timestamp_interval_s: float | None = Field(
+        default=None,
+        le=10_000_000,
+        alias="GlobalTimestampInterval",
+    )
+    external_reference_clock: bool | None = Field(
+        default=None,
+        alias="ExternalReferenceClock",
+    )
     pixel_config: str | ExternalPayloadRef | None = None
     dacs: list[dict[str, int]] | ExternalPayloadRef | None = None
-    settings: SnapshotPayload | None = None
+    raw: SnapshotPayload | None = None
+
+    @field_validator("global_timestamp_interval_s")
+    @classmethod
+    def validate_global_timestamp_interval(cls, value: float | None) -> float | None:
+        if value is None or value <= 0 or value >= 0.001:
+            return value
+        msg = "GlobalTimestampInterval must be <= 0 or >= 0.001 seconds"
+        raise ValueError(msg)
 
 
 class DetectorSnapshot(StrictBaseModel):
