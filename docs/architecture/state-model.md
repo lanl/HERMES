@@ -227,6 +227,38 @@ ServalEnvironment
   dashboard: ServalDashboard | None
 ```
 
+ServalDashboard should model the SERVAL `/dashboard` response with aliases for
+the backend JSON keys and Pythonic field names in HERMES code:
+
+```python
+ServalDashboard
+  server: ServalDashboardServer
+  measurement: ServalDashboardMeasurement | None
+  detector: ServalDashboardDetector | None
+
+ServalDashboardServer
+  software_version: str | None
+  software_timestamp: str | None
+  software_commit: str | None
+  software_build: str | None
+  disk_space: list[ServalDashboardDiskSpace]
+  notifications: list[ServalDashboardNotification]
+
+ServalDashboardMeasurement
+  start_date_time_ms: int | None
+  time_left_s: float | None
+  elapsed_time_s: float | None
+  frame_count: int | None
+  dropped_frames: int | None
+  status: DA_IDLE | DA_PREPARING | DA_RECORDING | DA_STOPPING | None
+  pixel_event_rate: int | None
+  tdc1_event_rate: int | None
+  tdc2_event_rate: int | None
+
+ServalDashboardDetector
+  detector_type: str | None
+```
+
 SERVAL-owned state includes:
 - SERVAL URL, software version, build metadata, disk-space summaries, and notifications
 - `/dashboard` snapshots and measurement polling state

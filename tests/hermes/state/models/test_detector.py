@@ -32,5 +32,8 @@ def test_serval_models_own_dashboard_snapshots() -> None:
     )
     result = ServalAcquisitionResult(status="completed", final_dashboard=dashboard)
 
-    assert environment.dashboard == dashboard
-    assert result.final_dashboard == dashboard
+    assert environment.dashboard is not None
+    assert environment.dashboard.server.software_version == "3.3.0"
+    assert result.final_dashboard is not None
+    assert result.final_dashboard.measurement is not None
+    assert result.final_dashboard.measurement.status == "DA_IDLE"
