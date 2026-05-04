@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
-from typing import Literal, TypeAlias
+from typing import Annotated, Literal, TypeAlias
 
 from pydantic import ConfigDict, Field
 
-from hermes.state.models.detector import DetectorSnapshot, SnapshotPayload
+from hermes.state.models.detector import DetectorSnapshot
 from hermes.state.models.shared_models import ArtifactRef, JsonObject, StrictBaseModel
 
 AcquisitionRunStatus = Literal[
@@ -26,6 +26,16 @@ ServalMeasurementStatus = Literal[
 ]
 ServalNotificationType = Literal["update", "info", "severe", "error"]
 ServalNotificationDomain = Literal["server", "detector", "chip"]
+ServalDestinationFormat = Literal["tiff", "pgm", "png", "jsonimage", "jsonhisto"]
+ServalDestinationMode = Literal["count", "tot", "toa", "tof", "count_fb"]
+ServalRawSplitStrategy = Literal["single_file", "frame", "SINGLE_FILE", "FRAME"]
+ServalPreviewSamplingMode = Literal["skipOnFrame", "skipOnPeriod"]
+ServalIntegrationMode = Literal["sum", "average", "last"]
+ServalCorrection = Literal["multiply"]
+ServalDestinationBase = Annotated[str, Field(min_length=1)]
+ServalThreshold = Annotated[int, Field(ge=0, le=7)]
+ServalQueueSize = Annotated[int, Field(gt=0)]
+ServalIntegrationSize = Annotated[int, Field(ge=-1, le=32)]
 
 
 class ServalApiModel(StrictBaseModel):
@@ -105,17 +115,64 @@ class ServalEnvironment(StrictBaseModel):
     dashboard: ServalDashboardSnapshot | None = None
 
 
-class ServalDestination(StrictBaseModel):
-    name: str = Field(min_length=1)
-    destination_type: str = Field(min_length=1)
-    path: Path | None = None
-    enabled: bool = True
-    options: JsonObject = Field(default_factory=dict)
+class ServalRawDestination(ServalApiModel):
+    base: ServalDestinationBase = Field(alias="Base")
+    file_pattern: str | None = Field(default=None, min_length=1, alias="FilePattern")
+    split_strategy: ServalRawSplitStrategy | None = Field(
+        default=None,
+        alias="SplitStrategy",
+    )
+    queue_size: ServalQueueSize | None = Field(default=None, alias="QueueSize")
 
 
-class DestinationConfiguration(StrictBaseModel):
-    destinations: list[ServalDestination] = Field(default_factory=list)
-    raw_response: SnapshotPayload | None = None
+class ServalOutputChannel(ServalApiModel):
+    base: ServalDestinationBase = Field(alias="Base")
+    file_pattern: str | None = Field(default=None, min_length=1, alias="FilePattern")
+    format: ServalDestinationFormat | None = Field(default=None, alias="Format")
+    mode: ServalDestinationMode | None = Field(default=None, alias="Mode")
+    thresholds: list[ServalThreshold] | None = Field(default=None, alias="Thresholds")
+    integration_size: ServalIntegrationSize | None = Field(
+        default=None,
+        alias="IntegrationSize",
+    )
+    integration_mode: ServalIntegrationMode | None = Field(
+        default=None,
+        alias="IntegrationMode",
+    )
+    stop_measurement_on_disk_limit: bool | None = Field(
+        default=None,
+        alias="StopMeasurementOnDiskLimit",
+    )
+    queue_size: ServalQueueSize | None = Field(default=None, alias="QueueSize")
+    corrections: list[ServalCorrection] | None = Field(
+        default=None,
+        alias="Corrections",
+    )
+    number_of_bins: int | None = Field(default=None, ge=0, alias="NumberOfBins")
+    bin_width: float | None = Field(default=None, gt=0, alias="BinWidth")
+    offset: int | None = Field(default=None, alias="Offset")
+
+
+class ServalPreviewDestination(ServalApiModel):
+    period: float | None = Field(default=None, ge=0, alias="Period")
+    sampling_mode: ServalPreviewSamplingMode | None = Field(
+        default=None,
+        alias="SamplingMode",
+    )
+    image_channels: list[ServalOutputChannel] = Field(
+        default_factory=list,
+        alias="ImageChannels",
+    )
+    histogram_channels: list[ServalOutputChannel] = Field(
+        default_factory=list,
+        alias="HistogramChannels",
+    )
+
+
+class DestinationConfiguration(ServalApiModel):
+    raw: list[ServalRawDestination] = Field(default_factory=list, alias="Raw")
+    image: list[ServalOutputChannel] = Field(default_factory=list, alias="Image")
+    preview: ServalPreviewDestination | None = Field(default=None, alias="Preview")
 
 
 class CalibrationState(StrictBaseModel):

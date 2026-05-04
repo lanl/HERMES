@@ -259,6 +259,47 @@ ServalDashboardDetector
   detector_type: str | None
 ```
 
+DestinationConfiguration should model the SERVAL `/server/destination` payload
+directly instead of flattening output channels into a generic HERMES list:
+
+```python
+DestinationConfiguration
+  raw: list[ServalRawDestination]
+  image: list[ServalOutputChannel]
+  preview: ServalPreviewDestination | None
+
+ServalRawDestination
+  base: str
+  file_pattern: str | None
+  split_strategy: single_file | frame | SINGLE_FILE | FRAME | None
+  queue_size: int | None
+
+ServalOutputChannel
+  base: str
+  file_pattern: str | None
+  format: tiff | pgm | png | jsonimage | jsonhisto | None
+  mode: count | tot | toa | tof | count_fb | None
+  thresholds: list[int] | None
+  integration_size: int | None
+  integration_mode: sum | average | last | None
+  stop_measurement_on_disk_limit: bool | None
+  queue_size: int | None
+  corrections: list[multiply] | None
+  number_of_bins: int | None
+  bin_width: float | None
+  offset: int | None
+
+ServalPreviewDestination
+  period: float | None
+  sampling_mode: skipOnFrame | skipOnPeriod | None
+  image_channels: list[ServalOutputChannel]
+  histogram_channels: list[ServalOutputChannel]
+```
+
+Destination `base` values should be strings, not `Path` values. SERVAL accepts
+`file:`, `http:`, and `tcp:` URI forms, and those paths or sockets are resolved
+from the machine running SERVAL rather than necessarily from the HERMES process.
+
 SERVAL-owned state includes:
 - SERVAL URL, software version, build metadata, disk-space summaries, and notifications
 - `/dashboard` snapshots and measurement polling state

@@ -5,7 +5,10 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from hermes.state.models.acquisition.serval import ServalDashboard
+from hermes.state.models.acquisition.serval import (
+    DestinationConfiguration,
+    ServalDashboard,
+)
 
 
 def test_serval_dashboard_validates_manual_alias_payload() -> None:
@@ -90,4 +93,116 @@ def test_serval_dashboard_rejects_invalid_measurement_status() -> None:
                 "Server": {"SoftwareVersion": "3.3.0"},
                 "Measurement": {"Status": "RUNNING"},
             }
+        )
+
+
+def test_destination_configuration_validates_native_serval_payload() -> None:
+    destination = DestinationConfiguration.model_validate(
+        {
+            "Raw": [
+                {
+                    "Base": "file:/data/raw",
+                    "FilePattern": "raw%Hms_",
+                    "SplitStrategy": "FRAME",
+                    "QueueSize": 16384,
+                }
+            ],
+            "Image": [
+                {
+                    "Base": "file:/data/image",
+                    "FilePattern": "image%Hms_",
+                    "Format": "tiff",
+                    "Mode": "tot",
+                    "Thresholds": [0, 1, 2, 3, 4, 5, 6, 7],
+                    "IntegrationSize": 0,
+                    "StopMeasurementOnDiskLimit": True,
+                    "QueueSize": 1024,
+                    "Corrections": [],
+                }
+            ],
+            "Preview": {
+                "Period": 0.1,
+                "SamplingMode": "skipOnFrame",
+                "ImageChannels": [
+                    {
+                        "Base": "http://localhost",
+                        "Format": "tiff",
+                        "Mode": "tot",
+                    },
+                    {
+                        "Base": "tcp://connect@127.0.0.1:8088",
+                        "Format": "jsonimage",
+                        "Mode": "tot",
+                        "IntegrationSize": -1,
+                        "IntegrationMode": "last",
+                    },
+                ],
+                "HistogramChannels": [
+                    {
+                        "Base": "tcp://listen@127.0.0.1:8089",
+                        "Format": "jsonhisto",
+                        "Mode": "tof",
+                        "NumberOfBins": 100,
+                        "BinWidth": 1.0,
+                        "Offset": 0,
+                    }
+                ],
+            },
+        }
+    )
+
+    assert destination.raw[0].base == "file:/data/raw"
+    assert destination.image[0].base == "file:/data/image"
+    assert destination.preview is not None
+    assert destination.preview.image_channels[0].base == "http://localhost"
+    assert (
+        destination.preview.image_channels[1].base
+        == "tcp://connect@127.0.0.1:8088"
+    )
+    assert (
+        destination.preview.histogram_channels[0].base
+        == "tcp://listen@127.0.0.1:8089"
+    )
+
+    dumped = destination.model_dump(mode="json", by_alias=True)
+    assert dumped["Raw"][0]["Base"] == "file:/data/raw"
+    assert dumped["Preview"]["ImageChannels"][0]["Base"] == "http://localhost"
+    assert dumped["Preview"]["HistogramChannels"][0]["Format"] == "jsonhisto"
+
+
+def test_destination_configuration_accepts_pythonic_field_names() -> None:
+    destination = DestinationConfiguration.model_validate(
+        {
+            "raw": [{"base": "file:/data/raw", "split_strategy": "frame"}],
+            "preview": {
+                "sampling_mode": "skipOnPeriod",
+                "image_channels": [{"base": "http://localhost", "mode": "count"}],
+            },
+        }
+    )
+
+    assert destination.raw[0].split_strategy == "frame"
+    assert destination.preview is not None
+    assert destination.preview.sampling_mode == "skipOnPeriod"
+
+
+def test_destination_configuration_rejects_flattened_destination_shape() -> None:
+    with pytest.raises(ValidationError, match="destinations"):
+        DestinationConfiguration.model_validate(
+            {
+                "destinations": [
+                    {
+                        "name": "raw",
+                        "destination_type": "Raw",
+                        "path": "/data/raw",
+                    }
+                ]
+            }
+        )
+
+
+def test_destination_configuration_rejects_invalid_output_mode() -> None:
+    with pytest.raises(ValidationError, match="Mode"):
+        DestinationConfiguration.model_validate(
+            {"Image": [{"Base": "file:/data/image", "Mode": "energy"}]}
         )
