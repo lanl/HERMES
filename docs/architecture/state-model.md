@@ -322,6 +322,34 @@ ServalEnvironment
   dashboard: ServalDashboard | None
 ```
 
+CalibrationState should capture the HERMES-side calibration artifacts and the
+SERVAL-side `/config/load` requests and results. SERVAL loads TPX3Cam
+calibration files with `GET /config/load?format=<format>&file=<filepath>`, not
+with `PUT`. The `file` parameter is a string resolved by the SERVAL host, so it
+should not be modeled as a local HERMES `Path`.
+
+```python
+CalibrationState
+  pixel_config_file: ArtifactRef | None
+  dacs_file: ArtifactRef | None
+  pixel_config_load_request: ServalConfigLoadRequest | None
+  dacs_load_request: ServalConfigLoadRequest | None
+  pixel_config_load_result: ServalConfigLoadResult | None
+  dacs_load_result: ServalConfigLoadResult | None
+
+ServalConfigLoadRequest
+  format: pixelconfig | dacs
+  serval_file_path: str
+  source_artifact: ArtifactRef | None
+
+ServalConfigLoadResult
+  applied_at: datetime | None
+  status: str | None
+  http_status_code: int | None
+  response_text: str | None
+  response_summary: JsonObject
+```
+
 ServalDashboard should model the SERVAL `/dashboard` response with aliases for
 the backend JSON keys and Pythonic field names in HERMES code:
 

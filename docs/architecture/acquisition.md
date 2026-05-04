@@ -143,6 +143,15 @@ calibration payloads are captured as state values rather than artifact
 references, large values may be externalized through `hermes.state_service` and
 represented by `ExternalPayloadRef`.
 
+SERVAL loads calibration files with `GET /config/load?format=<format>&file=<filepath>`.
+The relevant formats for TPX3Cam calibration are `pixelconfig` for `.bpc` files
+and `dacs` for DAC JSON or `.dacs` files. `PUT` is not supported for
+`/config/*`. The `file` value should be recorded as a string because the path is
+resolved by the SERVAL host and may not be local to the HERMES process. The
+HERMES record should keep both the HERMES-side `ArtifactRef` for the provided
+file and the SERVAL-side load request/result, including bounded response text or
+summary data.
+
 SoPhy and SERVAL should not be run against the detector at the same time. A
 HERMES acquisition workflow may require the user to provide existing SoPhy output
 files before it configures SERVAL.

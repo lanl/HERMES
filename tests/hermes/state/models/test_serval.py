@@ -6,10 +6,16 @@ import pytest
 from pydantic import ValidationError
 
 from hermes.state.models.acquisition.serval import (
+    CalibrationState,
     DestinationConfiguration,
     ServalAcquisitionState,
+    ServalConfigLoadRequest,
     ServalDashboard,
 )
+from hermes.state.models.shared_models import ArtifactRef
+
+
+HASH = "a" * 64
 
 
 def test_serval_dashboard_validates_manual_alias_payload() -> None:
@@ -207,6 +213,135 @@ def test_destination_configuration_rejects_invalid_output_mode() -> None:
         DestinationConfiguration.model_validate(
             {"Image": [{"Base": "file:/data/image", "Mode": "energy"}]}
         )
+
+
+def test_serval_config_load_request_models_manual_query_shape(tmp_path: Path) -> None:
+    source_artifact = ArtifactRef(
+        path=tmp_path / "tpx3-demo.bpc",
+        kind="pixel_config",
+        media_type="application/octet-stream",
+        sha256=HASH,
+        size_bytes=2048,
+    )
+
+    request = ServalConfigLoadRequest.model_validate(
+        {
+            "format": "pixelconfig",
+            "file": "~/tpx3Detector_asi.bpc",
+            "source_artifact": source_artifact.model_dump(mode="json"),
+        }
+    )
+
+    assert request.format == "pixelconfig"
+    assert request.serval_file_path == "~/tpx3Detector_asi.bpc"
+    assert request.source_artifact is not None
+    assert request.source_artifact.kind == "pixel_config"
+
+    dumped = request.model_dump(mode="json", by_alias=True)
+    assert dumped["format"] == "pixelconfig"
+    assert dumped["file"] == "~/tpx3Detector_asi.bpc"
+    assert dumped["source_artifact"]["path"].endswith("tpx3-demo.bpc")
+
+
+def test_serval_config_load_request_rejects_unsupported_format() -> None:
+    with pytest.raises(ValidationError, match="format"):
+        ServalConfigLoadRequest.model_validate(
+            {"format": "serval", "file": "~/serval-config.json"}
+        )
+
+
+def test_calibration_state_records_typed_serval_load_activity(
+    tmp_path: Path,
+) -> None:
+    pixel_config_file = ArtifactRef(
+        path=tmp_path / "tpx3-demo.bpc",
+        kind="pixel_config",
+        media_type="application/octet-stream",
+        sha256=HASH,
+        size_bytes=2048,
+    )
+    dacs_file = ArtifactRef(
+        path=tmp_path / "tpx3-demo.dacs",
+        kind="dacs",
+        media_type="application/json",
+        size_bytes=512,
+    )
+
+    calibration = CalibrationState.model_validate(
+        {
+            "pixel_config_file": pixel_config_file.model_dump(mode="json"),
+            "dacs_file": dacs_file.model_dump(mode="json"),
+            "pixel_config_load_request": {
+                "format": "pixelconfig",
+                "file": "tpx3-demo.bpc",
+                "source_artifact": pixel_config_file.model_dump(mode="json"),
+            },
+            "dacs_load_request": {
+                "format": "dacs",
+                "file": "tpx3-demo.dacs",
+                "source_artifact": dacs_file.model_dump(mode="json"),
+            },
+            "pixel_config_load_result": {
+                "applied_at": "2026-05-04T12:00:00Z",
+                "status": "completed",
+                "http_status_code": 200,
+                "response_text": "Successfully uploaded config.",
+                "response_summary": {
+                    "method": "GET",
+                    "endpoint": "/config/load",
+                },
+            },
+            "dacs_load_result": {
+                "applied_at": "2026-05-04T12:00:01Z",
+                "status": "completed",
+                "http_status_code": 200,
+                "response_text": "Successfully uploaded config.",
+            },
+        }
+    )
+
+    assert calibration.pixel_config_load_request is not None
+    assert calibration.pixel_config_load_request.format == "pixelconfig"
+    assert calibration.pixel_config_load_request.serval_file_path == "tpx3-demo.bpc"
+    assert calibration.dacs_load_request is not None
+    assert calibration.dacs_load_request.format == "dacs"
+    assert calibration.pixel_config_load_result is not None
+    assert calibration.pixel_config_load_result.http_status_code == 200
+    assert calibration.pixel_config_load_result.response_summary["method"] == "GET"
+
+    dumped = calibration.model_dump(mode="json", by_alias=True)
+    assert dumped["pixel_config_load_request"]["file"] == "tpx3-demo.bpc"
+    assert dumped["dacs_load_request"]["file"] == "tpx3-demo.dacs"
+    assert dumped["pixel_config_load_result"]["response_text"] == (
+        "Successfully uploaded config."
+    )
+
+
+def test_calibration_state_rejects_swapped_load_request_formats() -> None:
+    with pytest.raises(ValidationError, match="pixel_config_load_request"):
+        CalibrationState.model_validate(
+            {
+                "pixel_config_load_request": {
+                    "format": "dacs",
+                    "file": "tpx3-demo.dacs",
+                }
+            }
+        )
+
+    with pytest.raises(ValidationError, match="dacs_load_request"):
+        CalibrationState.model_validate(
+            {
+                "dacs_load_request": {
+                    "format": "pixelconfig",
+                    "file": "tpx3-demo.bpc",
+                }
+            }
+        )
+
+
+def test_calibration_state_rejects_legacy_responses_field() -> None:
+    with pytest.raises(ValidationError, match="responses"):
+        CalibrationState.model_validate({"responses": {"pixelconfig": "loaded"}})
 
 
 def test_serval_acquisition_state_separates_requested_and_applied_config() -> None:

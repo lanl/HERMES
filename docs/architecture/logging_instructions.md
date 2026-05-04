@@ -193,6 +193,7 @@ For SERVAL, it should log structured events for:
 - connection events and SERVAL version
 - detector snapshots, health summaries, and dashboard summaries
 - destination upload and readback summaries
+- calibration file load request and result summaries for SERVAL `/config/load`
 - measurement start, stop, polling, timeout, and failure events
 - warnings, notifications, dropped-frame counts, event-rate summaries, and final
   acquisition status
@@ -223,6 +224,7 @@ The HERMES record should contain durable run facts:
 - resolved environment and output paths
 - requested and applied acquisition configuration
 - detector snapshots needed for provenance
+- SERVAL calibration load requests and results for `.bpc` and `.dacs` files
 - PixelConfig and DAC settings, if needed for reproducibility, recorded once
   under detector state and recorded again only if changed
 - artifact references, sizes, hashes, and summary metrics
