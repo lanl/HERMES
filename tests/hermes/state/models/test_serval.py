@@ -7,6 +7,7 @@ from pydantic import ValidationError
 
 from hermes.state.models.acquisition.serval import (
     DestinationConfiguration,
+    ServalAcquisitionState,
     ServalDashboard,
 )
 
@@ -205,4 +206,60 @@ def test_destination_configuration_rejects_invalid_output_mode() -> None:
     with pytest.raises(ValidationError, match="Mode"):
         DestinationConfiguration.model_validate(
             {"Image": [{"Base": "file:/data/image", "Mode": "energy"}]}
+        )
+
+
+def test_serval_acquisition_state_separates_requested_and_applied_config() -> None:
+    state = ServalAcquisitionState.model_validate(
+        {
+            "requested_detector_config": {
+                "TriggerMode": "AUTOTRIGSTART_TIMERSTOP",
+                "ExposureTime": 0.0002,
+                "nTriggers": 10,
+            },
+            "applied_detector_config": {
+                "TriggerMode": "AUTOTRIGSTART_TIMERSTOP",
+                "ExposureTime": 0.0002,
+                "nTriggers": 10,
+                "BiasEnabled": True,
+            },
+            "requested_destination_configuration": {
+                "Raw": [{"Base": "file:/requested/raw"}],
+            },
+            "applied_destination_configuration": {
+                "Raw": [{"Base": "file:/applied/raw", "QueueSize": 1024}],
+            },
+        }
+    )
+
+    assert state.requested_detector_config is not None
+    assert state.requested_detector_config.n_triggers == 10
+    assert state.applied_detector_config is not None
+    assert state.applied_detector_config.bias_enabled is True
+    assert state.requested_destination_configuration is not None
+    assert (
+        state.requested_destination_configuration.raw[0].base
+        == "file:/requested/raw"
+    )
+    assert state.applied_destination_configuration is not None
+    assert state.applied_destination_configuration.raw[0].queue_size == 1024
+
+    dumped = state.model_dump(mode="json", by_alias=True)
+    assert dumped["requested_detector_config"]["TriggerMode"] == (
+        "AUTOTRIGSTART_TIMERSTOP"
+    )
+    assert dumped["requested_detector_config"]["nTriggers"] == 10
+    assert dumped["applied_detector_config"]["BiasEnabled"] is True
+    assert dumped["requested_destination_configuration"]["Raw"][0]["Base"] == (
+        "file:/requested/raw"
+    )
+    assert (
+        dumped["applied_destination_configuration"]["Raw"][0]["QueueSize"] == 1024
+    )
+
+
+def test_serval_acquisition_state_rejects_legacy_destination_field() -> None:
+    with pytest.raises(ValidationError, match="destination_configuration"):
+        ServalAcquisitionState.model_validate(
+            {"destination_configuration": {"Raw": [{"Base": "file:/data/raw"}]}}
         )

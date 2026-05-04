@@ -6,7 +6,7 @@ from typing import Annotated, Literal, TypeAlias
 
 from pydantic import ConfigDict, Field
 
-from hermes.state.models.detector import DetectorSnapshot
+from hermes.state.models.detector import DetectorConfiguration, DetectorSnapshot
 from hermes.state.models.shared_models import ArtifactRef, JsonObject, StrictBaseModel
 
 AcquisitionRunStatus = Literal[
@@ -209,7 +209,10 @@ class ServalAcquisitionState(StrictBaseModel):
     mode: Literal["serval"] = "serval"
     serval_environment: ServalEnvironment | None = None
     requested_plan: ServalAcquisitionPlan | None = None
-    destination_configuration: DestinationConfiguration | None = None
+    requested_detector_config: DetectorConfiguration | None = None
+    requested_destination_configuration: DestinationConfiguration | None = None
+    applied_detector_config: DetectorConfiguration | None = None
+    applied_destination_configuration: DestinationConfiguration | None = None
     initial_detector_snapshot: DetectorSnapshot | None = None
     final_detector_snapshot: DetectorSnapshot | None = None
     calibration: CalibrationState | None = None
