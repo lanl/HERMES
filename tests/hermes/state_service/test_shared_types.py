@@ -14,6 +14,7 @@ from hermes.state_service.shared_types import (
     ChangeStatus,
     ChangeValidationError,
     PayloadStoreError,
+    StateIOError,
     StatePath,
     StatePathError,
     StateServiceConfig,
@@ -57,6 +58,7 @@ def test_state_service_exception_hierarchy() -> None:
     assert issubclass(ChangeRequestError, StateServiceError)
     assert issubclass(ChangeValidationError, ChangeRequestError)
     assert issubclass(ChangeApprovalError, ChangeRequestError)
+    assert issubclass(StateIOError, StateServiceError)
     assert issubclass(PayloadStoreError, StateServiceError)
 
 
