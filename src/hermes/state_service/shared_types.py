@@ -52,5 +52,9 @@ class ChangeApprovalError(ChangeRequestError):
     """Raised when approval policy prevents a state change from being applied."""
 
 
+class StateIOError(StateServiceError):
+    """Raised when a HermesRecord cannot be loaded from or saved to disk."""
+
+
 class PayloadStoreError(StateServiceError):
     """Raised when an external state payload cannot be stored."""
