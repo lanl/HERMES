@@ -142,6 +142,47 @@ def test_state_logger_logs_change_with_value_summaries() -> None:
     }
 
 
+def test_state_logger_logs_rejected_and_failed_change_metadata() -> None:
+    logger = CapturingLogger()
+    state_logger = StateLogger(logger)
+    rejected = ChangeRequest(
+        change_id="change-rejected",
+        path="acquisition.result.status",
+        previous_value="running",
+        proposed_value="failed",
+        origin="ai",
+        proposer="agent",
+        status="rejected",
+        rejected_by="operator",
+        rejected_at=NOW,
+        rejection_reason="not consistent with acquisition logs",
+    )
+    failed = ChangeRequest(
+        change_id="change-failed",
+        path="acquisition.result.frames",
+        previous_value=0,
+        proposed_value=-1,
+        origin="trusted_workflow",
+        proposer="serval_workflow",
+        status="failed",
+        failure_reason="frame count must be non-negative",
+        failed_at=NOW,
+    )
+
+    state_logger.log_change(rejected)
+    state_logger.log_change(failed)
+
+    rejected_fields = logger.events[0]["fields"]
+    failed_fields = logger.events[1]["fields"]
+    assert rejected_fields["status"] == "rejected"
+    assert rejected_fields["rejected_by"] == "operator"
+    assert rejected_fields["rejection_reason"] == (
+        "not consistent with acquisition logs"
+    )
+    assert failed_fields["status"] == "failed"
+    assert failed_fields["failure_reason"] == "frame count must be non-negative"
+
+
 def test_state_logger_summarizes_external_payload_refs() -> None:
     logger = CapturingLogger()
     state_logger = StateLogger(logger)

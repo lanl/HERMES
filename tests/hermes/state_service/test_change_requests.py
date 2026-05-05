@@ -129,10 +129,12 @@ def test_rejected_change_requires_rejection_metadata() -> None:
         status="rejected",
         rejected_by="operator",
         rejected_at=NOW,
+        rejection_reason=" not consistent with acquisition logs ",
     )
 
     assert request.rejected_by == "operator"
     assert request.rejected_at == NOW
+    assert request.rejection_reason == "not consistent with acquisition logs"
 
 
 def test_applied_change_requires_application_and_approval_metadata() -> None:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -22,6 +23,7 @@ from hermes.state_service.state_io import (
 
 
 HASH = "a" * 64
+NOW = datetime(2026, 5, 5, 12, 0, tzinfo=timezone.utc)
 
 
 def _example_record(tmp_path: Path) -> HermesRecord:
@@ -31,6 +33,7 @@ def _example_record(tmp_path: Path) -> HermesRecord:
         media_type="application/octet-stream",
         sha256=HASH,
         size_bytes=2048,
+        created_at=NOW,
     )
     return HermesRecord(
         measurement_info=MeasurementInfo(
@@ -46,6 +49,8 @@ def _example_record(tmp_path: Path) -> HermesRecord:
         acquisition=ServalAcquisitionState(
             result=ServalAcquisitionResult(
                 status="completed",
+                started_at=NOW,
+                completed_at=NOW,
                 artifacts=[raw_artifact],
             )
         ),
@@ -65,6 +70,8 @@ def test_save_and_load_hermes_record_yaml_round_trip(tmp_path: Path) -> None:
     assert loaded.acquisition is not None
     assert loaded.acquisition.result is not None
     assert loaded.acquisition.result.status == "completed"
+    assert loaded.acquisition.result.started_at == NOW
+    assert loaded.acquisition.result.artifacts[0].created_at == NOW
     assert loaded.analysis is None
 
 

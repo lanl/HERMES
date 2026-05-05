@@ -56,6 +56,7 @@ class StateLogger:
             proposer=change_request.proposer,
             approved_by=change_request.approved_by,
             rejected_by=change_request.rejected_by,
+            rejection_reason=change_request.rejection_reason,
             approval_bypassed=change_request.approval_bypassed,
             failure_reason=change_request.failure_reason,
             previous_value_summary=_value_summary(change_request.previous_value),
