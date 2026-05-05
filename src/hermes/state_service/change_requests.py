@@ -38,6 +38,7 @@ class ChangeRequest(StrictBaseModel):
     approved_at: datetime | None = None
     rejected_by: ActorName | None = None
     rejected_at: datetime | None = None
+    rejection_reason: str | None = None
     applied_at: datetime | None = None
     approval_bypassed: bool = False
     justification: str | None = None
@@ -59,7 +60,10 @@ class ChangeRequest(StrictBaseModel):
         if any(segment == "" for segment in segments):
             msg = "state path must not contain empty segments"
             raise ValueError(msg)
-        if any(_STATE_PATH_SEGMENT.fullmatch(segment) is None for segment in segments):
+        if any(
+            _STATE_PATH_SEGMENT.fullmatch(segment) is None
+            for segment in segments
+        ):
             msg = "state path segments must be Python field names"
             raise ValueError(msg)
         return path
@@ -75,7 +79,7 @@ class ChangeRequest(StrictBaseModel):
             raise ValueError(msg)
         return stripped
 
-    @field_validator("justification", "failure_reason")
+    @field_validator("justification", "rejection_reason", "failure_reason")
     @classmethod
     def strip_optional_text(cls, value: str | None) -> str | None:
         if value is None:
@@ -117,6 +121,7 @@ class ChangeRequest(StrictBaseModel):
                 self.approved_at,
                 self.rejected_by,
                 self.rejected_at,
+                self.rejection_reason,
                 self.applied_at,
                 self.failure_reason,
                 self.failed_at,
