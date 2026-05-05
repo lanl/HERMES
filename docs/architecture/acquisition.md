@@ -219,7 +219,9 @@ logs to reproduce or debug the run.
    Confirm a detector is present, the measurement status is idle, health
    readings are within configured limits, output paths are usable from the
    SERVAL host, disk space is sufficient, and the requested acquisition plan is
-   compatible with the detected hardware.
+   compatible with the detected hardware. Bias checks should include the
+   TPX3Cam manual's 40 V recommended maximum for normal operation, even though
+   the SERVAL API schema accepts a wider range.
 7. Load chip calibration files.
    Load the user-provided `.bpc` pixel configuration and `.dacs` DAC files with
    SERVAL `/config/load`. These files are generated outside HERMES by SoPhy or

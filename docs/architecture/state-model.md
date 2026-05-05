@@ -276,6 +276,11 @@ or enabled with `[0.001, 10E6]` seconds. The TDC field should be a two-item
 array of SERVAL edge strings such as `["P0", "N0"]`, `["PN0123", "PN0123"]`, or
 `["", ""]`.
 
+The TPX3Cam manual recommends a 40 V maximum bias for normal operation. That is
+a workflow safety/pre-run check rather than a Pydantic schema limit because the
+SERVAL API accepts the wider `[0, 140]` range and existing detector state may
+need to record the actual readback value.
+
 Detector-owned state includes:
 - hardware identity and firmware/readout identity from `/detector/info`
 - chip count, chip IDs, chip names, board IDs, and detector pixel layout
@@ -366,6 +371,14 @@ ServalDashboardServer
   software_build: str | None
   disk_space: list[ServalDashboardDiskSpace]
   notifications: list[ServalDashboardNotification]
+
+ServalDashboardDiskSpace
+  message: str | None
+  path: str | None
+  free_space: int | None
+  write_speed: float | None
+  lower_limit: int | None
+  disk_limit_reached: bool | None
 
 ServalDashboardMeasurement
   start_date_time_ms: int | None

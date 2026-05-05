@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-from pathlib import Path
 from typing import Annotated, Literal, TypeAlias
 
 from pydantic import ConfigDict, Field, model_validator
@@ -51,7 +50,7 @@ class ServalApiModel(StrictBaseModel):
 
 class ServalDashboardDiskSpace(ServalApiModel):
     message: str | None = Field(default=None, alias="Message")
-    path: Path | None = Field(default=None, alias="Path")
+    path: str | None = Field(default=None, alias="Path")
     free_space: int | None = Field(default=None, ge=0, alias="FreeSpace")
     write_speed: float | None = Field(default=None, ge=0, alias="WriteSpeed")
     lower_limit: int | None = Field(default=None, ge=0, alias="LowerLimit")

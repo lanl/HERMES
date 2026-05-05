@@ -63,7 +63,7 @@ def test_serval_dashboard_validates_manual_alias_payload() -> None:
     )
 
     assert dashboard.server.software_version == "3.3.0"
-    assert dashboard.server.disk_space[0].path == Path("/data/raw")
+    assert dashboard.server.disk_space[0].path == "/data/raw"
     assert dashboard.server.notifications[0].reference_id == "REF_ID_GENERAL"
     assert dashboard.measurement is not None
     assert dashboard.measurement.frame_count == 379617
