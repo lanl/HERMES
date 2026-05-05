@@ -9,6 +9,7 @@ from hermes.state.models.acquisition.serval import (
     CalibrationState,
     DestinationConfiguration,
     ServalAcquisitionState,
+    ServalConfigLoadResult,
     ServalConfigLoadRequest,
     ServalDashboard,
 )
@@ -342,6 +343,14 @@ def test_calibration_state_rejects_swapped_load_request_formats() -> None:
 def test_calibration_state_rejects_legacy_responses_field() -> None:
     with pytest.raises(ValidationError, match="responses"):
         CalibrationState.model_validate({"responses": {"pixelconfig": "loaded"}})
+
+
+def test_serval_config_load_result_validates_http_status_code() -> None:
+    with pytest.raises(ValidationError, match="http_status_code"):
+        ServalConfigLoadResult(http_status_code=99)
+
+    with pytest.raises(ValidationError, match="http_status_code"):
+        ServalConfigLoadResult(http_status_code=600)
 
 
 def test_serval_acquisition_state_separates_requested_and_applied_config() -> None:
