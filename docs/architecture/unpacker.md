@@ -6,32 +6,34 @@ The Rust unpacker should live outside the Python package:
 crates/hermes-tpx3-spidr/
 ```
 
-The Rust crate should own low-level `.tpx3` packet decoding. It should keep the
-core decoding logic in `src/lib.rs` and expose a CLI in `src/main.rs`.
+The Rust crate should read each binary packet in a raw `.tpx3` file, identify the
+packet type, and extract its fields. It should keep this packet-reading code in
+`src/lib.rs` and expose a CLI in `src/main.rs`.
 
-The Python package should treat the unpacker as an external analysis engine. A
-Python wrapper in `src/hermes/analysis/hermes_tpx3_spidr.py` can call the binary,
-validate its summary output, and use `hermes.state_service` to update the
-central Pydantic record. The wrapper must not directly mutate the record.
+Python should run the unpacker as a separate command-line program. A wrapper in
+`src/hermes/analysis/hermes_tpx3_spidr.py` can run the binary, validate the
+summary JSON file, and use `hermes.state_service` to update the central Pydantic
+record. The wrapper must not directly mutate the record.
 
 The CLI should have an explicit interface, for example:
 
 ```text
-hermes-tpx3-spidr input.tpx3 --output decoded/ --summary decoded/summary.json
+hermes-tpx3-spidr input.tpx3 --output tpx3_parquet/ --summary tpx3_parquet/summary.json
 ```
 
-The state record should capture the input artifact, output artifact, summary
-artifact, tool name, tool version, command arguments, packet counts, event
-counts, timing ranges, warnings, and errors.
+The state record should capture the raw TPX3 input file, TPX3 Parquet output
+directory, summary JSON file, unpacker name, unpacker version, command arguments,
+pixel-hit count, TDC-hit count, global-timestamp count, control-packet count,
+timing ranges, warnings, and errors.
 
-## Parquet Dataset
+## TPX3 Parquet Output Directory
 
-Decoded output should be written as an Apache Parquet dataset, preferably as a
-directory of typed tables rather than one very large file. A first decoded
-dataset might look like:
+The unpacker should write separate Apache Parquet files for each TPX3 packet type
+instead of combining every row in one large file. The output directory should
+look like:
 
 ```text
-decoded/
+tpx3_parquet/
   summary.json
   pixel_hits/
     part-00000.parquet
@@ -49,11 +51,11 @@ decoded/
       part-00000.parquet
 ```
 
-The raw decoded tables should preserve native integer timing fields. Pixel hits,
-TDC hits, and global timestamp packets have different timing fields and
-resolutions, so the unpacker should not convert these fields only to floating
-point seconds. Instead, it should keep raw integer columns and write metadata
-that explains their units.
+The Parquet files should preserve the integer timing fields read from the raw
+packets. Pixel hits, TDC hits, and global timestamp packets have different timing
+fields and resolutions, so the unpacker should not replace them with only
+floating-point seconds. It should keep the integer columns and record their units
+in the Parquet metadata and summary JSON file.
 
 For example, pixel timing columns may include:
 
@@ -70,8 +72,8 @@ TDC timing columns may include:
 
 ## Native Timestamp Fields
 
-The unpacker should document native timestamp fields and units in the decoded
-dataset metadata. The initial reference table is:
+The unpacker should record the following timestamp fields and units in the
+Parquet metadata and summary JSON file:
 
 | Quantity | Raw field | Native unit | Notes |
 | --- | --- | --- | --- |
@@ -105,15 +107,15 @@ time should remain the source of truth.
 
 If sorted output is required for timing analysis, the unpacker should sort by
 canonical event time and record the sort order in metadata. For very large files,
-the implementation should not require all decoded events to fit in memory. It
-should be able to decode and sort chunks, write temporary sorted parts, and merge
-those parts into a final sorted Parquet dataset.
+the implementation should not require every extracted row to fit in memory. It
+should read and sort chunks, write temporary sorted Parquet files, and merge them
+into the final Parquet files.
 
 ## Photon Clustering
 
 The unpacker may also produce photon-cluster output for image-intensifier data.
-This should be treated as derived data built from decoded pixel hits, not as a
-replacement for the raw `pixel_hits` table.
+Photon clusters are calculated from the pixel-hit rows. They do not replace the
+original `pixel_hits` Parquet files.
 
 The purpose of photon clustering is to group adjacent pixel hits that likely came
 from one photon entering the image intensifier and producing a phosphor response
@@ -131,7 +133,7 @@ Important clustering parameters include:
 - whether clustering is performed before or after TDC association
 - quality flags for ambiguous, saturated, split, or merged clusters
 
-The `decoded/photon/` dataset should contain at least two logical tables:
+The `tpx3_parquet/photon/` directory should contain two Parquet file groups:
 
 - `photon_events`: one row per reconstructed photon candidate
 - `photon_pixels`: membership rows linking source pixel hits to photon candidates
@@ -160,6 +162,6 @@ state model, or optional diagnostic tables.
 - `tot_raw`
 - `event_time_ticks`
 
-The state model should capture photon clustering as an analysis/unpack stage
-with its own plan, status, input artifacts, output artifacts, algorithm version,
-parameters, counts, warnings, and errors.
+The state model should record the photon-clustering settings, run status,
+pixel-hit input directory, photon-event output directory, photon-pixel output
+directory, algorithm version, photon counts, warnings, and errors.
