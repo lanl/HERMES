@@ -213,8 +213,8 @@ Responsibilities:
 - log analysis configuration summaries and metrics
 - log failures with enough context to reproduce the command
 
-Analysis logs should answer: "What happened while HERMES processed raw TPX3,
-decoded event, or image files?"
+Analysis logs should answer: "What happened while HERMES read raw TPX3 files or
+created Parquet, image, and plot files?"
 
 ## State Record vs Logs
 
@@ -227,8 +227,8 @@ The HERMES record should contain durable run facts:
 - SERVAL calibration load requests and results for `.bpc` and `.dacs` files
 - PixelConfig and DAC settings, if needed for reproducibility, recorded once
   under detector state and recorded again only if changed
-- raw TPX3, image, decoded output, summary, and plot paths with sizes, hashes,
-  and summary metrics where applicable
+- raw TPX3, image, TPX3 Parquet directory, summary JSON, and plot paths with
+  sizes, hashes, and summary counts where applicable
 - final acquisition and analysis status
 
 Operational logs should contain process detail:
@@ -257,14 +257,15 @@ it before applying and logging the state change.
 Never write the following directly into logs or the HERMES record:
 
 - raw image data
-- decoded event tables
+- pixel-hit, TDC-hit, timestamp, and control-packet Parquet files
 - large image stacks
 - generated plot binaries
 - raw detector data payloads
 - large stdout or stderr streams
 
-Store decoded tables, images, plots, and other large outputs in files or
-directories on disk. Record their paths, sizes, hashes, formats, and summaries.
+Store pixel-hit, TDC-hit, timestamp, and control-packet tables as Parquet files.
+Store images and plots in their normal file formats. Record their paths, sizes,
+hashes, formats, and summaries.
 Logs may include bounded excerpts or summaries when useful, but not full file
 contents.
 
@@ -281,7 +282,7 @@ Avoid:
 - creating sinks inside `StateLogger`, `AcquisitionLogger`, `AnalysisLogger`, or
   workflow code
 - logging full SERVAL `PixelConfig` or DAC payloads in acquisition logs
-- logging raw images, decoded event tables, or large stdout/stderr
+- logging raw images, Parquet table contents, or large stdout/stderr
 - treating backend communication logs as state record fields
 - adding a catch-all `app` logging domain or unfiltered `app.log` sink
 - relying on unstructured free-text messages when structured fields are known
