@@ -129,7 +129,7 @@ workflow_step
 acquisition_mode
 analysis_mode, when relevant
 state_version or change_id, when relevant
-artifact_id, when relevant
+input_file or output_path, when relevant
 request_id, for backend calls
 ```
 
@@ -176,7 +176,7 @@ Responsibilities:
 
 - log step start, step completion, step failure, retry, timeout, abort, and
   cleanup events
-- include current workflow step and relevant artifact or state paths
+- include current workflow step and relevant input, output, or state paths
 - provide the coarse timeline of a measurement
 
 Workflow logs should answer: "Where was the run in the acquisition-to-analysis
@@ -208,13 +208,13 @@ acquisition backend?"
 Responsibilities:
 
 - log external tool start and completion
-- include command identity, tool version, input artifact IDs, output artifact
-  IDs, exit code, elapsed time, and bounded stdout/stderr summaries
+- include command identity, tool version, input file paths, output directory or
+  file paths, exit code, elapsed time, and bounded stdout/stderr summaries
 - log analysis configuration summaries and metrics
 - log failures with enough context to reproduce the command
 
-Analysis logs should answer: "What happened while HERMES processed acquisition
-artifacts?"
+Analysis logs should answer: "What happened while HERMES processed raw TPX3,
+decoded event, or image files?"
 
 ## State Record vs Logs
 
@@ -227,7 +227,8 @@ The HERMES record should contain durable run facts:
 - SERVAL calibration load requests and results for `.bpc` and `.dacs` files
 - PixelConfig and DAC settings, if needed for reproducibility, recorded once
   under detector state and recorded again only if changed
-- artifact references, sizes, hashes, and summary metrics
+- raw TPX3, image, decoded output, summary, and plot paths with sizes, hashes,
+  and summary metrics where applicable
 - final acquisition and analysis status
 
 Operational logs should contain process detail:
@@ -262,14 +263,15 @@ Never write the following directly into logs or the HERMES record:
 - raw detector data payloads
 - large stdout or stderr streams
 
-Store large data products as artifacts on disk and record references, sizes,
-hashes, formats, and summaries. Logs may include bounded excerpts or summaries
-when useful, but not full payloads.
+Store decoded tables, images, plots, and other large outputs in files or
+directories on disk. Record their paths, sizes, hashes, formats, and summaries.
+Logs may include bounded excerpts or summaries when useful, but not full file
+contents.
 
-Large configuration payloads are handled differently from data products. If they
-are needed for reproducibility, they are durable state values and may be stored
-inline or as external state payloads under `logs/payloads/` referenced by
-`ExternalPayloadRef`. HERMES should not define a separate `state_payload_dir`.
+Large configuration values are handled differently. If they are needed for
+reproducibility, they are saved state values and may be stored inline or in files
+under `logs/payloads/` referenced by `ExternalPayloadRef`. HERMES should not
+define a separate `state_payload_dir`.
 
 ## Anti-Patterns
 
