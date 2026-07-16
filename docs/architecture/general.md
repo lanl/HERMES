@@ -44,14 +44,23 @@ for each major boundary live in separate files:
 ```text
 
 HERMES/
-├── Cargo.toml  # Rust workspace file for SPIDR unpacker and related crates
-├── crates/                 # Rust crates for SPIDR unpacking and related functionality
-│   └── hermes-tpx3-spidr/
-│       ├── Cargo.toml      # crate file for the SPIDR unpacker 
-│       ├── src/            # Rust source code for the SPIDR unpacker
-│       │   ├── lib.rs      # main library file for the SPIDR unpacker
-│       │   └── main.rs     # main executable file for the SPIDR unpacker
-│       └── tests/          # tests for the SPIDR unpacker
+├── Cargo.toml  # Rust workspace file for Rust analysis backends
+├── backends/   # backends selected by HERMES for each analysis step
+│   ├── unpackers/
+│   │   └── tpx3-spidr/
+│   │       ├── cpp/
+│   │       │   ├── CMakeLists.txt
+│   │       │   ├── include/
+│   │       │   ├── src/
+│   │       │   └── tests/
+│   │       └── rust/
+│   │           ├── Cargo.toml
+│   │           ├── src/
+│   │           │   ├── lib.rs
+│   │           │   └── main.rs
+│   │           └── tests/
+│   ├── photon-reconstructors/
+│   └── event-reconstructors/
 │
 ├── src/
 │   └── hermes/
@@ -112,7 +121,9 @@ HERMES/
 ```
 
 This layout is a target shape, not a requirement to create every file
-immediately. Add modules only when the first workflow needs them.
+immediately. Add a backend directory only when its first working version is
+being implemented. Rust backends remain members of the top-level Cargo
+workspace even though they are grouped by analysis step under `backends/`.
 
 ## External References
 
