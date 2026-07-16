@@ -67,7 +67,8 @@ the value is too large for the record or state log.
 SERVAL state is the durable description of the acquisition backend session. It
 should include SERVAL URL and version, `/dashboard` snapshots, destination
 configuration, measurement lifecycle state, `/config/load` activity, polling
-results, and produced artifacts. `/dashboard` is SERVAL-owned state because it
+results, and produced raw TPX3, image, and preview files. `/dashboard` is
+SERVAL-owned state because it
 combines server, measurement, and detector summary fields and is designed as a
 fast backend status endpoint. Detector summaries from `/dashboard` may be copied
 into detector state only when they are confirmed by detector-specific endpoints
@@ -92,8 +93,8 @@ run that mode safely:
   polling, warnings, and failures
 - start and stop measurements
 - poll acquisition status
-- collect final acquisition status and artifact metadata for the workflow to
-  record
+- collect final acquisition status and metadata for raw TPX3, image, and preview
+  files for the workflow to record
 
 Acquisition mode packages should return structured data that can be placed into
 the HERMES record by the workflow through `hermes.state_service`. They should not
@@ -119,8 +120,8 @@ Expected SERVAL responsibilities:
 - start and stop measurements through `/measurement/start` and
   `/measurement/stop`
 - poll acquisition status through `/dashboard`
-- collect final acquisition status and artifact metadata for the workflow to
-  record
+- collect final acquisition status and metadata for raw TPX3, image, and preview
+  files for the workflow to record
 
 SERVAL destination configuration should preserve the `/server/destination`
 payload shape: top-level `Raw` and `Image` channel lists, plus an optional
@@ -139,8 +140,8 @@ them to SERVAL through `/config/load`.
 Calibration inputs should be treated as durable run configuration. The record
 should capture the requested `.bpc` and `.dacs` paths, applied calibration status,
 file sizes and hashes when practical, and any SERVAL response summaries. If the
-calibration payloads are captured as state values rather than artifact
-references, large values may be externalized through `hermes.state_service` and
+calibration contents are captured as state values rather than file references,
+large values may be externalized through `hermes.state_service` and
 represented by `ExternalPayloadRef`.
 
 SERVAL loads calibration files with `GET /config/load?format=<format>&file=<filepath>`.
@@ -148,9 +149,9 @@ The relevant formats for TPX3Cam calibration are `pixelconfig` for `.bpc` files
 and `dacs` for DAC JSON or `.dacs` files. `PUT` is not supported for
 `/config/*`. The `file` value should be recorded as a string because the path is
 resolved by the SERVAL host and may not be local to the HERMES process. The
-HERMES record should keep both the HERMES-side `ArtifactRef` for the provided
-file and the SERVAL-side load request/result, including bounded response text or
-summary data.
+HERMES record should keep both the HERMES-side `FileReference` for the provided
+file and the SERVAL-side load request and result, including bounded response
+text or summary data.
 
 SoPhy and SERVAL should not be run against the detector at the same time. A
 HERMES acquisition workflow may require the user to provide existing SoPhy output
@@ -173,18 +174,20 @@ SERVAL acquisition log events should include:
 - status code, elapsed time, and error text when relevant
 - bounded request and response summaries
 - dashboard, health, destination, and detector configuration summaries
-- artifact paths or artifact IDs when communication creates files
+- raw TPX3, image, preview, or calibration file paths when communication creates
+  or consumes files
 
 The HERMES state record should contain durable run facts, including requested and
 applied detector configuration, destination configuration, detector snapshots,
-artifact references, final status, and PixelConfig or DAC settings if needed for
-reproducibility. If PixelConfig or DAC settings are captured in the state record,
-acquisition logs should reference them by state path, length, digest, or
-`ExternalPayloadRef` rather than logging the full payload.
+raw TPX3, image, and preview file references, final status, and PixelConfig or
+DAC settings if needed for reproducibility. If PixelConfig or DAC settings are
+captured in the state record, acquisition logs should reference them by state
+path, length, digest, or `ExternalPayloadRef` rather than logging the full
+payload.
 
 Do not log raw image data, decoded event tables, large raw detector payloads, or
-large stdout/stderr streams. Store large data products as artifacts and log their
-paths, sizes, hashes, formats, and concise summaries.
+large stdout/stderr streams. Store these values in files or directories and log
+their paths, sizes, hashes, formats, and concise summaries.
 
 ## SERVAL TPX3 Acquisition Workflow
 
@@ -195,7 +198,7 @@ logs to reproduce or debug the run.
 1. Create an acquisition plan.
    Include measurement metadata, SERVAL URL, trigger mode, trigger count,
    exposure timing, calibration file paths, output destinations, preview
-   settings, and expected artifact names.
+   settings, and expected raw TPX3 and preview file names.
 2. Resolve and create run directories.
    Directory defaults should come from the environment model, such as
    `working_dir`, `data_dir`, `raw_data_dir`, `log_dir`, and `preview_dir`.
@@ -253,11 +256,11 @@ logs to reproduce or debug the run.
 13. Snapshot final acquisition state.
     Read final `/dashboard` and `/detector/health` data. Record completion
     status, counts, warnings, errors, and any stop reason.
-14. Discover and record artifacts.
+14. Discover and record output files.
     Locate raw `.tpx3` files and any preview or image files, then record paths,
     sizes, timestamps, and other useful metadata in the HERMES record.
 15. Persist the acquisition record.
-    Save the updated HERMES record before handing raw artifacts to unpacking or
+    Save the updated HERMES record before handing raw TPX3 files to unpacking or
     analysis workflows.
 
 Each major step should produce structured Loguru events. Workflow progress should
@@ -276,7 +279,7 @@ SERVAL:
 
 - keep PyMEPix-specific API calls inside `hermes.acquisition.pymepix`
 - return structured snapshots, configuration results, acquisition status, and
-  artifact metadata to the workflow
+  output file metadata to the workflow
 - update the HERMES record only through `hermes.state_service`
 - add PyMEPix-specific state models under `hermes.state.models.acquisition`
 
@@ -292,7 +295,7 @@ SERVAL:
 - keep MCP2Hist-specific API calls or file-interface logic inside
   `hermes.acquisition.mcp2hist`
 - return structured snapshots, configuration results, acquisition status, and
-  artifact metadata to the workflow
+  output file metadata to the workflow
 - update the HERMES record only through `hermes.state_service`
 - add MCP2Hist-specific state models under `hermes.state.models.acquisition`
 
@@ -302,7 +305,7 @@ SERVAL:
   future PyMEPix API calls, or future MCP2Hist calls/file operations, and should
   emit acquisition-domain log events.
 - Workflow code should decide the order of operations, call `hermes.state_service`, and
-  coordinate artifact discovery.
+  locate the files produced by acquisition.
 - State models should remain durable Pydantic records. They should not create
   directories, call SERVAL, or mutate detector state.
 - `hermes.state_service` should validate and apply changes to the HERMES record, but it
