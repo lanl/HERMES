@@ -6,7 +6,8 @@ mode should live in its own subpackage, with SERVAL implemented first and
 PyMEPix and MCP2Hist left as future modes.
 
 The acquisition package should provide focused client operations and small
-runtime helpers. End-to-end orchestration belongs in `src/hermes/workflows/`.
+runtime helpers. `src/hermes/workflows/` decides the order in which acquisition
+and analysis functions run.
 
 The initial package shape should be:
 
@@ -185,7 +186,7 @@ captured in the state record, acquisition logs should reference them by state
 path, length, digest, or `ExternalPayloadRef` rather than logging the full
 payload.
 
-Do not log raw image data, decoded event tables, large raw detector payloads, or
+Do not log raw image data, pixel-hit or TDC-hit table contents, raw TPX3 bytes, or
 large stdout/stderr streams. Store these values in files or directories and log
 their paths, sizes, hashes, formats, and concise summaries.
 
