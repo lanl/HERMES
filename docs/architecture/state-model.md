@@ -9,14 +9,15 @@ The central object in HERMES is a Pydantic model that records:
 - what detector, SERVAL, and run configuration was used, when available
 - what runtime environment, tool locations, tool versions, and directories were used
 - what actually happened during acquisition
-- what files and derived artifacts were produced
+- which raw TPX3 files, Parquet output directories, images, and plots were
+  produced
 - what analysis was requested, when HERMES is used for analysis
 - what analysis actually ran, when available
 - what summary results, warnings, and errors were produced
 
 The model should contain metadata, configuration, provenance, and summary
-results. It should not contain large raw arrays, full decoded event tables, image
-stacks, generated plots, detector data files, or build products.
+results. It should not contain raw packet bytes, full pixel-hit or TDC-hit
+tables, image stacks, generated plots, detector data files, or build products.
 
 ## How model is used to keep a record of acquisition and analysis
 The initial `HermesRecord` is recorded by the state logger. Every later durable
@@ -49,10 +50,13 @@ Expected model groups and their responsibilities include:
 - MeasurementInfo: metadata about the measurement, including measurement ID, run number, beamline, proposal ID, image intensifier serial number, scintillator serial number, sample name, operator name, log notes, and any other relevant metadata fields that are important for provenance and record-keeping.
 - RuntimeEnvironment: information about the runtime environment used for the measurement, including `Path` fields for working directory, data directory, raw data directory, analyzed data directory, log directory, preview directory, optional config directory, executable paths, and any other relevant environment information.
 - DetectorSnapshot: TPX3Cam hardware identity, chip identity, layout, health, and applied detector configuration read from detector-specific endpoints.
-- AcquisitionState: optional modality-specific information about the acquisition process, using discriminated unions to allow for different fields based on the acquisition modes (e.g. serval, pymepix, mcp2hist).
-- AnalysisState: optional modality-specific information about the analysis process, using discriminated unions to allow for different fields based on the analysis modes (e.g. empir, hermes_tpx3_spidr).
+- AcquisitionState: optional requested settings, applied settings, status, and
+  output files for SERVAL, PyMEPix, or MCP2Hist acquisition.
+- AnalysisState: optional input files, settings, status, output directories, and
+  summary files for EMPIR or `hermes_tpx3_spidr` analysis.
 
-The models should use discriminated unions for modality-specific acquisition and analysis plans once the modalities are known.
+Each supported acquisition or analysis program should have its own Pydantic
+model. The `mode` field tells Pydantic which model to load from YAML.
 
 The top-level record should explicitly include environment state:
 
@@ -74,9 +78,24 @@ HermesRecord
 ```
 
 An acquisition-only record should leave `analysis` unset. An analysis-only record
-should leave `acquisition` unset and record input files as analysis input
-artifacts, not as fake acquisition state. A full acquisition-to-analysis workflow
-may populate both fields.
+should leave `acquisition` unset and list its input files directly in the
+analysis state instead of creating fake acquisition state. A full
+acquisition-to-analysis workflow may populate both fields.
+
+#### FileReference ####
+When the record needs more than a file path, use a `FileReference` to store
+basic file metadata. This model is for files, not directories. Output directories
+should use a clearly named `Path` field, such as `tpx3_parquet_directory`.
+
+```python
+FileReference
+  path: Path
+  media_type: str | None
+  sha256: str | None
+  size_bytes: int | None
+  created_at: datetime | None
+  description: str | None
+```
 
 #### ExternalPayloadRef ####
 Large durable state values may be externalized into files under the run's
@@ -294,7 +313,9 @@ backend status snapshot because it combines server, measurement, disk,
 notification, and detector summary fields.
 
 #### AcquisitionState ####
-AcquisitionState should capture modality-specific information about the acquisition process. It should use discriminated unions to allow for different fields based on the acquisition modes.
+AcquisitionState should record the settings and files used by the selected
+acquisition program. The `mode` field selects the SERVAL, PyMEPix, or MCP2Hist
+Pydantic model.
 
 ```python
 AcquisitionState
@@ -327,7 +348,7 @@ ServalEnvironment
   dashboard: ServalDashboard | None
 ```
 
-CalibrationState should capture the HERMES-side calibration artifacts and the
+CalibrationState should capture the HERMES-side calibration files and the
 SERVAL-side `/config/load` requests and results. SERVAL loads TPX3Cam
 calibration files with `GET /config/load?format=<format>&file=<filepath>`, not
 with `PUT`. The `file` parameter is a string resolved by the SERVAL host, so it
@@ -335,8 +356,8 @@ should not be modeled as a local HERMES `Path`.
 
 ```python
 CalibrationState
-  pixel_config_file: ArtifactRef | None
-  dacs_file: ArtifactRef | None
+  pixel_config_file: FileReference | None
+  dacs_file: FileReference | None
   pixel_config_load_request: ServalConfigLoadRequest | None
   dacs_load_request: ServalConfigLoadRequest | None
   pixel_config_load_result: ServalConfigLoadResult | None
@@ -345,7 +366,7 @@ CalibrationState
 ServalConfigLoadRequest
   format: pixelconfig | dacs
   serval_file_path: str
-  source_artifact: ArtifactRef | None
+  source_file: FileReference | None
 
 ServalConfigLoadResult
   applied_at: datetime | None
@@ -443,7 +464,7 @@ SERVAL-owned state includes:
 - `/config/load` requests and responses for `.bpc` and `.dacs` files
 - measurement lifecycle state from `/measurement/start`, `/measurement/stop`,
   `/measurement`, and `/dashboard`
-- artifact references for raw `.tpx3`, preview, image, and other SERVAL outputs
+- file references for raw `.tpx3`, preview, image, and other SERVAL outputs
 
 SERVAL models may preserve backend-native endpoint shapes where that improves
 round-tripping and validation. Destination `Base` values should remain URI-like
@@ -454,22 +475,53 @@ NOTE: for `ServalEnvironment` fields and submodels please reference
 `20231023_ASIServer_TPX3_manual_V3.3.pdf`.
 
 #### AnalysisState ####
-AnalysisState should capture modality-specific information about the analysis process. It should use discriminated unions to allow for different fields based on the analysis modes.
+AnalysisState should record the files, configuration, status, and results for the
+selected analysis program. Different analysis programs may use different
+Pydantic models.
 
 ```python
 AnalysisState
   mode: hermes_tpx3_spidr | empir
 ```
 
-Depending on the mode, the AnalysisState may include different fields. For example, if the mode is `hermes_tpx3_spidr`, it may include fields for the HERMES TPX3 SPIDR analysis environment, configuration, and cluster configuration:
+For `hermes_tpx3_spidr`, use explicit fields for the raw TPX3 input files, TPX3
+Parquet output directory, summary JSON file, unpacker version, clustering
+settings, and run result:
 
 ##### HermesTpx3SpidrAnalysisState ####
 ```python
-hermes_tpx3_spidr
-  cluster_config: ClusterConfig
+HermesTpx3SpidrAnalysisState
+  mode: Literal["hermes_tpx3_spidr"]
+  environment: HermesTpx3SpidrEnvironment | None
+  config: HermesTpx3SpidrConfig | None
+  result: HermesTpx3SpidrResult | None
+
+HermesTpx3SpidrEnvironment
+  binary_path: Path | None
+  version: str | None
+
+HermesTpx3SpidrConfig
+  input_tpx3_files: list[FileReference]
+  tpx3_parquet_directory: Path
+  cluster_config: ClusterConfig | ExternalPayloadRef | None
+
+HermesTpx3SpidrResult
+  status: planned | running | completed | failed | skipped | unknown
+  started_at: datetime | None
+  completed_at: datetime | None
+  exit_code: int | None
+  summary_json_file: FileReference | None
+  pixel_hit_count: int | None
+  tdc_hit_count: int | None
+  global_timestamp_count: int | None
+  control_packet_count: int | None
+  photon_count: int | None
+  warnings: list[str]
+  errors: list[str]
 ```
 
-If the mode is `empir`, it may include fields for the EMPIR analysis environment, configuration, and related settings:
+The EMPIR fields remain undecided. When an EMPIR workflow is defined, name its
+input files, output directories, configuration files, and result files directly:
 
 ##### EmpirAnalysisState ####
 ```python
