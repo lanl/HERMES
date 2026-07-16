@@ -9,11 +9,11 @@ Create acquisition plan
   -> snapshot detector and SERVAL state
   -> configure acquisition
   -> run acquisition
-  -> record raw/image artifacts
-  -> unpack raw data if needed
-  -> record decoded artifacts and unpack summary
+  -> record raw TPX3 files and image files
+  -> unpack raw TPX3 files into Parquet files if needed
+  -> record the TPX3 Parquet output directory and summary JSON file
   -> run analysis workflow
-  -> record analysis artifacts and summary metrics
+  -> record image, plot, or photon-event output files and their counts
   -> persist final HERMES record
 ```
 
@@ -32,12 +32,14 @@ The first workflow should be intentionally narrow:
    detector health.
 3. Configure a SERVAL destination that writes raw `.tpx3` data.
 4. Start acquisition and wait for completion.
-5. Save a HERMES record that references the raw artifact through
-   `hermes.state_service`.
-6. Run `hermes-tpx3-spidr` on the raw artifact.
-7. Save decoded output and a summary JSON artifact.
-8. Update the same HERMES record with analysis/unpack results through
-   `hermes.state_service`.
+5. Use `hermes.state_service` to save the raw TPX3 file path in the HERMES
+   record.
+6. Run `hermes-tpx3-spidr` on the raw TPX3 file.
+7. Write pixel-hit, TDC-hit, timestamp, and control-packet Parquet files and a
+   summary JSON file.
+8. Use `hermes.state_service` to save the TPX3 Parquet output directory, summary
+   JSON file, pixel-hit count, TDC-hit count, global-timestamp count,
+   control-packet count, warnings, and errors in the same HERMES record.
 
-This workflow is enough to validate the state model, artifact tracking, logging,
-and Rust/Python boundary.
+This workflow is enough to validate the state model, file tracking, logging, and
+Rust/Python boundary.
