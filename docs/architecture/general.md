@@ -30,10 +30,10 @@ for each major boundary live in separate files:
 - Keep state explicit, typed, serializable, and testable.
 - Treat Pydantic models as durable records, not as runtime service objects.
 - Keep detector I/O, file decoding, and analysis behavior outside the models.
-- Store large data products as artifacts on disk and reference them from the
-  state model.
-- Keep generated artifacts, caches, raw detector data, and build products out of
-  version control.
+- Store pixel-hit Parquet files, TDC-hit Parquet files, images, and plots on disk
+  and record their paths in the state model.
+- Keep generated output files, caches, raw detector data, and build products out
+  of version control.
 - Use Loguru for structured logs around acquisition, decoding, analysis, and
   state transitions.
 - Prefer Pixi-managed Python environments and focused pytest coverage when
@@ -86,7 +86,7 @@ HERMES/
 │       │
 │       ├── acquisition/        # acquisition mode packages such as hermes.acquisition.serval
 │       ├── analysis/           # analysis mode execution and wrappers
-│       ├── workflows/          # end-to-end acquisition-to-analysis orchestration
+│       ├── workflows/          # ordered acquisition and analysis steps
 │       └── logging.py          # setup for Loguru logging across the codebase
 │
 ├── tests/
