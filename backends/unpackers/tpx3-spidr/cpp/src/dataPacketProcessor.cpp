@@ -348,8 +348,8 @@ void processTDCPacket(uint16_t bufferNumber, unsigned long long dataPacket, sign
     
     // Calculate time according to manual
     double timestampNs = timestamp * 3.125;  // 320MHz -> nanoseconds
-    double stampNs = (stamp != 0) ? stamp * 0.260 : 0.0;  // 260 ps -> nanoseconds
-    
+    double stampNs = (stamp >= 1 && stamp <= 12) ? (static_cast<double>(stamp) - 1.0) * (25.0 / 96.0) : 0.0;  // 25 ns / 96 -> nanoseconds
+
     double finalTimestampNs = timestampNs + stampNs;
     
     // Set info in signalData 
