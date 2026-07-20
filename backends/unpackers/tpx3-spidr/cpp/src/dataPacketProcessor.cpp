@@ -558,14 +558,20 @@ void processDataPackets(const configParameters& configParams, tpx3FileDiagnostic
                         tpx3FileInfo.numberOfProcessedPackets++; // Update number of packets processed
                         tpx3FileInfo.numberOfPixelHits++;
                         break;
-                    case 0x6: // TDC data packets
+                    case 0x6: { // TDC data packets
                         processTDCPacket(tpx3FileInfo.numberOfBuffers, dataPackets[currentPacket], signalDataArray[currentPacket]);
 
                         if(configParams.verboseLevel >= 4){cout << dec << currentPacket << ":" << chunkPacketIndex << ": TDC data packet" << endl;}
-                        
+
                         tpx3FileInfo.numberOfProcessedPackets++; // Update number of packets processed
-                        tpx3FileInfo.numberOfTDC1s++;
+                        uint8_t edgeCode = static_cast<uint8_t>((dataPackets[currentPacket] >> 56) & 0xF);
+                        if (edgeCode == 0xF || edgeCode == 0xA) {
+                            tpx3FileInfo.numberOfTDC1s++;
+                        } else if (edgeCode == 0xE || edgeCode == 0xB) {
+                            tpx3FileInfo.numberOfTDC2s++;
+                        }
                         break;
+                    }
                     case 0x4: // Global time data packets
                         processGlobalTimePacket(tpx3FileInfo.numberOfBuffers, dataPackets[currentPacket], signalDataArray[currentPacket]);
 
