@@ -18,7 +18,6 @@
 #include "dataPacketProcessor.h"
 #include "structures.h"
 #include "diagnostics.h"
-#include "photonRecon.h"
 #include "configReader.h"
 #include "commandLineParser.h"
 
