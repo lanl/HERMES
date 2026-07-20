@@ -362,7 +362,7 @@ void printUsage(const char* programName, int helpLevel) {
         cout << "  ./bin/tpx3SpidrUnpacker -i data.tpx3 -o /path/to/output -v 2" << endl;
         cout << endl;
         cout << "  # Config file with overrides:" << endl;
-        cout << "  ./bin/tpx3SpidrUnpacker -c settings.config -o /different/output -v 3 -W" << endl;
+        cout << "  ./bin/tpx3SpidrUnpacker -c settings.config -o /different/output -v 3 -w" << endl;
         cout << "  ./bin/tpx3SpidrUnpacker -c settings.config --clusterPixels -S 5 -T 100.0" << endl;
         cout << endl;
         cout << "  # Compact clustering setup:" << endl;
