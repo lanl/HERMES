@@ -158,35 +158,6 @@ void sortSignals(const configParameters& configParams, signalData* signalDataArr
 
 
 /**
- * @brief Clusters signal data based on the a selected algorithm and updates clustering time.
- *
- * Invokes a clustering algorithm (e.g., DBSCAN) to group pixels in the signalDataArray into clusters based on their properties.
- * The function measures the duration of the clustering process and updates the totalClusteringTime in the tpx3FileDiagnostics structure.
- * A message indicating the start of the clustering operation is printed if the verboseLevel in configParams is 3 or higher.
- * The actual clustering function (ST_DBSCAN or equivalent) should be defined elsewhere and is assumed to operate on the signalDataArray.
- *
- * @param configParams Configuration parameters, including the verbosity level for logging.
- * @param signalDataArray Array of signalData structures to be clustered. The array size is determined by numberOfDataPackets.
- * @param numberOfDataPackets The number of data packets (elements) in signalDataArray to be clustered.
- * @param tpx3FileInfo Diagnostics structure that is updated with the duration of the clustering operation.
- */
-
-void clusterSignals(const configParameters& configParams, signalData* signalDataArray, tpx3FileDiagnostics& tpx3FileInfo) {
-    if (configParams.verboseLevel >= 2) {cout << "Clustering pixels based on DBSCAN " << endl;}
-
-    auto startClusterTime = chrono::high_resolution_clock::now();
-    
-    // Invoke the clustering algorithm.
-    ST_DBSCAN(configParams, tpx3FileInfo, signalDataArray);
-
-    auto stopClusterTime = chrono::high_resolution_clock::now();
-    bufferClusterTime = stopClusterTime - startClusterTime;
-    tpx3FileInfo.totalClusteringTime = bufferClusterTime.count();
-    if (configParams.verboseLevel >= 2) {cout << "Finished clustering of " << tpx3FileInfo.numberOfDataPackets << " pixels based on DBSCAN " << endl;}
-}
-
-
-/**
  * @brief Opens a TPX3 file, calculates file size and number of data packets, updates diagnostic information, and returns an ifstream object.
  *
  * This function constructs the full path to a TPX3 file using the `configParameters` structure provided in `config`. 
@@ -731,9 +702,6 @@ tpx3FileDiagnostics unpackAndSortTPX3File(configParameters configParams){
     // If writeRawSignals is true then write out binary
     if (configParams.writeRawSignals){writeRawSignals(configParams, rawSignalsFile, signalDataArray, tpx3FileInfo);}   
 
-    // If clusterPixels is true, then cluster signals
-    if (configParams.clusterPixels){clusterSignals(configParams, signalDataArray, tpx3FileInfo);}
-    
     delete[] tpx3DataPackets;   // Don't forget to free the allocated memory
     delete[] signalDataArray;   // Assuming you're done with signalDataArray
     return tpx3FileInfo;        // Return the tpx3file info. 
@@ -817,7 +785,6 @@ void processTPX3Files(configParameters configParams){
         if(configParams.verboseLevel>=2){printOutUnpackingDiagnostics(tpxFileInfo);}
     }
 }
-
 
 
 
