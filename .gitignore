@@ -343,3 +343,6 @@ ipython_config.py
 
 # ignore anything in .deprecated directory
 .deprecated/
+
+# ignore scratch directory
+.scratch/
