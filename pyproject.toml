@@ -21,6 +21,7 @@ extra-index-urls = ["https://pypi.org/simple"]
 hermes = { path = ".", editable = true }
 
 [tool.pixi.tasks]
+build-cpp-unpacker = "cmake -S backends/unpackers/tpx3-spidr/cpp -B .scratch/build/cpp-unpacker -DCMAKE_BUILD_TYPE=Release && cmake --build .scratch/build/cpp-unpacker"
 
 [tool.pixi.dependencies]
 python = ">=3.14.4,<3.15"

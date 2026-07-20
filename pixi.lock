@@ -166,7 +166,7 @@ packages:
 - pypi: ./
   name: hermes
   version: 0.1.0
-  sha256: 48f5981248daad7469b4a387946a549b0fbcb73d9447d66051577122bd16dec1
+  sha256: 054c4c6c4fd7dcd4035d19ad972411c8ad9e023cc38eb2aa9e3df52a9584086d
   requires_python: '>=3.11'
   editable: true
 - conda: https://conda.anaconda.org/conda-forge/linux-64/icu-78.3-h33c6efd_0.conda
