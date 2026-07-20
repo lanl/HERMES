@@ -22,6 +22,7 @@ hermes = { path = ".", editable = true }
 
 [tool.pixi.tasks]
 build-cpp-unpacker = "cmake -S backends/unpackers/tpx3-spidr/cpp -B .scratch/build/cpp-unpacker -DCMAKE_BUILD_TYPE=Release && cmake --build .scratch/build/cpp-unpacker"
+test-cpp-unpacker = { cmd = "ctest --test-dir .scratch/build/cpp-unpacker --output-on-failure", depends-on = ["build-cpp-unpacker"] }
 
 [tool.pixi.dependencies]
 python = ">=3.14.4,<3.15"
