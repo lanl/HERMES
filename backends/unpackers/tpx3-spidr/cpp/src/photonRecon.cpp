@@ -97,7 +97,7 @@ photonData expandCluster(configParameters configParams, tpx3FileDiagnostics& tpx
     float weightedSumX = signalDataArray[homeIndex].xPixel * signalDataArray[homeIndex].TotFinal;
     float weightedSumY = signalDataArray[homeIndex].yPixel * signalDataArray[homeIndex].TotFinal;
     double weightedSumToA = signalDataArray[homeIndex].ToaFinal * signalDataArray[homeIndex].TotFinal;
-    uint16_t totalToT = signalDataArray[homeIndex].TotFinal;
+    uint32_t totalToT = signalDataArray[homeIndex].TotFinal;
     size_t pixelCount = 1; // Initialize pixel count, starting with the seed point itself
 
 
