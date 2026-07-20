@@ -11,8 +11,9 @@ Important environment fields include:
 - EMPIR installation path or executable path as a `Path`
 - EMPIR version, when available
 - HERMES Python package version
-- `hermes-tpx3-spidr` binary path as a `Path`
-- `hermes-tpx3-spidr` version
+- selected unpacker name, executable path as a `Path`, and version
+- selected photon reconstruction backend name, executable path, and version
+- selected event reconstruction backend name, executable path, and version
 - Python version and platform, when useful for provenance
 - `working_dir`
 - `data_dir`

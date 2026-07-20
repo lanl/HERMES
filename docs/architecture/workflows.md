@@ -34,12 +34,12 @@ The first workflow should be intentionally narrow:
 4. Start acquisition and wait for completion.
 5. Use `hermes.state_service` to save the raw TPX3 file path in the HERMES
    record.
-6. Run `hermes-tpx3-spidr` on the raw TPX3 file.
+6. Run the TPX3 SPIDR unpacker selected by the user on the raw TPX3 file.
 7. Write pixel-hit, TDC-hit, timestamp, and control-packet Parquet files and a
    summary JSON file.
 8. Use `hermes.state_service` to save the TPX3 Parquet output directory, summary
    JSON file, pixel-hit count, TDC-hit count, global-timestamp count,
    control-packet count, warnings, and errors in the same HERMES record.
 
-This workflow is enough to validate the state model, file tracking, logging, and
-Rust/Python boundary.
+This workflow is enough to test the HERMES state, file tracking, logging, and
+the connection between Python and a selected C++ or Rust backend.
