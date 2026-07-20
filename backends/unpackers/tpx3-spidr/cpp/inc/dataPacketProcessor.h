@@ -20,7 +20,7 @@ void resetGlobalVariables();
 std::ifstream openTPX3File(const configParameters& configParams, tpx3FileDiagnostics& tpx3FileInfo);
 std::ofstream openRawSignalsOutputFile(const configParameters& configParams);
 void processDataPackets(const configParameters& configParams, tpx3FileDiagnostics& tpx3FileInfo, const uint64_t* packets, signalData* signalDataArray);
-void sortSignals(const configParameters& configParams, signalData* signalDataArray, size_t numberOfDataPackets);
+void sortSignals(const configParameters& configParams, signalData* signalDataArray, tpx3FileDiagnostics& tpx3FileInfo);
 void writeRawSignals(const configParameters& configParams, std::ofstream& rawSignalsFile, const signalData* signalDataArray, tpx3FileDiagnostics& tpx3FileInfo);
 void clusterSignals(const configParameters& configParams, signalData* signalDataArray, tpx3FileDiagnostics& tpx3FileInfo);
 
