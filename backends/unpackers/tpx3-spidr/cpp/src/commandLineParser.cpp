@@ -146,6 +146,9 @@ bool parseCommandLineFlags(int argc, char* argv[], configParameters& configParam
             }
             return false;  // Help requested
         }
+        else if (arg == "-b" || arg == "--batch") {
+            batchModeSpecified = true;
+        }
         else if ((arg == "-i" || arg == "--inputFile") && i + 1 < argc) {
             inputFile = argv[++i];
         }
