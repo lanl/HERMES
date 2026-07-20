@@ -18,7 +18,7 @@ double spatialDistance(const signalData& p1, const signalData& p2);
 double temporalDistance(const signalData& p1, const signalData& p2);
 bool isNeighbor(const signalData& p1, const signalData& p2, double epsSpatial, double epsTemporal); 
 std::vector<size_t> regionQuery(configParameters configParams, tpx3FileDiagnostics& tpx3FileInfo, signalData* signalDataArray, const size_t homeIndex);
-photonData expandCluster(configParameters configParams,tpx3FileDiagnostics& tpx3FileInfo, signalData* signalDataArray, size_t pIndex, std::vector<size_t>& neighbors, int clusterId, size_t dataPacketsInBuffer);
+photonData expandCluster(configParameters configParams, tpx3FileDiagnostics& tpx3FileInfo, signalData* signalDataArray, size_t homeIndex, std::vector<size_t>& neighbors, size_t clusterId);
 void ST_DBSCAN(configParameters configParams, tpx3FileDiagnostics& tpx3FileInfo, signalData* signalDataArray);
 
 
