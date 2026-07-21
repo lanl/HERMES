@@ -204,7 +204,7 @@ void testControlsAndUnknown(TestContext& test) {
     const auto unknown_spidr = (0x51ULL << 56U) | 0x1234ULL;
     const auto sequential_end = (0x71A0ULL << 48U) | 0x123456789ABCULL;
     const auto data_driven_end = (0x71B0ULL << 48U) | 0xABCDEF012345ULL;
-    const auto unknown_tpx3 = (0x7144ULL << 48U) | 0x111122223333ULL;
+    const auto unknown_tpx3 = (0x7199ULL << 48U) | 0x111122223333ULL;
     const auto unknown_packet = 0x8123456789ABCDEFULL;
 
     const std::array<std::uint64_t, 9> words{
@@ -254,7 +254,7 @@ void testControlsAndUnknown(TestContext& test) {
                     Tpx3ControlType::end_of_sequential_readout,
                 "sequential-end type");
     test.expectEqual(result.tpx3_controls[2].control_value_raw,
-                     std::uint16_t{0x7144}, "unknown TPX3 control value");
+                     std::uint16_t{0x7199}, "unknown TPX3 control value");
     test.expectEqual(result.tpx3_controls[2].payload_raw,
                      std::uint64_t{0x111122223333},
                      "unknown TPX3 payload");
