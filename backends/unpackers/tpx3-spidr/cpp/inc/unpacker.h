@@ -115,6 +115,9 @@ struct SpidrControl {
 enum class Tpx3ControlType {
     end_of_sequential_readout,
     end_of_data_driven_readout,
+    request_time_low,
+    request_time_high,
+    other_chip_command,
     unknown,
 };
 
@@ -154,6 +157,9 @@ struct UnpackSummary {
     std::uint64_t tpx3_control_count = 0;
     std::uint64_t end_of_sequential_readout_count = 0;
     std::uint64_t end_of_data_driven_readout_count = 0;
+    std::uint64_t request_time_low_count = 0;
+    std::uint64_t request_time_high_count = 0;
+    std::uint64_t other_chip_command_count = 0;
     std::uint64_t unknown_tpx3_control_count = 0;
     std::uint64_t malformed_chunk_count = 0;
     std::uint64_t truncated_chunk_count = 0;
