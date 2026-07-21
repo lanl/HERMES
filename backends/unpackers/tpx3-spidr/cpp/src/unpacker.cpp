@@ -10,6 +10,7 @@
 #include <optional>
 #include <sstream>
 #include <filesystem>
+#include <chrono>
 
 namespace hermes_tpx3_spidr {
 namespace {
@@ -421,11 +422,20 @@ UnpackResult unpack(std::istream& input) {
 
 WorkflowResult runTwoPassWorkflow(std::istream& input,
                                   const std::string& output_directory) {
+    using Clock = std::chrono::high_resolution_clock;
+    using Duration = std::chrono::duration<double>;
+
+    auto workflow_start = Clock::now();
+
     WorkflowResult workflow_result;
     workflow_result.output_directory = output_directory;
 
     // Pass 1: Unpack and decode all packets
+    auto unpack_start = Clock::now();
     auto unpack_result = unpack(input);
+    auto unpack_end = Clock::now();
+    workflow_result.summary.timing_diagnostics.unpacking_seconds =
+        Duration(unpack_end - unpack_start).count();
     workflow_result.summary.unpack_summary = unpack_result.summary;
 
     if (!unpack_result.summary.errors.empty()) {
@@ -440,6 +450,7 @@ WorkflowResult runTwoPassWorkflow(std::istream& input,
 
     // Build anchor indices per chip (from paired global timestamps)
     // For now, assume single chip (chip 0)
+    auto epoch_start = Clock::now();
     AnchorIndexDiagnostics anchor_diag;
     ChipAnchorIndex chip0_anchors = buildChipAnchorIndex(
         unpack_result.global_timestamps, 0, anchor_diag);
@@ -450,14 +461,22 @@ WorkflowResult runTwoPassWorkflow(std::istream& input,
     assignEpochsToPixels(unpack_result.pixel_hits, chip0_anchors, 0, epoch_diag);
     assignEpochsToTdcs(unpack_result.tdc_hits, chip0_anchors, 0, epoch_diag);
     assignEpochsToControls(unpack_result.spidr_controls, chip0_anchors, 0, epoch_diag);
+    auto epoch_end = Clock::now();
+    workflow_result.summary.timing_diagnostics.epoch_assignment_seconds =
+        Duration(epoch_end - epoch_start).count();
     workflow_result.summary.epoch_diagnostics = epoch_diag;
 
     // Sort all output data
+    auto sort_start = Clock::now();
     SortingDiagnostics sort_diag;
     sortAllOutputRows(unpack_result, sort_diag);
+    auto sort_end = Clock::now();
+    workflow_result.summary.timing_diagnostics.sorting_seconds =
+        Duration(sort_end - sort_start).count();
     workflow_result.summary.sorting_diagnostics = sort_diag;
 
     // Convert to output rows after sorting
+    auto conversion_start = Clock::now();
     OutputRows output_rows;
 
     for (const auto& pixel : unpack_result.pixel_hits) {
@@ -487,6 +506,9 @@ WorkflowResult runTwoPassWorkflow(std::istream& input,
     for (const auto& unknown : unpack_result.unknown_packets) {
         output_rows.unknowns.push_back(convertUnknownToOutputRow(unknown));
     }
+    auto conversion_end = Clock::now();
+    workflow_result.summary.timing_diagnostics.conversion_seconds =
+        Duration(conversion_end - conversion_start).count();
 
     // Create output directory
     try {
@@ -500,6 +522,7 @@ WorkflowResult runTwoPassWorkflow(std::istream& input,
     }
 
     // Write Parquet files per chip
+    auto writing_start = Clock::now();
     ParquetWriterDiagnostics writer_diag;
     ParquetWriterConfig writer_config;
     writer_config.output_directory = output_directory;
@@ -510,8 +533,16 @@ WorkflowResult runTwoPassWorkflow(std::istream& input,
     writeGlobalTimestampsParquet(output_rows.globals, writer_config, writer_diag);
     writeControlPacketsParquet(output_rows.controls, writer_config, writer_diag);
     writeUnknownPacketsParquet(output_rows.unknowns, writer_config, writer_diag);
+    auto writing_end = Clock::now();
+    workflow_result.summary.timing_diagnostics.parquet_writing_seconds =
+        Duration(writing_end - writing_start).count();
 
     workflow_result.summary.writer_diagnostics = writer_diag;
+
+    // Calculate total time (before writing JSON so it's included)
+    auto workflow_end = Clock::now();
+    workflow_result.summary.timing_diagnostics.total_seconds =
+        Duration(workflow_end - workflow_start).count();
 
     // Write summary.json
     workflow_result.summary.output_directory = output_directory;
