@@ -30,6 +30,9 @@ void printSummary(const UnpackSummary& summary, std::ostream& output) {
            << summary.end_of_sequential_readout_count
            << " data_driven_end="
            << summary.end_of_data_driven_readout_count
+           << " request_time_low=" << summary.request_time_low_count
+           << " request_time_high=" << summary.request_time_high_count
+           << " other_chip_cmd=" << summary.other_chip_command_count
            << " unknown_tpx3=" << summary.unknown_tpx3_control_count << '\n'
            << "unknown_packets=" << summary.unknown_packet_count << '\n'
            << "malformed_chunks=" << summary.malformed_chunk_count
