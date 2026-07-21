@@ -34,12 +34,43 @@ struct AnchorIndexDiagnostics {
     std::vector<std::string> warnings;
 };
 
+struct EpochAssignmentDiagnostics {
+    std::uint64_t pixels_assigned = 0;
+    std::uint64_t tdcs_assigned = 0;
+    std::uint64_t controls_assigned = 0;
+    std::uint64_t ambiguous_timestamps = 0;
+    std::uint64_t unresolved_timestamps = 0;
+    bool used_fallback = false;
+    std::vector<std::string> warnings;
+};
+
 ChipAnchorIndex buildChipAnchorIndex(
     const std::vector<GlobalTimestamp>& global_timestamps,
     std::uint8_t chip_index,
     AnchorIndexDiagnostics& diagnostics);
 
 void assignSourcePacketOrder(UnpackResult& result);
+
+std::uint64_t findBestEpoch(std::uint64_t raw_counter,
+                            std::uint64_t modulus,
+                            const ChipAnchorIndex& anchors,
+                            std::uint64_t source_packet_order,
+                            EpochAssignmentDiagnostics& diagnostics);
+
+void assignEpochsToPixels(std::vector<PixelHit>& pixels,
+                          const ChipAnchorIndex& anchors,
+                          std::uint8_t chip_index,
+                          EpochAssignmentDiagnostics& diagnostics);
+
+void assignEpochsToTdcs(std::vector<TdcHit>& tdcs,
+                        const ChipAnchorIndex& anchors,
+                        std::uint8_t chip_index,
+                        EpochAssignmentDiagnostics& diagnostics);
+
+void assignEpochsToControls(std::vector<SpidrControl>& controls,
+                            const ChipAnchorIndex& anchors,
+                            std::uint8_t chip_index,
+                            EpochAssignmentDiagnostics& diagnostics);
 
 template <typename Row>
 void sortByTimestampAndOrder(std::vector<Row>& rows) {
