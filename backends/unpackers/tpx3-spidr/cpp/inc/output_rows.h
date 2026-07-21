@@ -9,6 +9,7 @@ namespace hermes_tpx3_spidr {
 struct PixelOutputRow {
     std::size_t chunk_index = 0;
     std::size_t packet_index = 0;
+    std::uint64_t source_packet_order = 0;
     std::uint16_t local_x = 0;
     std::uint16_t local_y = 0;
     std::uint16_t tot_raw = 0;
@@ -18,6 +19,7 @@ struct PixelOutputRow {
 struct TdcOutputRow {
     std::size_t chunk_index = 0;
     std::size_t packet_index = 0;
+    std::uint64_t source_packet_order = 0;
     std::uint8_t trigger_type = 0;
     std::uint64_t timestamp_canonical = 0;
 };
@@ -25,12 +27,14 @@ struct TdcOutputRow {
 struct GlobalOutputRow {
     std::size_t chunk_index = 0;
     std::size_t packet_index = 0;
+    std::uint64_t source_packet_order = 0;
     std::uint64_t timestamp_canonical = 0;
 };
 
 struct ControlOutputRow {
     std::size_t chunk_index = 0;
     std::size_t packet_index = 0;
+    std::uint64_t source_packet_order = 0;
     std::uint8_t source = 0;
     std::uint16_t control_type = 0;
     std::uint8_t packet_id = 0;
@@ -54,6 +58,7 @@ struct ControlOutputRow {
 struct UnknownOutputRow {
     std::size_t chunk_index = 0;
     std::size_t packet_index = 0;
+    std::uint64_t source_packet_order = 0;
     std::uint64_t raw_word = 0;
     std::uint8_t most_significant_byte = 0;
 };
