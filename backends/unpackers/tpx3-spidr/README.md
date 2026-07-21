@@ -29,6 +29,12 @@ build/backends/tpx3-spidr/hermes-tpx3-spidr input.tpx3
 
 ## Running the Unpacker
 
+### Show help
+```bash
+pixi run hermes-tpx3-spidr --help
+pixi run hermes-tpx3-spidr --version
+```
+
 ### Print summary only (no output files)
 ```bash
 pixi run hermes-tpx3-spidr input.tpx3
