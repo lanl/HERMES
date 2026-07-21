@@ -1,21 +1,42 @@
 # TPX3 SPIDR Unpacker Usage
 
-## Building
+## Building and Installing
+
+### Option 1: Build and Install (Recommended)
+Build and install the unpacker to `.pixi/bin/` (automatically added to PATH in pixi environment):
+
+```bash
+pixi run install-backends
+```
+
+Then run directly:
+```bash
+pixi run hermes-tpx3-spidr input.tpx3                    # Print summary
+pixi run hermes-tpx3-spidr input.tpx3 output_directory   # Write Parquet files
+```
+
+### Option 2: Build Only
+Build without installing:
 
 ```bash
 pixi run build-cpp-unpacker
+```
+
+Then run from build directory:
+```bash
+build/backends/tpx3-spidr/hermes-tpx3-spidr input.tpx3
 ```
 
 ## Running the Unpacker
 
 ### Print summary only (no output files)
 ```bash
-.scratch/build/cpp-unpacker/hermes-tpx3-spidr input.tpx3
+pixi run hermes-tpx3-spidr input.tpx3
 ```
 
 ### Write Parquet files and summary.json
 ```bash
-.scratch/build/cpp-unpacker/hermes-tpx3-spidr input.tpx3 output_directory
+pixi run hermes-tpx3-spidr input.tpx3 output_directory
 ```
 
 ## Output Structure
@@ -125,8 +146,11 @@ All 6 test suites should pass.
 ## Example with Test Data
 
 ```bash
+# Install backends first
+pixi run install-backends
+
 # Process example file
-.scratch/build/cpp-unpacker/hermes-tpx3-spidr \
+pixi run hermes-tpx3-spidr \
     .agent/resources/Example_1kHz_5frames.tpx3 \
     .scratch/test_output
 
