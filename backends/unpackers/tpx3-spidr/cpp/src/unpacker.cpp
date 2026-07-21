@@ -1,5 +1,7 @@
 #include "unpacker.h"
 
+#include "chunk_reader.h"
+
 #include <array>
 #include <optional>
 #include <sstream>
@@ -12,15 +14,6 @@ constexpr std::uint64_t tdc_timestamp_mask = 0x7FFFFFFFFULL;
 constexpr std::uint64_t spidr_timestamp_mask = 0x3FFFFFFFFULL;
 constexpr std::uint64_t canonical_ticks_per_tdc_timestamp = 1536;
 constexpr std::uint64_t canonical_ticks_per_tdc_fine_step = 128;
-constexpr std::uint32_t tpx3_signature = 0x33585054U;
-
-std::uint64_t littleEndianWord(const std::array<unsigned char, 8>& bytes) {
-    std::uint64_t word = 0;
-    for (std::size_t index = 0; index < bytes.size(); ++index) {
-        word |= static_cast<std::uint64_t>(bytes[index]) << (index * 8U);
-    }
-    return word;
-}
 
 PacketPosition makePosition(const std::uint64_t raw_word,
                             const std::uint8_t chip_index,
@@ -324,49 +317,36 @@ UnpackResult unpack(std::istream& input) {
     std::size_t chunk_index = 0;
 
     while (true) {
-        std::array<unsigned char, 8> header_bytes{};
-        input.read(reinterpret_cast<char*>(header_bytes.data()),
-                   static_cast<std::streamsize>(header_bytes.size()));
-        const auto header_bytes_read = input.gcount();
-        if (header_bytes_read == 0) {
-            break;
-        }
-        result.summary.bytes_read +=
-            static_cast<std::uint64_t>(header_bytes_read);
-        if (header_bytes_read !=
-            static_cast<std::streamsize>(header_bytes.size())) {
-            ++result.summary.truncated_chunk_count;
-            result.summary.errors.push_back(
-                "Truncated chunk header at chunk " +
-                std::to_string(chunk_index));
+        const auto chunk_read = readChunkHeader(input, chunk_index);
+        if (chunk_read.end_of_stream) {
             break;
         }
 
-        const auto raw_header = littleEndianWord(header_bytes);
-        if (static_cast<std::uint32_t>(raw_header) != tpx3_signature) {
-            ++result.summary.malformed_chunk_count;
-            result.summary.errors.push_back(
-                "Invalid TPX3 signature at chunk " +
-                std::to_string(chunk_index));
+        result.summary.bytes_read += chunk_read.bytes_read;
+
+        if (!chunk_read.success) {
+            if (chunk_read.error) {
+                result.summary.errors.push_back(*chunk_read.error);
+            }
+            if (chunk_read.error &&
+                chunk_read.error->find("Truncated") != std::string::npos) {
+                ++result.summary.truncated_chunk_count;
+            } else {
+                ++result.summary.malformed_chunk_count;
+            }
             break;
         }
 
-        const auto chip_index =
-            static_cast<std::uint8_t>((raw_header >> 32U) & 0xFFU);
-        const auto mode_or_reserved =
-            static_cast<std::uint8_t>((raw_header >> 40U) & 0xFFU);
-        const auto chunk_size_bytes =
-            static_cast<std::uint16_t>((raw_header >> 48U) & 0xFFFFU);
         result.chunk_headers.push_back({
-            raw_header,
-            chunk_size_bytes,
-            mode_or_reserved,
-            chip_index,
+            chunk_read.raw_header,
+            chunk_read.chunk_size_bytes,
+            chunk_read.mode_or_reserved,
+            chunk_read.chip_index,
             chunk_index,
         });
         ++result.summary.chunks_read;
 
-        if (chunk_size_bytes % 8U != 0U) {
+        if (chunk_read.chunk_size_bytes % 8U != 0U) {
             ++result.summary.malformed_chunk_count;
             result.summary.errors.push_back(
                 "Chunk size is not divisible by 8 at chunk " +
@@ -375,45 +355,40 @@ UnpackResult unpack(std::istream& input) {
         }
 
         const auto packet_count =
-            static_cast<std::size_t>(chunk_size_bytes / 8U);
+            static_cast<std::size_t>(chunk_read.chunk_size_bytes / 8U);
         bool chunk_truncated = false;
         for (std::size_t packet_index = 0;
              packet_index < packet_count;
              ++packet_index) {
-            std::array<unsigned char, 8> packet_bytes{};
-            input.read(reinterpret_cast<char*>(packet_bytes.data()),
-                       static_cast<std::streamsize>(packet_bytes.size()));
-            const auto packet_bytes_read = input.gcount();
-            result.summary.bytes_read +=
-                static_cast<std::uint64_t>(packet_bytes_read);
-            if (packet_bytes_read !=
-                static_cast<std::streamsize>(packet_bytes.size())) {
+            const auto packet_read =
+                readPacketWord(input, chunk_index, packet_index);
+            result.summary.bytes_read += packet_read.bytes_read;
+
+            if (!packet_read.success) {
                 ++result.summary.truncated_chunk_count;
-                result.summary.errors.push_back(
-                    "Truncated chunk content at chunk " +
-                    std::to_string(chunk_index) + ", packet " +
-                    std::to_string(packet_index));
+                if (packet_read.error) {
+                    result.summary.errors.push_back(*packet_read.error);
+                }
                 chunk_truncated = true;
                 break;
             }
 
-            const auto raw_word = littleEndianWord(packet_bytes);
             const auto low_count_before = result.global_time_lows.size();
             const auto high_count_before = result.global_time_highs.size();
-            unpackPacket(raw_word,
-                         chip_index,
+            unpackPacket(packet_read.raw_word,
+                         chunk_read.chip_index,
                          chunk_index,
                          packet_index,
                          result);
 
             if (result.global_time_lows.size() > low_count_before) {
-                pending_global_time_lows[chip_index] =
+                pending_global_time_lows[chunk_read.chip_index] =
                     result.global_time_lows.back();
             }
             if (result.global_time_highs.size() > high_count_before &&
-                pending_global_time_lows[chip_index].has_value()) {
+                pending_global_time_lows[chunk_read.chip_index].has_value()) {
                 const auto& low =
-                    pending_global_time_lows[chip_index].value();
+                    pending_global_time_lows[chunk_read.chip_index].value();
                 const auto& high = result.global_time_highs.back();
                 result.global_timestamps.push_back({
                     low.position,
@@ -426,7 +401,7 @@ UnpackResult unpack(std::istream& input) {
                         low.global_time_low_raw,
                 });
                 ++result.summary.global_timestamp_count;
-                pending_global_time_lows[chip_index].reset();
+                pending_global_time_lows[chunk_read.chip_index].reset();
             }
         }
 
