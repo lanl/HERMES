@@ -96,6 +96,8 @@ void assignEpochsToPixels(std::vector<PixelHit>& pixels,
         const auto unwrapped_coarse =
             pixel.coarse_time_25ns + epoch * PIXEL_COUNTER_MODULUS;
         pixel.coarse_time_25ns = unwrapped_coarse;
+        pixel.fine_time_1p5625ns =
+            static_cast<std::int64_t>(unwrapped_coarse << 4U) - pixel.ftoa_raw;
         ++diagnostics.pixels_assigned;
     }
 }
