@@ -146,15 +146,14 @@ void assignEpochsToControls(std::vector<SpidrControl>& controls,
     }
 }
 
-MemoryEstimate estimateMemoryUsage(const UnpackResult& result) {
+MemoryEstimate estimateMemoryUsage(const OutputRows& rows) {
     MemoryEstimate estimate;
 
-    estimate.pixel_rows = result.pixel_hits.size();
-    estimate.tdc_rows = result.tdc_hits.size();
-    estimate.global_rows = result.global_timestamps.size();
-    estimate.control_rows =
-        result.spidr_controls.size() + result.tpx3_controls.size();
-    estimate.unknown_rows = result.unknown_packets.size();
+    estimate.pixel_rows = rows.pixels.size();
+    estimate.tdc_rows = rows.tdcs.size();
+    estimate.global_rows = rows.globals.size();
+    estimate.control_rows = rows.controls.size();
+    estimate.unknown_rows = rows.unknowns.size();
 
     estimate.estimated_bytes = estimate.pixel_rows * sizeof(PixelOutputRow) +
                                estimate.tdc_rows * sizeof(TdcOutputRow) +
@@ -173,20 +172,40 @@ SortingPath selectSortingPath(const MemoryEstimate& estimate,
     return SortingPath::external_merge;
 }
 
-void sortAllOutputRows(UnpackResult& result, SortingDiagnostics& diagnostics) {
+void sortAllOutputRows(OutputRows& rows, SortingDiagnostics& diagnostics) {
     constexpr std::uint64_t DEFAULT_MEMORY_BUDGET = 1024ULL * 1024ULL * 1024ULL;
 
-    const auto estimate = estimateMemoryUsage(result);
-    const auto path = selectSortingPath(estimate, DEFAULT_MEMORY_BUDGET);
+    const auto estimate = estimateMemoryUsage(rows);
 
     diagnostics.estimated_memory_bytes = estimate.estimated_bytes;
     diagnostics.memory_budget_bytes = DEFAULT_MEMORY_BUDGET;
-    diagnostics.path_used = path;
+    diagnostics.path_used = SortingPath::in_memory;
     diagnostics.temporary_runs_created = 0;
 
-    if (path == SortingPath::external_merge) {
-        return;
-    }
+    sortByTimestampAndOrder(rows.pixels);
+    sortByTimestampAndOrder(rows.tdcs);
+    sortByTimestampAndOrder(rows.globals);
+
+    std::stable_sort(rows.controls.begin(), rows.controls.end(),
+                     [](const ControlOutputRow& a, const ControlOutputRow& b) {
+                         if (a.timestamp_canonical_present !=
+                             b.timestamp_canonical_present) {
+                             return a.timestamp_canonical_present;
+                         }
+                         if (a.timestamp_canonical_present &&
+                             a.timestamp_canonical != b.timestamp_canonical) {
+                             return a.timestamp_canonical < b.timestamp_canonical;
+                         }
+                         if (a.source_packet_order != b.source_packet_order) {
+                             return a.source_packet_order < b.source_packet_order;
+                         }
+                         if (a.chunk_index != b.chunk_index) {
+                             return a.chunk_index < b.chunk_index;
+                         }
+                         return a.packet_index < b.packet_index;
+                     });
+
+    sortBySourcePacketOrder(rows.unknowns);
 }
 
 }  // namespace hermes_tpx3_spidr
