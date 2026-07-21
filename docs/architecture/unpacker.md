@@ -50,13 +50,13 @@ tpx3_parquet/
     chip_0-00000.parquet
     chip_0-00001.parquet
   tdc_triggers/
-    chip_0-00000.parquet
+    tdcs_0-00000.parquet
   global_timestamps/
-    chip_0-00000.parquet
+    gs_0-00000.parquet
   control_packets/
-    chip_0-00000.parquet
+    controls_0-00000.parquet
   unknown_packets/
-    chip_0-00000.parquet
+    unknown_0-00000.parquet
 ```
 
 The chip index belongs in each Parquet file name and should not be repeated in
