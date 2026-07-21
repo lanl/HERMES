@@ -30,7 +30,6 @@ endif()
 add_library(hermes_tpx3_spidr_unpacker
     src/chunk_reader.cpp
     src/diagnostics.cpp
-    src/parquet_schemas.cpp
     src/parquet_writer.cpp
     src/summary_json.cpp
     src/time_sort.cpp
