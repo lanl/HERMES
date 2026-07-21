@@ -5,7 +5,7 @@
 #include <cstdint>
 #include <istream>
 #include <optional>
-
+#include <string>
 namespace hermes_tpx3_spidr {
 
 std::uint64_t littleEndianWord(const std::array<unsigned char, 8>& bytes);
