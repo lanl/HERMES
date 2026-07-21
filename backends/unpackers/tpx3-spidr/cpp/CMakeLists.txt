@@ -45,6 +45,7 @@ target_include_directories(hermes_tpx3_spidr_unpacker
 )
 
 if(Arrow_FOUND AND Parquet_FOUND)
+    target_sources(hermes_tpx3_spidr_unpacker PRIVATE src/parquet_schemas.cpp)
     target_link_libraries(hermes_tpx3_spidr_unpacker
         PUBLIC
             Arrow::arrow_shared
