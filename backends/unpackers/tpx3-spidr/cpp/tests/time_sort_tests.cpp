@@ -368,19 +368,19 @@ void testAssignEpochsToControls(TestContext& test) {
 }
 
 void testMemoryEstimation(TestContext& test) {
-    UnpackResult result;
+    OutputRows rows;
 
-    PixelHit pixel;
-    result.pixel_hits.push_back(pixel);
-    result.pixel_hits.push_back(pixel);
+    PixelOutputRow pixel;
+    rows.pixels.push_back(pixel);
+    rows.pixels.push_back(pixel);
 
-    TdcHit tdc;
-    result.tdc_hits.push_back(tdc);
+    TdcOutputRow tdc;
+    rows.tdcs.push_back(tdc);
 
-    GlobalTimestamp global;
-    result.global_timestamps.push_back(global);
+    GlobalOutputRow global;
+    rows.globals.push_back(global);
 
-    const auto estimate = estimateMemoryUsage(result);
+    const auto estimate = estimateMemoryUsage(rows);
 
     test.expectEqual(estimate.pixel_rows, std::uint64_t{2}, "2 pixel rows");
     test.expectEqual(estimate.tdc_rows, std::uint64_t{1}, "1 TDC row");
@@ -405,15 +405,55 @@ void testSortingPathSelection(TestContext& test) {
 }
 
 void testSortAllOutputRows(TestContext& test) {
-    UnpackResult result;
+    OutputRows rows;
+
+    rows.pixels = {
+        PixelOutputRow{0, 2, 2, 0, 0, 0, 20},
+        PixelOutputRow{0, 3, 3, 0, 0, 0, 10},
+        PixelOutputRow{0, 1, 1, 0, 0, 0, 20},
+    };
+    rows.tdcs = {
+        TdcOutputRow{0, 2, 2, 0, 20},
+        TdcOutputRow{0, 1, 1, 0, 10},
+    };
+    rows.globals = {
+        GlobalOutputRow{0, 2, 2, 20},
+        GlobalOutputRow{0, 1, 1, 10},
+    };
+    rows.unknowns = {
+        UnknownOutputRow{0, 2, 2, 0, 0},
+        UnknownOutputRow{0, 1, 1, 0, 0},
+    };
+
+    ControlOutputRow untimestamped;
+    untimestamped.chunk_index = 0;
+    untimestamped.packet_index = 1;
+    ControlOutputRow timestamped;
+    timestamped.chunk_index = 0;
+    timestamped.packet_index = 2;
+    timestamped.timestamp_canonical = 10;
+    timestamped.timestamp_canonical_present = true;
+    rows.controls = {untimestamped, timestamped};
 
     SortingDiagnostics diagnostics;
-    sortAllOutputRows(result, diagnostics);
+    sortAllOutputRows(rows, diagnostics);
 
     test.expect(diagnostics.path_used == SortingPath::in_memory,
-                "empty result uses in-memory path");
+                "output rows use in-memory path");
     test.expectEqual(diagnostics.temporary_runs_created, std::uint64_t{0},
                      "no temporary runs for in-memory");
+    test.expectEqual(rows.pixels[0].timestamp_canonical, std::uint64_t{10},
+                     "pixels sorted by timestamp");
+    test.expectEqual(rows.pixels[1].source_packet_order, std::uint64_t{1},
+                     "equal timestamps sorted by source order");
+    test.expectEqual(rows.tdcs[0].timestamp_canonical, std::uint64_t{10},
+                     "TDC rows sorted by timestamp");
+    test.expectEqual(rows.globals[0].timestamp_canonical, std::uint64_t{10},
+                     "global rows sorted by timestamp");
+    test.expect(rows.controls[0].timestamp_canonical_present,
+                "timestamped controls sort before controls without time");
+    test.expectEqual(rows.unknowns[0].packet_index, std::size_t{1},
+                     "unknown rows remain in source order");
 }
 
 void testSortBySourcePacketOrder(TestContext& test) {
