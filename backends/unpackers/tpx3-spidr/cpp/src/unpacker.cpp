@@ -466,16 +466,7 @@ WorkflowResult runTwoPassWorkflow(std::istream& input,
         Duration(epoch_end - epoch_start).count();
     workflow_result.summary.epoch_diagnostics = epoch_diag;
 
-    // Sort all output data
-    auto sort_start = Clock::now();
-    SortingDiagnostics sort_diag;
-    sortAllOutputRows(unpack_result, sort_diag);
-    auto sort_end = Clock::now();
-    workflow_result.summary.timing_diagnostics.sorting_seconds =
-        Duration(sort_end - sort_start).count();
-    workflow_result.summary.sorting_diagnostics = sort_diag;
-
-    // Convert to output rows after sorting
+    // Convert decoded packets to the rows written to Parquet.
     auto conversion_start = Clock::now();
     OutputRows output_rows;
 
@@ -507,39 +498,18 @@ WorkflowResult runTwoPassWorkflow(std::istream& input,
         output_rows.unknowns.push_back(convertUnknownToOutputRow(unknown));
     }
 
-    // Ensure output datasets are time-sorted before writing.
-    sortByTimestampAndOrder(output_rows.pixels);
-    sortByTimestampAndOrder(output_rows.tdcs);
-    sortByTimestampAndOrder(output_rows.globals);
-
-    std::stable_sort(output_rows.controls.begin(), output_rows.controls.end(),
-                     [](const ControlOutputRow& a, const ControlOutputRow& b) {
-                         const auto ta = a.timestamp_canonical_present
-                                             ? a.timestamp_canonical
-                                             : static_cast<std::uint64_t>(-1);
-                         const auto tb = b.timestamp_canonical_present
-                                             ? b.timestamp_canonical
-                                             : static_cast<std::uint64_t>(-1);
-                         if (ta != tb) {
-                             return ta < tb;
-                         }
-                         if (a.chunk_index != b.chunk_index) {
-                             return a.chunk_index < b.chunk_index;
-                         }
-                         return a.packet_index < b.packet_index;
-                     });
-
-    std::stable_sort(output_rows.unknowns.begin(), output_rows.unknowns.end(),
-                     [](const UnknownOutputRow& a, const UnknownOutputRow& b) {
-                         if (a.chunk_index != b.chunk_index) {
-                             return a.chunk_index < b.chunk_index;
-                         }
-                         return a.packet_index < b.packet_index;
-                     });
-
     auto conversion_end = Clock::now();
     workflow_result.summary.timing_diagnostics.conversion_seconds =
         Duration(conversion_end - conversion_start).count();
+
+    // Sort the exact rows that will be split into Parquet part files.
+    auto sort_start = Clock::now();
+    SortingDiagnostics sort_diag;
+    sortAllOutputRows(output_rows, sort_diag);
+    auto sort_end = Clock::now();
+    workflow_result.summary.timing_diagnostics.sorting_seconds =
+        Duration(sort_end - sort_start).count();
+    workflow_result.summary.sorting_diagnostics = sort_diag;
 
     // Create output directory
     try {
