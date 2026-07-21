@@ -346,3 +346,7 @@ ipython_config.py
 
 # ignore scratch directory
 .scratch/
+
+# Data directory - only README is tracked
+data/*
+!data/README.md
