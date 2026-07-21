@@ -367,6 +367,80 @@ void testAssignEpochsToControls(TestContext& test) {
                      "packet_count control unchanged");
 }
 
+void testMemoryEstimation(TestContext& test) {
+    UnpackResult result;
+
+    PixelHit pixel;
+    result.pixel_hits.push_back(pixel);
+    result.pixel_hits.push_back(pixel);
+
+    TdcHit tdc;
+    result.tdc_hits.push_back(tdc);
+
+    GlobalTimestamp global;
+    result.global_timestamps.push_back(global);
+
+    const auto estimate = estimateMemoryUsage(result);
+
+    test.expectEqual(estimate.pixel_rows, std::uint64_t{2}, "2 pixel rows");
+    test.expectEqual(estimate.tdc_rows, std::uint64_t{1}, "1 TDC row");
+    test.expectEqual(estimate.global_rows, std::uint64_t{1}, "1 global row");
+    test.expect(estimate.estimated_bytes > 0, "nonzero memory estimate");
+}
+
+void testSortingPathSelection(TestContext& test) {
+    MemoryEstimate small_estimate;
+    small_estimate.estimated_bytes = 1024;
+
+    MemoryEstimate large_estimate;
+    large_estimate.estimated_bytes = 2ULL * 1024ULL * 1024ULL * 1024ULL;
+
+    const auto small_path = selectSortingPath(small_estimate, 1024ULL * 1024ULL);
+    const auto large_path = selectSortingPath(large_estimate, 1024ULL * 1024ULL);
+
+    test.expect(small_path == SortingPath::in_memory,
+                "small estimate uses in-memory path");
+    test.expect(large_path == SortingPath::external_merge,
+                "large estimate uses external merge path");
+}
+
+void testSortAllOutputRows(TestContext& test) {
+    UnpackResult result;
+
+    SortingDiagnostics diagnostics;
+    sortAllOutputRows(result, diagnostics);
+
+    test.expect(diagnostics.path_used == SortingPath::in_memory,
+                "empty result uses in-memory path");
+    test.expectEqual(diagnostics.temporary_runs_created, std::uint64_t{0},
+                     "no temporary runs for in-memory");
+}
+
+void testSortBySourcePacketOrder(TestContext& test) {
+    std::vector<UnknownOutputRow> unknowns;
+
+    UnknownOutputRow u1;
+    u1.source_packet_order = 300;
+    unknowns.push_back(u1);
+
+    UnknownOutputRow u2;
+    u2.source_packet_order = 100;
+    unknowns.push_back(u2);
+
+    UnknownOutputRow u3;
+    u3.source_packet_order = 200;
+    unknowns.push_back(u3);
+
+    sortBySourcePacketOrder(unknowns);
+
+    test.expectEqual(unknowns[0].source_packet_order, std::uint64_t{100},
+                     "first by order");
+    test.expectEqual(unknowns[1].source_packet_order, std::uint64_t{200},
+                     "second by order");
+    test.expectEqual(unknowns[2].source_packet_order, std::uint64_t{300},
+                     "third by order");
+}
+
 }  // namespace
 
 int main() {
@@ -383,5 +457,9 @@ int main() {
     testAssignEpochsToPixels(test);
     testAssignEpochsToTdcs(test);
     testAssignEpochsToControls(test);
+    testMemoryEstimation(test);
+    testSortingPathSelection(test);
+    testSortAllOutputRows(test);
+    testSortBySourcePacketOrder(test);
     return test.finish();
 }
