@@ -19,10 +19,11 @@ namespace hermes_tpx3_spidr {
 
 namespace {
 
-std::string makePartFileName(std::uint8_t chip_index,
+std::string makePartFileName(const std::string& prefix,
+                              std::uint8_t chip_index,
                               std::uint64_t part_number) {
     std::ostringstream oss;
-    oss << "chip_" << static_cast<int>(chip_index) << "-"
+    oss << prefix << "_" << static_cast<int>(chip_index) << "-"
         << std::setw(5) << std::setfill('0') << part_number << ".parquet";
     return oss.str();
 }
@@ -308,6 +309,7 @@ void writeRowsToParquet(
     const std::vector<Row>& rows,
     const ParquetWriterConfig& config,
     const std::string& dataset_name,
+    const std::string& filename_prefix,
     std::uint64_t& files_written,
     std::vector<std::string>& errors,
     TableBuilder table_builder) {
@@ -330,7 +332,7 @@ void writeRowsToParquet(
 
         auto table = table_builder(rows, start_idx, count);
 
-        std::string filename = makePartFileName(config.chip_index, part);
+        std::string filename = makePartFileName(filename_prefix, config.chip_index, part);
         std::string full_path = dataset_dir + "/" + filename;
 
         std::shared_ptr<arrow::io::FileOutputStream> outfile;
@@ -359,7 +361,7 @@ void writeRowsToParquet(
 void writePixelHitsParquet(const std::vector<PixelOutputRow>& rows,
                            const ParquetWriterConfig& config,
                            ParquetWriterDiagnostics& diagnostics) {
-    writeRowsToParquet(rows, config, "pixel_hits",
+    writeRowsToParquet(rows, config, "pixel_hits", "chip",
                       diagnostics.pixel_files_written,
                       diagnostics.errors, buildPixelTable);
 }
@@ -367,7 +369,7 @@ void writePixelHitsParquet(const std::vector<PixelOutputRow>& rows,
 void writeTdcTriggersParquet(const std::vector<TdcOutputRow>& rows,
                              const ParquetWriterConfig& config,
                              ParquetWriterDiagnostics& diagnostics) {
-    writeRowsToParquet(rows, config, "tdc_triggers",
+    writeRowsToParquet(rows, config, "tdc_triggers", "tdcs",
                       diagnostics.tdc_files_written,
                       diagnostics.errors, buildTdcTable);
 }
@@ -375,7 +377,7 @@ void writeTdcTriggersParquet(const std::vector<TdcOutputRow>& rows,
 void writeGlobalTimestampsParquet(const std::vector<GlobalOutputRow>& rows,
                                    const ParquetWriterConfig& config,
                                    ParquetWriterDiagnostics& diagnostics) {
-    writeRowsToParquet(rows, config, "global_timestamps",
+    writeRowsToParquet(rows, config, "global_timestamps", "gs",
                       diagnostics.global_files_written,
                       diagnostics.errors, buildGlobalTable);
 }
@@ -383,7 +385,7 @@ void writeGlobalTimestampsParquet(const std::vector<GlobalOutputRow>& rows,
 void writeControlPacketsParquet(const std::vector<ControlOutputRow>& rows,
                                 const ParquetWriterConfig& config,
                                 ParquetWriterDiagnostics& diagnostics) {
-    writeRowsToParquet(rows, config, "control_packets",
+    writeRowsToParquet(rows, config, "control_packets", "controls",
                       diagnostics.control_files_written,
                       diagnostics.errors, buildControlTable);
 }
@@ -391,7 +393,7 @@ void writeControlPacketsParquet(const std::vector<ControlOutputRow>& rows,
 void writeUnknownPacketsParquet(const std::vector<UnknownOutputRow>& rows,
                                 const ParquetWriterConfig& config,
                                 ParquetWriterDiagnostics& diagnostics) {
-    writeRowsToParquet(rows, config, "unknown_packets",
+    writeRowsToParquet(rows, config, "unknown_packets", "unknown",
                       diagnostics.unknown_files_written,
                       diagnostics.errors, buildUnknownTable);
 }
