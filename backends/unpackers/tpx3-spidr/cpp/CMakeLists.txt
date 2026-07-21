@@ -8,8 +8,7 @@ include(CTest)
 # They will be used in Stages 11-12 for Parquet and JSON output
 find_package(Arrow QUIET)
 find_package(Parquet QUIET)
-find_package(nlohmann_json QUIET)
-
+find_package(nlohmann_json REQUIRED)
 if(Arrow_FOUND)
     message(STATUS "Found Arrow: ${Arrow_VERSION}")
 endif()
