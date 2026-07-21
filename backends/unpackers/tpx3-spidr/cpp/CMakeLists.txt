@@ -4,6 +4,24 @@ project(hermes_tpx3_spidr LANGUAGES CXX)
 
 include(CTest)
 
+# Arrow and JSON dependencies are optional for now
+# They will be used in Stages 11-12 for Parquet and JSON output
+find_package(Arrow QUIET)
+find_package(Parquet QUIET)
+find_package(nlohmann_json QUIET)
+
+if(Arrow_FOUND)
+    message(STATUS "Found Arrow: ${Arrow_VERSION}")
+endif()
+
+if(Parquet_FOUND)
+    message(STATUS "Found Parquet: ${Parquet_VERSION}")
+endif()
+
+if(nlohmann_json_FOUND)
+    message(STATUS "Found nlohmann_json: ${nlohmann_json_VERSION}")
+endif()
+
 if(MSVC)
     add_compile_options(/W4)
 else()
