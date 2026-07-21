@@ -13,6 +13,9 @@ requires = ["hatchling"]
 channels = ["conda-forge"]
 platforms = ["osx-arm64","linux-64"]
 
+[tool.pixi.activation.env]
+PATH = "${PIXI_PROJECT_ROOT}/.pixi/bin:${PATH}"
+
 [tool.pixi.pypi-options]
 index-url = "https://nexus.lanl.gov/repository/python/simple"
 extra-index-urls = ["https://pypi.org/simple"]
@@ -21,6 +24,9 @@ extra-index-urls = ["https://pypi.org/simple"]
 hermes = { path = ".", editable = true }
 
 [tool.pixi.tasks]
+build-cpp-unpacker = "cmake -S backends/unpackers/tpx3-spidr/cpp -B build/backends/tpx3-spidr -DCMAKE_BUILD_TYPE=Release && cmake --build build/backends/tpx3-spidr"
+test-cpp-unpacker = { cmd = "ctest --test-dir build/backends/tpx3-spidr --output-on-failure", depends-on = ["build-cpp-unpacker"] }
+install-backends = { cmd = "bash -c 'mkdir -p .pixi/bin && cp build/backends/tpx3-spidr/hermes-tpx3-spidr .pixi/bin/ && echo \"Installed to .pixi/bin/hermes-tpx3-spidr\"'", depends-on = ["build-cpp-unpacker"] }
 
 [tool.pixi.dependencies]
 python = ">=3.14.4,<3.15"
@@ -28,3 +34,5 @@ pydantic = ">=2.13.3,<3"
 pytest = "*"
 loguru = "*"
 pyYAML = "*"
+pyarrow = ">=18.0.0"
+nlohmann_json = ">=3.11.0"

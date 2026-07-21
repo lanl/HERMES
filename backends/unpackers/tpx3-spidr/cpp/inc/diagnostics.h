@@ -1,27 +1,15 @@
-// diagnostics.h
+#ifndef HERMES_TPX3_SPIDR_DIAGNOSTICS_H
+#define HERMES_TPX3_SPIDR_DIAGNOSTICS_H
 
-#ifndef DIAGNOSTICS_H
-#define DIAGNOSTICS_H
+#include <iosfwd>
 
-// libraries
-#include <stdint.h>
-#include <cstddef>
-#include <stdio.h>
-#include <iostream>
+#include "unpacker.h"
 
-// User defined libraries
-#include "structures.h"
+namespace hermes_tpx3_spidr {
 
-// Declarations of variables
-extern int numberOfHeaders;
-extern int numberOfBuffers;
-extern int numberOfTDCPackets;
-extern int numberOfPixelPackets;
-extern int numberOfGlobalTSPackets;
-extern int numberOfPhotons;
+void printSummary(const UnpackSummary& summary, std::ostream& output);
+void printMessages(const UnpackSummary& summary, std::ostream& output);
 
-// Function prototypes
-void printGroupIDs(int numberOfBuffers, signalData* signalDataArray, int16_t* signalGroupID,size_t dataPacketsInBuffer);
-void printOutUnpackingDiagnostics(tpx3FileDiagnostics tpxFileInfo);
+}  // namespace hermes_tpx3_spidr
 
 #endif
