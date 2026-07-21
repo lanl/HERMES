@@ -9,6 +9,15 @@
 
 namespace hermes_tpx3_spidr {
 
+struct TimingDiagnostics {
+    double unpacking_seconds = 0.0;
+    double epoch_assignment_seconds = 0.0;
+    double sorting_seconds = 0.0;
+    double conversion_seconds = 0.0;
+    double parquet_writing_seconds = 0.0;
+    double total_seconds = 0.0;
+};
+
 struct SummaryJsonContent {
     std::string backend_name = "tpx3-spidr-cpp";
     std::string backend_version = "0.1.0";
@@ -24,6 +33,7 @@ struct SummaryJsonContent {
     EpochAssignmentDiagnostics epoch_diagnostics;
     SortingDiagnostics sorting_diagnostics;
     ParquetWriterDiagnostics writer_diagnostics;
+    TimingDiagnostics timing_diagnostics;
 };
 
 std::string generateSummaryJson(const SummaryJsonContent& content);
