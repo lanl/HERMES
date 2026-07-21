@@ -141,6 +141,25 @@ All control packets (SPIDR and TPX3) with nullable fields depending on type:
 - `control_value_raw`, `control_payload_raw` (nullable)
 - `timestamp_canonical` (uint64, nullable): Only present for timestamped controls
 
+## Performance Timing
+
+The unpacker includes detailed timing metrics for each processing stage:
+
+```
+Timing:
+  Unpacking:         0.000858 s  (decoding raw packets)
+  Epoch assignment:  0.000333 s  (timestamp unwrapping)
+  Sorting:           0.000000 s  (time-ordering datasets)
+  Conversion:        0.000110 s  (converting to output rows)
+  Parquet writing:   0.003333 s  (writing output files)
+  Total:             0.004737 s
+```
+
+Timing data is:
+- Printed to console when writing Parquet output
+- Included in `summary.json` under `timing_diagnostics`
+- Useful for identifying optimization opportunities
+
 ## Running Tests
 
 ```bash
