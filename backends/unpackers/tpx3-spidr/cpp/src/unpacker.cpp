@@ -414,4 +414,19 @@ UnpackResult unpack(std::istream& input) {
     return result;
 }
 
+WorkflowResult runTwoPassWorkflow(std::istream& input,
+                                  const std::string& output_directory) {
+    WorkflowResult workflow_result;
+    workflow_result.output_directory = output_directory;
+
+    const auto unpack_result = unpack(input);
+
+    workflow_result.summary.unpack_summary = unpack_result.summary;
+    workflow_result.summary.output_directory = output_directory;
+    workflow_result.summary.status = "complete";
+
+    workflow_result.success = true;
+    return workflow_result;
+}
+
 }  // namespace hermes_tpx3_spidr
