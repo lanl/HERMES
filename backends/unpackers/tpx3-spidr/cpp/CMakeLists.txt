@@ -13,6 +13,7 @@ endif()
 add_library(hermes_tpx3_spidr_unpacker
     src/chunk_reader.cpp
     src/diagnostics.cpp
+    src/time_sort.cpp
     src/timestamp_calculator.cpp
     src/unpacker.cpp
 )
@@ -44,4 +45,8 @@ if(BUILD_TESTING)
     add_executable(timestamp_tests tests/timestamp_tests.cpp)
     target_link_libraries(timestamp_tests PRIVATE hermes_tpx3_spidr_unpacker)
     add_test(NAME timestamp_tests COMMAND timestamp_tests)
+
+    add_executable(time_sort_tests tests/time_sort_tests.cpp)
+    target_link_libraries(time_sort_tests PRIVATE hermes_tpx3_spidr_unpacker)
+    add_test(NAME time_sort_tests COMMAND time_sort_tests)
 endif()
