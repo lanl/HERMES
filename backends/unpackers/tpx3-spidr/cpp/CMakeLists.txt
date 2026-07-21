@@ -11,6 +11,7 @@ else()
 endif()
 
 add_library(hermes_tpx3_spidr_unpacker
+    src/chunk_reader.cpp
     src/diagnostics.cpp
     src/unpacker.cpp
 )
