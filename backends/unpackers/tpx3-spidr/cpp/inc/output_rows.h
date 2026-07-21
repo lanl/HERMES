@@ -3,6 +3,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <vector>
 
 namespace hermes_tpx3_spidr {
 
@@ -61,6 +62,14 @@ struct UnknownOutputRow {
     std::uint64_t source_packet_order = 0;
     std::uint64_t raw_word = 0;
     std::uint8_t most_significant_byte = 0;
+};
+
+struct OutputRows {
+    std::vector<PixelOutputRow> pixels;
+    std::vector<TdcOutputRow> tdcs;
+    std::vector<GlobalOutputRow> globals;
+    std::vector<ControlOutputRow> controls;
+    std::vector<UnknownOutputRow> unknowns;
 };
 
 }  // namespace hermes_tpx3_spidr
