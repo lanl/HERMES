@@ -31,6 +31,8 @@ endif()
 add_library(hermes_tpx3_spidr_unpacker
     src/chunk_reader.cpp
     src/diagnostics.cpp
+    src/parquet_schemas.cpp
+    src/parquet_writer.cpp
     src/time_sort.cpp
     src/timestamp_calculator.cpp
     src/unpacker.cpp
@@ -41,6 +43,18 @@ target_include_directories(hermes_tpx3_spidr_unpacker
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/inc
 )
+
+if(Arrow_FOUND AND Parquet_FOUND)
+    target_link_libraries(hermes_tpx3_spidr_unpacker
+        PUBLIC
+            Arrow::arrow_shared
+            Parquet::parquet_shared
+    )
+    target_compile_definitions(hermes_tpx3_spidr_unpacker
+        PUBLIC
+            HERMES_HAS_ARROW_PARQUET
+    )
+endif()
 
 add_executable(hermes-tpx3-spidr
     src/tpx3SpidrUnpacker.cpp
