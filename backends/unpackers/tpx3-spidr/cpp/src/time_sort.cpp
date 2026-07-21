@@ -144,4 +144,47 @@ void assignEpochsToControls(std::vector<SpidrControl>& controls,
     }
 }
 
+MemoryEstimate estimateMemoryUsage(const UnpackResult& result) {
+    MemoryEstimate estimate;
+
+    estimate.pixel_rows = result.pixel_hits.size();
+    estimate.tdc_rows = result.tdc_hits.size();
+    estimate.global_rows = result.global_timestamps.size();
+    estimate.control_rows =
+        result.spidr_controls.size() + result.tpx3_controls.size();
+    estimate.unknown_rows = result.unknown_packets.size();
+
+    estimate.estimated_bytes = estimate.pixel_rows * sizeof(PixelOutputRow) +
+                               estimate.tdc_rows * sizeof(TdcOutputRow) +
+                               estimate.global_rows * sizeof(GlobalOutputRow) +
+                               estimate.control_rows * sizeof(ControlOutputRow) +
+                               estimate.unknown_rows * sizeof(UnknownOutputRow);
+
+    return estimate;
+}
+
+SortingPath selectSortingPath(const MemoryEstimate& estimate,
+                               const std::uint64_t memory_budget_bytes) {
+    if (estimate.estimated_bytes <= memory_budget_bytes) {
+        return SortingPath::in_memory;
+    }
+    return SortingPath::external_merge;
+}
+
+void sortAllOutputRows(UnpackResult& result, SortingDiagnostics& diagnostics) {
+    constexpr std::uint64_t DEFAULT_MEMORY_BUDGET = 1024ULL * 1024ULL * 1024ULL;
+
+    const auto estimate = estimateMemoryUsage(result);
+    const auto path = selectSortingPath(estimate, DEFAULT_MEMORY_BUDGET);
+
+    diagnostics.estimated_memory_bytes = estimate.estimated_bytes;
+    diagnostics.memory_budget_bytes = DEFAULT_MEMORY_BUDGET;
+    diagnostics.path_used = path;
+    diagnostics.temporary_runs_created = 0;
+
+    if (path == SortingPath::external_merge) {
+        return;
+    }
+}
+
 }  // namespace hermes_tpx3_spidr
