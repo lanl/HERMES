@@ -244,10 +244,21 @@ void unpackTpx3Control(const PacketPosition& position, UnpackResult& result) {
     } else if (control_value == 0x71B0U) {
         type = Tpx3ControlType::end_of_data_driven_readout;
         ++result.summary.end_of_data_driven_readout_count;
+    } else if (control_value == 0x7144U) {
+        type = Tpx3ControlType::request_time_low;
+        ++result.summary.request_time_low_count;
+    } else if (control_value == 0x7145U) {
+        type = Tpx3ControlType::request_time_high;
+        ++result.summary.request_time_high_count;
+    } else if (control_value == 0x7200U) {
+        type = Tpx3ControlType::other_chip_command;
+        ++result.summary.other_chip_command_count;
     } else {
         ++result.summary.unknown_tpx3_control_count;
-        result.summary.warnings.push_back(
-            "Unknown TPX3 control at " + packetLocation(position));
+        std::ostringstream message;
+        message << "Unknown TPX3 control 0x" << std::hex << control_value
+                << " at " << packetLocation(position);
+        result.summary.warnings.push_back(message.str());
     }
 
     result.tpx3_controls.push_back({
