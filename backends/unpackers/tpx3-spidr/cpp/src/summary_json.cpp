@@ -72,6 +72,15 @@ std::string generateSummaryJson(const SummaryJsonContent& content) {
         {"errors", content.writer_diagnostics.errors}
     };
 
+    j["timing_diagnostics"] = {
+        {"unpacking_seconds", content.timing_diagnostics.unpacking_seconds},
+        {"epoch_assignment_seconds", content.timing_diagnostics.epoch_assignment_seconds},
+        {"sorting_seconds", content.timing_diagnostics.sorting_seconds},
+        {"conversion_seconds", content.timing_diagnostics.conversion_seconds},
+        {"parquet_writing_seconds", content.timing_diagnostics.parquet_writing_seconds},
+        {"total_seconds", content.timing_diagnostics.total_seconds}
+    };
+
     return j.dump(2);
 }
 
