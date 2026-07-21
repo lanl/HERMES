@@ -1,10 +1,15 @@
 #include "unpacker.h"
 
 #include "chunk_reader.h"
+#include "timestamp_calculator.h"
+#include "time_sort.h"
+#include "parquet_writer.h"
+#include "summary_json.h"
 
 #include <array>
 #include <optional>
 #include <sstream>
+#include <filesystem>
 
 namespace hermes_tpx3_spidr {
 namespace {
@@ -419,13 +424,107 @@ WorkflowResult runTwoPassWorkflow(std::istream& input,
     WorkflowResult workflow_result;
     workflow_result.output_directory = output_directory;
 
-    const auto unpack_result = unpack(input);
-
+    // Pass 1: Unpack and decode all packets
+    auto unpack_result = unpack(input);
     workflow_result.summary.unpack_summary = unpack_result.summary;
-    workflow_result.summary.output_directory = output_directory;
-    workflow_result.summary.status = "complete";
 
-    workflow_result.success = true;
+    if (!unpack_result.summary.errors.empty()) {
+        workflow_result.success = false;
+        workflow_result.errors = unpack_result.summary.errors;
+        workflow_result.summary.status = "failed";
+        return workflow_result;
+    }
+
+    // Assign source packet order (needed for sorting)
+    assignSourcePacketOrder(unpack_result);
+
+    // Build anchor indices per chip (from paired global timestamps)
+    // For now, assume single chip (chip 0)
+    AnchorIndexDiagnostics anchor_diag;
+    ChipAnchorIndex chip0_anchors = buildChipAnchorIndex(
+        unpack_result.global_timestamps, 0, anchor_diag);
+    workflow_result.summary.anchor_diagnostics = anchor_diag;
+
+    // Assign epochs to unwrap timestamps for chip 0
+    EpochAssignmentDiagnostics epoch_diag;
+    assignEpochsToPixels(unpack_result.pixel_hits, chip0_anchors, 0, epoch_diag);
+    assignEpochsToTdcs(unpack_result.tdc_hits, chip0_anchors, 0, epoch_diag);
+    assignEpochsToControls(unpack_result.spidr_controls, chip0_anchors, 0, epoch_diag);
+    workflow_result.summary.epoch_diagnostics = epoch_diag;
+
+    // Sort all output data
+    SortingDiagnostics sort_diag;
+    sortAllOutputRows(unpack_result, sort_diag);
+    workflow_result.summary.sorting_diagnostics = sort_diag;
+
+    // Convert to output rows after sorting
+    OutputRows output_rows;
+
+    for (const auto& pixel : unpack_result.pixel_hits) {
+        if (auto row = convertPixelToOutputRow(pixel)) {
+            output_rows.pixels.push_back(*row);
+        }
+    }
+
+    for (const auto& tdc : unpack_result.tdc_hits) {
+        if (auto row = convertTdcToOutputRow(tdc)) {
+            output_rows.tdcs.push_back(*row);
+        }
+    }
+
+    for (const auto& global : unpack_result.global_timestamps) {
+        output_rows.globals.push_back(convertGlobalToOutputRow(global));
+    }
+
+    for (const auto& control : unpack_result.spidr_controls) {
+        output_rows.controls.push_back(convertSpidrControlToOutputRow(control));
+    }
+
+    for (const auto& control : unpack_result.tpx3_controls) {
+        output_rows.controls.push_back(convertTpx3ControlToOutputRow(control));
+    }
+
+    for (const auto& unknown : unpack_result.unknown_packets) {
+        output_rows.unknowns.push_back(convertUnknownToOutputRow(unknown));
+    }
+
+    // Create output directory
+    try {
+        std::filesystem::create_directories(output_directory);
+    } catch (const std::exception& e) {
+        workflow_result.success = false;
+        workflow_result.errors.push_back("Failed to create output directory: " +
+                                        std::string(e.what()));
+        workflow_result.summary.status = "failed";
+        return workflow_result;
+    }
+
+    // Write Parquet files per chip
+    ParquetWriterDiagnostics writer_diag;
+    ParquetWriterConfig writer_config;
+    writer_config.output_directory = output_directory;
+    writer_config.chip_index = 0;  // Single chip for now
+
+    writePixelHitsParquet(output_rows.pixels, writer_config, writer_diag);
+    writeTdcTriggersParquet(output_rows.tdcs, writer_config, writer_diag);
+    writeGlobalTimestampsParquet(output_rows.globals, writer_config, writer_diag);
+    writeControlPacketsParquet(output_rows.controls, writer_config, writer_diag);
+    writeUnknownPacketsParquet(output_rows.unknowns, writer_config, writer_diag);
+
+    workflow_result.summary.writer_diagnostics = writer_diag;
+
+    // Write summary.json
+    workflow_result.summary.output_directory = output_directory;
+    workflow_result.summary.status = writer_diag.errors.empty() ? "complete" : "partial";
+
+    writeSummaryJsonFile(output_directory + "/summary.json",
+                        workflow_result.summary);
+
+    workflow_result.success = writer_diag.errors.empty();
+    workflow_result.errors.insert(workflow_result.errors.end(),
+                                 writer_diag.errors.begin(),
+                                 writer_diag.errors.end());
+
     return workflow_result;
 }
 
