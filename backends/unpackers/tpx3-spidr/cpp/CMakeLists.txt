@@ -33,6 +33,7 @@ add_library(hermes_tpx3_spidr_unpacker
     src/diagnostics.cpp
     src/parquet_schemas.cpp
     src/parquet_writer.cpp
+    src/summary_json.cpp
     src/time_sort.cpp
     src/timestamp_calculator.cpp
     src/unpacker.cpp
@@ -53,6 +54,17 @@ if(Arrow_FOUND AND Parquet_FOUND)
     target_compile_definitions(hermes_tpx3_spidr_unpacker
         PUBLIC
             HERMES_HAS_ARROW_PARQUET
+    )
+endif()
+
+if(nlohmann_json_FOUND)
+    target_link_libraries(hermes_tpx3_spidr_unpacker
+        PUBLIC
+            nlohmann_json::nlohmann_json
+    )
+    target_compile_definitions(hermes_tpx3_spidr_unpacker
+        PUBLIC
+            HERMES_HAS_JSON
     )
 endif()
 
