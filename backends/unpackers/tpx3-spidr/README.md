@@ -55,11 +55,11 @@ output_directory/
 ├── pixel_hits/
 │   └── chip_0-00000.parquet             # Sorted pixel hits
 ├── tdc_triggers/
-│   └── chip_0-00000.parquet             # Sorted TDC trigger events
+│   └── tdcs_0-00000.parquet             # Sorted TDC trigger events
 ├── global_timestamps/
-│   └── chip_0-00000.parquet             # Global timestamp anchor points
+│   └── gs_0-00000.parquet               # Global timestamp anchor points
 └── control_packets/
-    └── chip_0-00000.parquet             # Control packets (SPIDR and TPX3)
+    └── controls_0-00000.parquet         # Control packets (SPIDR and TPX3)
 ```
 
 ## Verifying Time Sorting
@@ -83,7 +83,7 @@ Pixel Hits (chip_0-00000.parquet):
   Max timestamp: 1,402,708,055,808
   Time range: 1,267,838,883,840 canonical ticks
 
-TDC Triggers (chip_0-00000.parquet):
+TDC Triggers (tdcs_0-00000.parquet):
   Total rows: 21,632
   Timestamped rows: 21,632
   Sorted: ✓ YES
