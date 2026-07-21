@@ -506,6 +506,37 @@ WorkflowResult runTwoPassWorkflow(std::istream& input,
     for (const auto& unknown : unpack_result.unknown_packets) {
         output_rows.unknowns.push_back(convertUnknownToOutputRow(unknown));
     }
+
+    // Ensure output datasets are time-sorted before writing.
+    sortByTimestampAndOrder(output_rows.pixels);
+    sortByTimestampAndOrder(output_rows.tdcs);
+    sortByTimestampAndOrder(output_rows.globals);
+
+    std::stable_sort(output_rows.controls.begin(), output_rows.controls.end(),
+                     [](const ControlOutputRow& a, const ControlOutputRow& b) {
+                         const auto ta = a.timestamp_canonical_present
+                                             ? a.timestamp_canonical
+                                             : static_cast<std::uint64_t>(-1);
+                         const auto tb = b.timestamp_canonical_present
+                                             ? b.timestamp_canonical
+                                             : static_cast<std::uint64_t>(-1);
+                         if (ta != tb) {
+                             return ta < tb;
+                         }
+                         if (a.chunk_index != b.chunk_index) {
+                             return a.chunk_index < b.chunk_index;
+                         }
+                         return a.packet_index < b.packet_index;
+                     });
+
+    std::stable_sort(output_rows.unknowns.begin(), output_rows.unknowns.end(),
+                     [](const UnknownOutputRow& a, const UnknownOutputRow& b) {
+                         if (a.chunk_index != b.chunk_index) {
+                             return a.chunk_index < b.chunk_index;
+                         }
+                         return a.packet_index < b.packet_index;
+                     });
+
     auto conversion_end = Clock::now();
     workflow_result.summary.timing_diagnostics.conversion_seconds =
         Duration(conversion_end - conversion_start).count();
