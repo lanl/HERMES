@@ -44,6 +44,27 @@ struct EpochAssignmentDiagnostics {
     std::vector<std::string> warnings;
 };
 
+struct MemoryEstimate {
+    std::uint64_t pixel_rows = 0;
+    std::uint64_t tdc_rows = 0;
+    std::uint64_t global_rows = 0;
+    std::uint64_t control_rows = 0;
+    std::uint64_t unknown_rows = 0;
+    std::uint64_t estimated_bytes = 0;
+};
+
+enum class SortingPath {
+    in_memory,
+    external_merge
+};
+
+struct SortingDiagnostics {
+    SortingPath path_used = SortingPath::in_memory;
+    std::uint64_t memory_budget_bytes = 0;
+    std::uint64_t estimated_memory_bytes = 0;
+    std::uint64_t temporary_runs_created = 0;
+};
+
 ChipAnchorIndex buildChipAnchorIndex(
     const std::vector<GlobalTimestamp>& global_timestamps,
     std::uint8_t chip_index,
@@ -72,6 +93,14 @@ void assignEpochsToControls(std::vector<SpidrControl>& controls,
                             std::uint8_t chip_index,
                             EpochAssignmentDiagnostics& diagnostics);
 
+MemoryEstimate estimateMemoryUsage(const UnpackResult& result);
+
+SortingPath selectSortingPath(const MemoryEstimate& estimate,
+                               std::uint64_t memory_budget_bytes);
+
+void sortAllOutputRows(UnpackResult& result,
+                       SortingDiagnostics& diagnostics);
+
 template <typename Row>
 void sortByTimestampAndOrder(std::vector<Row>& rows) {
     std::stable_sort(rows.begin(), rows.end(),
@@ -79,6 +108,14 @@ void sortByTimestampAndOrder(std::vector<Row>& rows) {
                          if (a.timestamp_canonical != b.timestamp_canonical) {
                              return a.timestamp_canonical < b.timestamp_canonical;
                          }
+                         return a.source_packet_order < b.source_packet_order;
+                     });
+}
+
+template <typename Row>
+void sortBySourcePacketOrder(std::vector<Row>& rows) {
+    std::stable_sort(rows.begin(), rows.end(),
+                     [](const Row& a, const Row& b) {
                          return a.source_packet_order < b.source_packet_order;
                      });
 }
