@@ -47,6 +47,7 @@ std::optional<PixelOutputRow> convertPixelToOutputRow(const PixelHit& pixel) {
     return PixelOutputRow{
         pixel.position.chunk_index,
         pixel.position.packet_index,
+        0,
         pixel.local_x,
         pixel.local_y,
         pixel.tot_raw,
@@ -62,6 +63,7 @@ std::optional<TdcOutputRow> convertTdcToOutputRow(const TdcHit& tdc) {
     return TdcOutputRow{
         tdc.position.chunk_index,
         tdc.position.packet_index,
+        0,
         getTdcTriggerType(tdc),
         *timestamp,
     };
@@ -71,6 +73,7 @@ GlobalOutputRow convertGlobalToOutputRow(const GlobalTimestamp& global) {
     return GlobalOutputRow{
         global.high_packet.chunk_index,
         global.high_packet.packet_index,
+        0,
         calculateGlobalTimestamp(global),
     };
 }
@@ -79,6 +82,7 @@ ControlOutputRow convertSpidrControlToOutputRow(const SpidrControl& control) {
     ControlOutputRow row;
     row.chunk_index = control.position.chunk_index;
     row.packet_index = control.position.packet_index;
+    row.source_packet_order = 0;
     row.source = 0;
     row.control_type = static_cast<std::uint16_t>(control.type);
     row.packet_id = control.packet_id;
@@ -110,6 +114,7 @@ ControlOutputRow convertTpx3ControlToOutputRow(const Tpx3Control& control) {
     ControlOutputRow row;
     row.chunk_index = control.position.chunk_index;
     row.packet_index = control.position.packet_index;
+    row.source_packet_order = 0;
     row.source = 1;
     row.control_type = static_cast<std::uint16_t>(control.type);
     row.control_value_raw = control.control_value_raw;
@@ -123,6 +128,7 @@ UnknownOutputRow convertUnknownToOutputRow(const UnknownPacket& unknown) {
     return UnknownOutputRow{
         unknown.position.chunk_index,
         unknown.position.packet_index,
+        0,
         unknown.position.raw_word,
         unknown.most_significant_byte,
     };
