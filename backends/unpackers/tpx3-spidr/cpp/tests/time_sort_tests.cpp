@@ -213,6 +213,160 @@ void testCounterModuli(TestContext& test) {
                      "control modulus 2^34");
 }
 
+void testFindBestEpochNoAnchors(TestContext& test) {
+    ChipAnchorIndex empty_index;
+    EpochAssignmentDiagnostics diagnostics;
+
+    const auto epoch = findBestEpoch(0x10000000, PIXEL_COUNTER_MODULUS,
+                                     empty_index, 0, diagnostics);
+
+    test.expectEqual(epoch, std::uint64_t{0}, "no anchors returns epoch 0");
+    test.expect(diagnostics.used_fallback, "fallback flag set");
+    test.expectEqual(diagnostics.unresolved_timestamps, std::uint64_t{1},
+                     "unresolved count incremented");
+}
+
+void testFindBestEpochSingleAnchor(TestContext& test) {
+    ChipAnchorIndex index;
+    GlobalAnchor anchor;
+    anchor.global_time_48bit = 0x100000000000;
+    anchor.source_packet_order = 100;
+    index.anchors.push_back(anchor);
+
+    EpochAssignmentDiagnostics diagnostics;
+
+    const auto raw = 0x10000000;
+    const auto epoch = findBestEpoch(raw, PIXEL_COUNTER_MODULUS,
+                                     index, 50, diagnostics);
+
+    test.expect(epoch >= 0, "returns valid epoch");
+    test.expect(!diagnostics.used_fallback, "no fallback with anchors");
+}
+
+void testFindBestEpochMultipleEpochs(TestContext& test) {
+    ChipAnchorIndex index;
+
+    GlobalAnchor anchor;
+    anchor.global_time_48bit = 0x100000000;
+    anchor.source_packet_order = 500;
+    index.anchors.push_back(anchor);
+
+    EpochAssignmentDiagnostics diagnostics;
+
+    const auto raw_small = 0x01000000;
+    const auto epoch_small = findBestEpoch(raw_small, PIXEL_COUNTER_MODULUS,
+                                           index, 100, diagnostics);
+
+    const auto raw_large = 0x3F000000;
+    const auto epoch_large = findBestEpoch(raw_large, PIXEL_COUNTER_MODULUS,
+                                           index, 200, diagnostics);
+
+    test.expect(epoch_small >= 0 && epoch_large >= 0,
+                "both epochs are valid");
+
+    const auto unwrapped_small = raw_small + epoch_small * PIXEL_COUNTER_MODULUS;
+    const auto unwrapped_large = raw_large + epoch_large * PIXEL_COUNTER_MODULUS;
+
+    test.expect(unwrapped_small > 0 && unwrapped_large > 0,
+                "unwrapped values are positive");
+}
+
+void testAssignEpochsToPixels(TestContext& test) {
+    std::vector<PixelHit> pixels;
+
+    PixelHit pixel1;
+    pixel1.position.chip_index = 0;
+    pixel1.coarse_time_25ns = 0x10000000;
+    pixels.push_back(pixel1);
+
+    PixelHit pixel2;
+    pixel2.position.chip_index = 0;
+    pixel2.coarse_time_25ns = 0x20000000;
+    pixels.push_back(pixel2);
+
+    PixelHit pixel3;
+    pixel3.position.chip_index = 1;
+    pixel3.coarse_time_25ns = 0x15000000;
+    pixels.push_back(pixel3);
+
+    ChipAnchorIndex index;
+    GlobalAnchor anchor;
+    anchor.global_time_48bit = 0x100000000;
+    index.anchors.push_back(anchor);
+
+    EpochAssignmentDiagnostics diagnostics;
+    assignEpochsToPixels(pixels, index, 0, diagnostics);
+
+    test.expectEqual(diagnostics.pixels_assigned, std::uint64_t{2},
+                     "assigned 2 pixels for chip 0");
+    test.expect(pixels[0].coarse_time_25ns >= 0x10000000,
+                "pixel 1 timestamp unwrapped");
+    test.expect(pixels[1].coarse_time_25ns >= 0x20000000,
+                "pixel 2 timestamp unwrapped");
+    test.expectEqual(pixels[2].coarse_time_25ns, std::uint64_t{0x15000000},
+                     "chip 1 pixel unchanged");
+}
+
+void testAssignEpochsToTdcs(TestContext& test) {
+    std::vector<TdcHit> tdcs;
+
+    TdcHit tdc1;
+    tdc1.position.chip_index = 0;
+    tdc1.tdc_timestamp_raw = 0x100000000;
+    tdcs.push_back(tdc1);
+
+    TdcHit tdc2;
+    tdc2.position.chip_index = 0;
+    tdc2.tdc_timestamp_raw = 0x200000000;
+    tdcs.push_back(tdc2);
+
+    ChipAnchorIndex index;
+    GlobalAnchor anchor;
+    anchor.global_time_48bit = 0x100000000;
+    index.anchors.push_back(anchor);
+
+    EpochAssignmentDiagnostics diagnostics;
+    assignEpochsToTdcs(tdcs, index, 0, diagnostics);
+
+    test.expectEqual(diagnostics.tdcs_assigned, std::uint64_t{2},
+                     "assigned 2 TDCs");
+    test.expect(tdcs[0].tdc_timestamp_raw >= 0x100000000,
+                "TDC 1 timestamp unwrapped");
+    test.expect(tdcs[1].tdc_timestamp_raw >= 0x200000000,
+                "TDC 2 timestamp unwrapped");
+}
+
+void testAssignEpochsToControls(TestContext& test) {
+    std::vector<SpidrControl> controls;
+
+    SpidrControl control1;
+    control1.position.chip_index = 0;
+    control1.type = SpidrControlType::shutter_open;
+    control1.timestamp_raw = 0x100000000;
+    controls.push_back(control1);
+
+    SpidrControl control2;
+    control2.position.chip_index = 0;
+    control2.type = SpidrControlType::packet_count;
+    control2.timestamp_raw = 0x200000000;
+    controls.push_back(control2);
+
+    ChipAnchorIndex index;
+    GlobalAnchor anchor;
+    anchor.global_time_48bit = 0x100000000;
+    index.anchors.push_back(anchor);
+
+    EpochAssignmentDiagnostics diagnostics;
+    assignEpochsToControls(controls, index, 0, diagnostics);
+
+    test.expectEqual(diagnostics.controls_assigned, std::uint64_t{1},
+                     "assigned 1 control (packet_count skipped)");
+    test.expect(controls[0].timestamp_raw >= 0x100000000,
+                "control 1 timestamp unwrapped");
+    test.expectEqual(controls[1].timestamp_raw, std::uint64_t{0x200000000},
+                     "packet_count control unchanged");
+}
+
 }  // namespace
 
 int main() {
@@ -223,5 +377,11 @@ int main() {
     testBuildChipAnchorIndexSorting(test);
     testSortByTimestampAndOrder(test);
     testCounterModuli(test);
+    testFindBestEpochNoAnchors(test);
+    testFindBestEpochSingleAnchor(test);
+    testFindBestEpochMultipleEpochs(test);
+    testAssignEpochsToPixels(test);
+    testAssignEpochsToTdcs(test);
+    testAssignEpochsToControls(test);
     return test.finish();
 }
