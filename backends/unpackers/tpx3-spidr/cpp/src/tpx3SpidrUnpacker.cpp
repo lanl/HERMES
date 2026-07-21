@@ -79,6 +79,14 @@ int main(const int argc, char* argv[]) {
 
         std::cout << "Successfully wrote output to: " << output_dir << '\n';
         std::cout << "Status: " << result.summary.status << '\n';
+        std::cout << "\nTiming:\n";
+        std::cout << "  Unpacking:         " << result.summary.timing_diagnostics.unpacking_seconds << " s\n";
+        std::cout << "  Epoch assignment:  " << result.summary.timing_diagnostics.epoch_assignment_seconds << " s\n";
+        std::cout << "  Sorting:           " << result.summary.timing_diagnostics.sorting_seconds << " s\n";
+        std::cout << "  Conversion:        " << result.summary.timing_diagnostics.conversion_seconds << " s\n";
+        std::cout << "  Parquet writing:   " << result.summary.timing_diagnostics.parquet_writing_seconds << " s\n";
+        std::cout << "  Total:             " << result.summary.timing_diagnostics.total_seconds << " s\n";
+        std::cout << "\nSummary:\n";
         hermes_tpx3_spidr::printSummary(result.summary.unpack_summary, std::cout);
 
         return 0;
