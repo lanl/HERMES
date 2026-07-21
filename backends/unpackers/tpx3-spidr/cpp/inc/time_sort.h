@@ -93,12 +93,12 @@ void assignEpochsToControls(std::vector<SpidrControl>& controls,
                             std::uint8_t chip_index,
                             EpochAssignmentDiagnostics& diagnostics);
 
-MemoryEstimate estimateMemoryUsage(const UnpackResult& result);
+MemoryEstimate estimateMemoryUsage(const OutputRows& rows);
 
 SortingPath selectSortingPath(const MemoryEstimate& estimate,
                                std::uint64_t memory_budget_bytes);
 
-void sortAllOutputRows(UnpackResult& result,
+void sortAllOutputRows(OutputRows& rows,
                        SortingDiagnostics& diagnostics);
 
 template <typename Row>
@@ -108,7 +108,13 @@ void sortByTimestampAndOrder(std::vector<Row>& rows) {
                          if (a.timestamp_canonical != b.timestamp_canonical) {
                              return a.timestamp_canonical < b.timestamp_canonical;
                          }
-                         return a.source_packet_order < b.source_packet_order;
+                         if (a.source_packet_order != b.source_packet_order) {
+                             return a.source_packet_order < b.source_packet_order;
+                         }
+                         if (a.chunk_index != b.chunk_index) {
+                             return a.chunk_index < b.chunk_index;
+                         }
+                         return a.packet_index < b.packet_index;
                      });
 }
 
@@ -116,7 +122,13 @@ template <typename Row>
 void sortBySourcePacketOrder(std::vector<Row>& rows) {
     std::stable_sort(rows.begin(), rows.end(),
                      [](const Row& a, const Row& b) {
-                         return a.source_packet_order < b.source_packet_order;
+                         if (a.source_packet_order != b.source_packet_order) {
+                             return a.source_packet_order < b.source_packet_order;
+                         }
+                         if (a.chunk_index != b.chunk_index) {
+                             return a.chunk_index < b.chunk_index;
+                         }
+                         return a.packet_index < b.packet_index;
                      });
 }
 
