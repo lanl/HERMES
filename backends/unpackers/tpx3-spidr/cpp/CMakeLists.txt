@@ -93,4 +93,8 @@ if(BUILD_TESTING)
     add_executable(time_sort_tests tests/time_sort_tests.cpp)
     target_link_libraries(time_sort_tests PRIVATE hermes_tpx3_spidr_unpacker)
     add_test(NAME time_sort_tests COMMAND time_sort_tests)
+
+    add_executable(workflow_tests tests/workflow_tests.cpp)
+    target_link_libraries(workflow_tests PRIVATE hermes_tpx3_spidr_unpacker)
+    add_test(NAME workflow_tests COMMAND workflow_tests)
 endif()
