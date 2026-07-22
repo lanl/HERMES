@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -93,15 +92,6 @@ def _record_context(record: HermesRecord) -> dict[str, Any]:
 
 
 def _value_summary(value: JsonValue) -> dict[str, Any]:
-    if _is_external_payload_ref(value):
-        return {
-            "kind": "external_payload_ref",
-            "path": value["path"],
-            "media_type": value["media_type"],
-            "sha256": value["sha256"],
-            "size_bytes": value["size_bytes"],
-        }
-
     if value is None or isinstance(value, str | int | float | bool):
         return {"kind": "inline_scalar", "value": value}
 
@@ -116,14 +106,3 @@ def _value_summary(value: JsonValue) -> dict[str, Any]:
         }
 
     return {"kind": "unknown"}
-
-
-def _is_external_payload_ref(value: JsonValue) -> bool:
-    return (
-        isinstance(value, Mapping)
-        and value.get("kind") == "external_payload_ref"
-        and isinstance(value.get("path"), str)
-        and isinstance(value.get("media_type"), str)
-        and isinstance(value.get("sha256"), str)
-        and isinstance(value.get("size_bytes"), int)
-    )
