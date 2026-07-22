@@ -147,8 +147,17 @@ raw TPX3 files
 ```
 
 `hermes/run.py` should call the functions in `hermes/unpacker.py` for every raw
-TPX3 file listed in `HermesTpx3AnalysisState.unpacking_runs`. Each raw TPX3 file
-must have its own Parquet output directory.
+TPX3 file listed in `HermesTpx3AnalysisState.unpacking_runs`. All inputs use one
+shared analysis directory with `pixelHits/`, `tdcTriggers/`,
+`globalTimestamps/`, `controlPackets/`, `unknownPackets/`, and `logs/`
+directories. The unpacker carries the raw TPX3 filename stem into every
+Parquet filename and its summary JSON filename. The runner rejects duplicate
+raw filename stems before launching any unpacker.
+
+For example, `DT_2p0V_000000.tpx3` produces filenames beginning with
+`DT_2p0V_000000-`. A Parquet part uses the full form
+`DT_2p0V_000000-chip-0-part-00000.parquet`. Its unpacker summary is
+`logs/DT_2p0V_000000-unpacker-summary.json`.
 
 Only unpacking is currently defined. `hermes/reconstruction.py` should remain
 empty until the HERMES photon and event settings, Arrow tables, saved Parquet
@@ -231,7 +240,8 @@ in operational logs or the HERMES YAML file.
 HERMES and EMPIR have different intermediate files and retention rules. Do not
 force both modes into one generic setting.
 
-For HERMES, the unpacker saves inspectable Parquet files and `summary.json`.
+For HERMES, the unpacker saves inspectable Parquet files in shared category
+directories and one input-specific summary JSON file under `analysis/logs/`.
 Later HERMES reconstruction work will define whether photon and event Arrow
 tables are kept only in memory or also written as Parquet files.
 
