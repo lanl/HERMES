@@ -29,6 +29,7 @@ struct WorkflowResult {
 };
 
 WorkflowResult runTwoPassWorkflow(std::istream& input,
+                                  const std::string& source_file_path,
                                   const std::string& output_directory);
 
 }  // namespace hermes_tpx3_spidr
