@@ -421,6 +421,7 @@ UnpackResult unpack(std::istream& input) {
 }
 
 WorkflowResult runTwoPassWorkflow(std::istream& input,
+                                  const std::string& source_file_path,
                                   const std::string& output_directory) {
     using Clock = std::chrono::high_resolution_clock;
     using Duration = std::chrono::duration<double>;
@@ -429,6 +430,7 @@ WorkflowResult runTwoPassWorkflow(std::istream& input,
 
     WorkflowResult workflow_result;
     workflow_result.output_directory = output_directory;
+    workflow_result.summary.source_file_path = source_file_path;
 
     // Pass 1: Unpack and decode all packets
     auto unpack_start = Clock::now();
@@ -437,6 +439,7 @@ WorkflowResult runTwoPassWorkflow(std::istream& input,
     workflow_result.summary.timing_diagnostics.unpacking_seconds =
         Duration(unpack_end - unpack_start).count();
     workflow_result.summary.unpack_summary = unpack_result.summary;
+    workflow_result.summary.source_file_bytes = unpack_result.summary.bytes_read;
 
     if (!unpack_result.summary.errors.empty()) {
         workflow_result.success = false;
