@@ -484,31 +484,37 @@ Pydantic models.
 
 ```python
 AnalysisState
-  mode: hermes_tpx3_spidr | empir
+  mode: hermes | empir
 ```
 
-For `hermes_tpx3_spidr`, use explicit fields for the raw TPX3 input files, TPX3
-Parquet output directory, summary JSON file, unpacker version, clustering
-settings, and run result:
+For `hermes`, record one unpacking run for each raw TPX3 file. Photon and event
+reconstruction remain optional empty models until their settings and output
+columns are defined.
 
-##### HermesTpx3SpidrAnalysisState ####
+##### HermesTpx3AnalysisState ####
 ```python
-HermesTpx3SpidrAnalysisState
-  mode: Literal["hermes_tpx3_spidr"]
-  environment: HermesTpx3SpidrEnvironment | None
-  config: HermesTpx3SpidrConfig | None
-  result: HermesTpx3SpidrResult | None
+HermesTpx3AnalysisState
+  mode: Literal["hermes"]
+  unpacking_runs: list[Tpx3SpidrUnpackingRun]
+  photon_reconstruction: HermesPhotonReconstructionState | None
+  event_reconstruction: HermesEventReconstructionState | None
 
-HermesTpx3SpidrEnvironment
-  binary_path: Path | None
+Tpx3SpidrUnpackingRun
+  program: Tpx3SpidrUnpackerProgram
+  settings: Tpx3SpidrUnpackerSettings
+  result: Tpx3SpidrUnpackerResult
+
+Tpx3SpidrUnpackerProgram
+  name: str
+  executable_path: Path
   version: str | None
 
-HermesTpx3SpidrConfig
-  input_tpx3_files: list[FileReference]
+Tpx3SpidrUnpackerSettings
+  input_tpx3_file: FileReference
   tpx3_parquet_directory: Path
-  cluster_config: ClusterConfig | ExternalPayloadRef | None
+  command_args: list[str]
 
-HermesTpx3SpidrResult
+Tpx3SpidrUnpackerResult
   status: planned | running | completed | failed | skipped | unknown
   started_at: datetime | None
   completed_at: datetime | None
@@ -517,10 +523,15 @@ HermesTpx3SpidrResult
   pixel_hit_count: int | None
   tdc_hit_count: int | None
   global_timestamp_count: int | None
-  control_packet_count: int | None
-  photon_count: int | None
+  spidr_control_count: int | None
+  tpx3_control_count: int | None
+  unknown_packet_count: int | None
   warnings: list[str]
   errors: list[str]
+
+HermesPhotonReconstructionState
+
+HermesEventReconstructionState
 ```
 
 The EMPIR fields remain undecided. When an EMPIR workflow is defined, name its
