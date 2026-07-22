@@ -5,10 +5,8 @@ from typing import Annotated, Literal
 
 from pydantic import ConfigDict, Field, field_validator
 
-from hermes.state.models.payloads import ExternalPayloadRef
-from hermes.state.models.shared_models import JsonObject, StrictBaseModel, utc_now
+from hermes.state.models.shared_models import StrictBaseModel, utc_now
 
-SnapshotPayload = JsonObject | ExternalPayloadRef
 SupplyReading = Annotated[list[float], Field(min_length=3, max_length=3)]
 DetectorLayoutOrientation = Literal[
     "UP",
@@ -99,7 +97,6 @@ class DetectorInfo(DetectorApiModel):
     timer_min_s: float | None = Field(default=None, ge=0, alias="TimerMinVal")
     timer_step_s: float | None = Field(default=None, ge=0, alias="TimerStep")
     clock_timepix_mhz: float | None = Field(default=None, ge=0, alias="ClockTimepix")
-    raw: SnapshotPayload | None = None
 
 
 class DetectorHealth(DetectorApiModel):
@@ -115,7 +112,6 @@ class DetectorHealth(DetectorApiModel):
     vdd: SupplyReading | None = Field(default=None, alias="VDD")
     bias_voltage_v: float | None = Field(default=None, ge=0, alias="BiasVoltage")
     humidity_percent: int | None = Field(default=None, ge=0, alias="Humidity")
-    raw: SnapshotPayload | None = None
 
 
 class DetectorLayoutChip(DetectorApiModel):
@@ -138,7 +134,6 @@ class DetectorLayout(DetectorApiModel):
     )
     original: DetectorLayoutCanvas | None = Field(default=None, alias="Original")
     rotated: DetectorLayoutCanvas | None = Field(default=None, alias="Rotated")
-    raw: SnapshotPayload | None = None
 
 
 class DetectorConfiguration(DetectorApiModel):
@@ -187,9 +182,8 @@ class DetectorConfiguration(DetectorApiModel):
         default=None,
         alias="ExternalReferenceClock",
     )
-    pixel_config: str | ExternalPayloadRef | None = None
-    dacs: list[dict[str, int]] | ExternalPayloadRef | None = None
-    raw: SnapshotPayload | None = None
+    pixel_config: str | None = None
+    dacs: list[dict[str, int]] | None = None
 
     @field_validator("global_timestamp_interval_s")
     @classmethod
