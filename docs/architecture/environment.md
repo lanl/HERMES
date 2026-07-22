@@ -76,7 +76,7 @@ defaults from `working_dir`, such as:
 working_dir = /tmp/myfakemeasurements
 data_dir = working_dir / "data"
 raw_data_dir = data_dir / "tpx3"
-analyzed_data_dir = data_dir / "analyzed"
+analyzed_data_dir = data_dir / "analysis"
 log_dir = working_dir / "logs"
 preview_dir = working_dir / "preview"
 ```
