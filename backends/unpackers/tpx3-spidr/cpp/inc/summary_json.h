@@ -25,7 +25,10 @@ struct SummaryJsonContent {
     std::string source_file_path;
     std::uint64_t source_file_bytes = 0;
 
-    std::string output_directory;
+    std::uint64_t rows_per_part = 1000000;
+
+    std::string analysis_directory;
+    std::string summary_json_file;
     std::string status = "incomplete";
 
     UnpackSummary unpack_summary;
