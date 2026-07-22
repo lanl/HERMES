@@ -60,10 +60,10 @@ bypass setting allows it.
 TPX3Cam detector state is the durable description of the physical detector and
 the detector configuration applied for a run. It should include hardware
 identity, chip identity, layout, health readings, and detector configuration
-values needed to reproduce or audit acquisition. Reproducibility-critical chip
-configuration such as `PixelConfig` and DAC settings remains detector-owned
-state, either inline when reasonably small or through `ExternalPayloadRef` when
-the value is too large for the record or state log.
+values needed to reproduce or audit acquisition. Parsed `PixelConfig` and DAC
+settings returned by `/detector/config` remain in the typed detector
+configuration. The `.bpc` and `.dacs` files supplied for the run are recorded
+separately with `PixelConfigFile` and `DacsFile`.
 
 SERVAL state is the durable description of the acquisition backend session. It
 should include SERVAL URL and version, `/dashboard` snapshots, destination
@@ -125,7 +125,7 @@ Expected SERVAL responsibilities:
   files for the workflow to record
 
 SERVAL destination configuration should preserve the `/server/destination`
-payload shape: top-level `Raw` and `Image` channel lists, plus an optional
+JSON structure: top-level `Raw` and `Image` channel lists, plus an optional
 `Preview` object with `ImageChannels` and `HistogramChannels`. Destination
 `Base` values should remain URI strings because `file:`, `http:`, and `tcp:`
 destinations are all valid and are interpreted from the SERVAL host context.
@@ -139,20 +139,20 @@ present and usable, record their provenance in the HERMES record, and provide
 them to SERVAL through `/config/load`.
 
 Calibration inputs should be treated as durable run configuration. The record
-should capture the requested `.bpc` and `.dacs` paths, applied calibration status,
-file sizes and hashes when practical, and any SERVAL response summaries. If the
-calibration contents are captured as state values rather than file references,
-large values may be externalized through `hermes.state_service` and
-represented by `ExternalPayloadRef`.
+should capture the requested `.bpc` and `.dacs` paths, applied calibration
+status, the SHA-256 hash of each saved file, and the short SERVAL server response
+body when it is useful for diagnosing a load failure. HERMES saves copies under
+the run's `config/` directory and records their relative paths.
 
 SERVAL loads calibration files with `GET /config/load?format=<format>&file=<filepath>`.
 The relevant formats for TPX3Cam calibration are `pixelconfig` for `.bpc` files
 and `dacs` for DAC JSON or `.dacs` files. `PUT` is not supported for
 `/config/*`. The `file` value should be recorded as a string because the path is
 resolved by the SERVAL host and may not be local to the HERMES process. The
-HERMES record should keep both the HERMES-side `FileReference` for the provided
-file and the SERVAL-side load request and result, including bounded response
-text or summary data.
+HERMES record should keep the HERMES-side `PixelConfigFile` or `DacsFile` and
+the matching `PixelConfigLoad` or `DacsLoad`, including the path resolved by the
+SERVAL host, HTTP status code, completion status, and optional short server
+response body.
 
 SoPhy and SERVAL should not be run against the detector at the same time. A
 HERMES acquisition workflow may require the user to provide existing SoPhy output
@@ -182,9 +182,8 @@ The HERMES state record should contain durable run facts, including requested an
 applied detector configuration, destination configuration, detector snapshots,
 raw TPX3, image, and preview file references, final status, and PixelConfig or
 DAC settings if needed for reproducibility. If PixelConfig or DAC settings are
-captured in the state record, acquisition logs should reference them by state
-path, length, digest, or `ExternalPayloadRef` rather than logging the full
-payload.
+captured in the state record, acquisition logs should reference the saved file
+path and hash rather than logging the file contents.
 
 Do not log raw image data, pixel-hit or TDC-hit table contents, raw TPX3 bytes, or
 large stdout/stderr streams. Store these values in files or directories and log
@@ -217,8 +216,8 @@ logs to reproduce or debug the run.
    `/detector/layout`, `/detector/config`, and `/server/destination`. Durable
    detector fields needed for reproducibility, such as PixelConfig and DAC
    settings, should be recorded in the HERMES record rather than duplicated in
-   acquisition logs. Large configuration fields may be externalized through
-   `hermes.state_service` and represented by `ExternalPayloadRef`.
+   acquisition logs. The calibration file models record the saved `.bpc` and
+   `.dacs` files directly.
 6. Validate pre-run conditions.
    Confirm a detector is present, the measurement status is idle, health
    readings are within configured limits, output paths are usable from the
@@ -242,10 +241,9 @@ logs to reproduce or debug the run.
    SERVAL, which may be different from the HERMES client host.
 10. Read back and validate applied configuration.
     Re-read `/detector/config` and `/server/destination`, compare them with the
-    requested plan, and update the HERMES record with the applied values. For
-    large fields, record the durable value once in state or as an external state
-    payload reference, then use summaries, digests, or state paths in operational
-    logs.
+    requested plan, and update the HERMES record with the applied values. Record
+    detector configuration once in state, then use concise summaries, file
+    hashes, or state paths in operational logs.
 11. Start measurement.
     Call `/measurement/start` only after the applied configuration and
     destinations have been validated.
@@ -311,5 +309,5 @@ SERVAL:
   directories, call SERVAL, or mutate detector state.
 - `hermes.state_service` should validate and apply changes to the HERMES record, but it
   should not directly call detector APIs.
-- Operational logs should summarize or reference large durable state fields such
-  as PixelConfig. They should not duplicate those full payloads.
+- Operational logs should summarize or reference large detector configuration
+  fields such as PixelConfig. They should not duplicate the complete values.
