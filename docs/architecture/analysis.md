@@ -43,8 +43,14 @@ HERMES/
     │   └── tpx3-spidr/
     │       ├── cpp/
     │       └── rust/
-    ├── photon-reconstructors/
-    └── event-reconstructors/
+    └── reconstruction/
+        ├── photons/
+        │   ├── cpp/
+        │   └── rust/
+        └── events/
+            ├── cpp/
+            └── rust/
+        
 ```
 
 The top-level `Cargo.toml` should include the Rust directories that are part of
@@ -82,11 +88,12 @@ The TPX3 analysis can run as three separate steps:
 ```text
 raw TPX3 file
   -> unpacker
-  -> pixel and timing Parquet files
-  -> photon reconstruction
-  -> photon Parquet files
-  -> event reconstruction
-  -> event Parquet files
+  -> saved pixel, tdc, timestamp, and control Parquet files
+  -> photon reconstruction from pixel parquet files
+  -> optional saved photon Parquet files
+  -> event reconstruction from photon parquet files
+  -> optional saved event Parquet files
+  -> final event output files and images (with related timing info from tdc and timestamp Parquet files)
 ```
 
 The user should be able to choose the program used for each step. The output
