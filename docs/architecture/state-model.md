@@ -24,20 +24,21 @@ The initial `HermesRecord` is recorded by the state logger. Every later durable
 state change is also logged with the changed state path, previous value, new
 value, status, proposer, origin, approver or approval-bypass marker, and
 timestamps. This creates an audit trail that can reconstruct the state at any
-point in the measurement, assuming any external payload files referenced by the
-state are still available.
+point in the measurement, assuming any separately saved detector-configuration
+files or other state-value files referenced by the state are still available.
 
 Large configuration structures that are part of reproducibility, such as the
 detector `PixelConfig` or DAC settings observed through SERVAL, are still state
 values. They should be recorded when they first enter state and only recorded
 again if they change. If a value is too large or awkward to duplicate inline in
-the state log, the value may be saved as a separate payload file under
-`logs/payloads/` and represented in the record and state log by an
-`ExternalPayloadRef`.
+the state log, it may be saved as a separate detector-configuration file under
+`logs/payloads/`. The record and state log then contain an `ExternalPayloadRef`
+that identifies that file.
 
 Operational logs are not the source of truth for reconstructing state. They may
-reference state paths, hashes, and payload references, but they should not
-duplicate full state payloads.
+reference state paths, file hashes, and `ExternalPayloadRef` values, but they
+should not duplicate complete detector configurations or other large state
+values.
 
 The final `HermesRecord` should be saved to disk as a YAML file for later
 reference. YAML is the primary persisted record format because it is readable and
@@ -98,10 +99,10 @@ FileReference
 ```
 
 #### ExternalPayloadRef ####
-Large durable state values may be externalized into files under the run's
-`logs/payloads/` directory. There should not be a separate `state_payload_dir`.
-In that case, the state field should contain an
-`ExternalPayloadRef` rather than a bare path string.
+Large detector configurations or other durable state values may be saved in
+separate files under the run's `logs/payloads/` directory. There should not be a
+separate `state_payload_dir`. When a state value is saved this way, its state
+field should contain an `ExternalPayloadRef` rather than a bare path string.
 
 ```python
 ExternalPayloadRef
@@ -117,7 +118,8 @@ ExternalPayloadRef
 
 The `path` should be relative to the run `working_dir` or to the persisted
 record location so the record can be moved as a bundle. The hash and size make
-the external payload verifiable when reconstructing or reloading state.
+the saved detector-configuration file or other state-value file verifiable when
+reconstructing or reloading state.
 
 Fields that may be large should use a typed union rather than loose `Any`. For
 example:
@@ -128,8 +130,8 @@ dacs: list[dict[str, int]] | ExternalPayloadRef
 ```
 
 The Pydantic model should validate the shape of `ExternalPayloadRef`, but it
-should not write files. External payload file creation belongs in
-`hermes.state_service`.
+should not write files. Saving detector configurations or other large state
+values in separate files belongs in `hermes.state_service`.
 
 #### MeasurementInfo ####
 MeasurementInfo should capture all relevant metadata about the measurement, including:
@@ -200,9 +202,9 @@ DetectorSnapshot
   configuration: DetectorConfiguration | None
 ```
 
-`DetectorInfo`, `DetectorHealth`, and `DetectorLayout` should model the SERVAL
-detector endpoint payloads with aliases for backend JSON keys and Pythonic field
-names in HERMES code:
+`DetectorInfo`, `DetectorHealth`, and `DetectorLayout` should model the JSON
+response bodies returned by the SERVAL detector endpoints, with aliases for
+backend JSON keys and Pythonic field names in HERMES code:
 
 ```python
 DetectorInfo
@@ -416,8 +418,9 @@ ServalDashboardDetector
   detector_type: str | None
 ```
 
-DestinationConfiguration should model the SERVAL `/server/destination` payload
-directly instead of flattening output channels into a generic HERMES list:
+DestinationConfiguration should model the JSON response body returned by the
+SERVAL `/server/destination` endpoint directly instead of flattening output
+channels into a generic HERMES list:
 
 ```python
 DestinationConfiguration
@@ -547,7 +550,7 @@ src/
         └── models/
             ├── __init__.py                 # makes models a Python package. Keep __init__.py empty!
             ├── measurement.py              # measurement info and metadata
-            ├── payloads.py                 # external payload reference models
+            ├── payloads.py                 # references to separately saved state-value files
             ├── analysis/                   # analysis environments that are unioned in the top-level record
             │   ├── empir.py                # EMPIR analysis environment, configuration, and related settings
             │   └── hermes_tpx3_spidr.py    # TPX3 SPIDR analysis environment, configuration, and related settings
