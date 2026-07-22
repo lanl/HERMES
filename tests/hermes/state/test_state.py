@@ -8,8 +8,11 @@ from hermes.state.models.acquisition.serval import (
     ServalAcquisitionState,
 )
 from hermes.state.models.analysis.hermes_tpx3_spidr import (
-    HermesTpx3SpidrAnalysisState,
-    HermesTpx3SpidrResult,
+    HermesTpx3AnalysisState,
+    Tpx3SpidrUnpackerProgram,
+    Tpx3SpidrUnpackerResult,
+    Tpx3SpidrUnpackerSettings,
+    Tpx3SpidrUnpackingRun,
 )
 from hermes.state.models.environment import RuntimeEnvironment
 from hermes.state.models.measurement import MeasurementInfo
@@ -27,9 +30,9 @@ def test_hermes_record_serializes_paths_datetimes_and_mode_tags(tmp_path: Path) 
         sha256=HASH,
         size_bytes=1024,
     )
-    event_file = FileReference(
-        path=tmp_path / "run-001/data/analyzed/events.parquet",
-        media_type="application/parquet",
+    summary_file = FileReference(
+        path=tmp_path / "run-001/data/analyzed/summary.json",
+        media_type="application/json",
     )
     record = HermesRecord(
         measurement_info=MeasurementInfo(
@@ -41,13 +44,33 @@ def test_hermes_record_serializes_paths_datetimes_and_mode_tags(tmp_path: Path) 
         acquisition=ServalAcquisitionState(
             result=ServalAcquisitionResult(status="completed", output_files=[raw_file])
         ),
-        analysis=HermesTpx3SpidrAnalysisState(
-            result=HermesTpx3SpidrResult(
-                status="completed",
-                input_files=[raw_file],
-                output_files=[event_file],
-                summary_metrics={"events": 42, "duration_s": 1.5},
-            )
+        analysis=HermesTpx3AnalysisState(
+            unpacking_runs=[
+                Tpx3SpidrUnpackingRun(
+                    program=Tpx3SpidrUnpackerProgram(
+                        name="tpx3-spidr-cpp",
+                        executable_path=tmp_path / "bin/hermes-tpx3-spidr",
+                        version="0.1.0",
+                    ),
+                    settings=Tpx3SpidrUnpackerSettings(
+                        input_tpx3_file=raw_file,
+                        tpx3_parquet_directory=(
+                            tmp_path / "run-001/data/analyzed/tpx3_parquet"
+                        ),
+                        command_args=[
+                            str(raw_file.path),
+                            str(tmp_path / "run-001/data/analyzed/tpx3_parquet"),
+                        ],
+                    ),
+                    result=Tpx3SpidrUnpackerResult(
+                        status="completed",
+                        exit_code=0,
+                        summary_json_file=summary_file,
+                        pixel_hit_count=42,
+                        tdc_hit_count=3,
+                    ),
+                )
+            ]
         ),
     )
 
@@ -62,8 +85,10 @@ def test_hermes_record_serializes_paths_datetimes_and_mode_tags(tmp_path: Path) 
     assert dumped["acquisition"]["result"]["output_files"][0]["path"].endswith(
         "raw.tpx3"
     )
-    assert dumped["analysis"]["mode"] == "hermes_tpx3_spidr"
-    assert dumped["analysis"]["result"]["summary_metrics"]["events"] == 42
+    assert dumped["analysis"]["mode"] == "hermes"
+    assert dumped["analysis"]["unpacking_runs"][0]["result"][
+        "pixel_hit_count"
+    ] == 42
 
 
 def test_hermes_record_serializes_serval_requested_applied_and_calibration(
