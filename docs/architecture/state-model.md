@@ -83,7 +83,7 @@ acquisition-to-analysis workflow may populate both fields.
 #### FileReference ####
 When the record needs more than a file path, use a `FileReference` to store
 basic file metadata. This model is for files, not directories. Output directories
-should use a clearly named `Path` field, such as `tpx3_parquet_directory`.
+should use a clearly named `Path` field, such as `analysis_directory`.
 
 ```python
 FileReference
@@ -504,7 +504,7 @@ Tpx3SpidrUnpackerProgram
 
 Tpx3SpidrUnpackerSettings
   input_tpx3_file: FileReference
-  tpx3_parquet_directory: Path
+  analysis_directory: Path
   command_args: list[str]
 
 Tpx3SpidrUnpackerResult
@@ -526,6 +526,18 @@ HermesPhotonReconstructionState
 
 HermesEventReconstructionState
 ```
+
+Every `Tpx3SpidrUnpackingRun` uses the same `analysis_directory`. The separate
+run entries keep each raw TPX3 file's status, timestamps, counts, warnings,
+errors, and summary JSON file together. The analysis runner must reject a
+HERMES analysis configuration when its unpacking runs specify different
+analysis directories or duplicate raw TPX3 filename stems.
+
+The shared directory contains `pixelHits/`, `tdcTriggers/`,
+`globalTimestamps/`, `controlPackets/`, `unknownPackets/`, and `logs/`.
+Parquet filenames begin with the corresponding raw TPX3 filename stem. The
+`summary_json_file` is the input-specific
+`logs/<raw-file-stem>-unpacker-summary.json` file.
 
 The EMPIR fields remain undecided. When an EMPIR workflow is defined, name its
 input files, output directories, configuration files, and result files directly:
