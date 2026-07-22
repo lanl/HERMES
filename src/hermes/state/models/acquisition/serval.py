@@ -6,7 +6,7 @@ from typing import Annotated, Literal, TypeAlias
 from pydantic import ConfigDict, Field, model_validator
 
 from hermes.state.models.detector import DetectorConfiguration, DetectorSnapshot
-from hermes.state.models.shared_models import ArtifactRef, JsonObject, StrictBaseModel
+from hermes.state.models.shared_models import FileReference, JsonObject, StrictBaseModel
 
 AcquisitionRunStatus = Literal[
     "planned",
@@ -179,7 +179,7 @@ class DestinationConfiguration(ServalApiModel):
 class ServalConfigLoadRequest(ServalApiModel):
     format: ServalConfigLoadFormat
     serval_file_path: ServalConfigLoadPath = Field(alias="file")
-    source_artifact: ArtifactRef | None = None
+    source_file: FileReference | None = None
 
 
 class ServalConfigLoadResult(StrictBaseModel):
@@ -191,8 +191,8 @@ class ServalConfigLoadResult(StrictBaseModel):
 
 
 class CalibrationState(StrictBaseModel):
-    pixel_config_file: ArtifactRef | None = None
-    dacs_file: ArtifactRef | None = None
+    pixel_config_file: FileReference | None = None
+    dacs_file: FileReference | None = None
     pixel_config_load_request: ServalConfigLoadRequest | None = None
     dacs_load_request: ServalConfigLoadRequest | None = None
     pixel_config_load_result: ServalConfigLoadResult | None = None
@@ -220,7 +220,7 @@ class ServalAcquisitionPlan(StrictBaseModel):
     trigger_count: int | None = Field(default=None, ge=0)
     exposure_time_s: float | None = Field(default=None, ge=0)
     trigger_period_s: float | None = Field(default=None, ge=0)
-    expected_artifacts: list[ArtifactRef] = Field(default_factory=list)
+    expected_output_files: list[FileReference] = Field(default_factory=list)
     options: JsonObject = Field(default_factory=dict)
 
 
@@ -233,7 +233,7 @@ class ServalAcquisitionResult(StrictBaseModel):
     dropped_frames: int | None = Field(default=None, ge=0)
     warnings: list[str] = Field(default_factory=list)
     errors: list[str] = Field(default_factory=list)
-    artifacts: list[ArtifactRef] = Field(default_factory=list)
+    output_files: list[FileReference] = Field(default_factory=list)
     final_dashboard: ServalDashboardSnapshot | None = None
 
 

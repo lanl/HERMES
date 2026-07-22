@@ -7,7 +7,7 @@ from typing import Literal
 from pydantic import Field
 
 from hermes.state.models.payloads import ExternalPayloadRef
-from hermes.state.models.shared_models import ArtifactRef, JsonObject, StrictBaseModel
+from hermes.state.models.shared_models import FileReference, JsonObject, StrictBaseModel
 
 AnalysisRunStatus = Literal[
     "planned",
@@ -42,9 +42,9 @@ class HermesTpx3SpidrResult(StrictBaseModel):
     started_at: datetime | None = None
     completed_at: datetime | None = None
     exit_code: int | None = None
-    input_artifacts: list[ArtifactRef] = Field(default_factory=list)
-    output_artifacts: list[ArtifactRef] = Field(default_factory=list)
-    summary_artifact: ArtifactRef | None = None
+    input_files: list[FileReference] = Field(default_factory=list)
+    output_files: list[FileReference] = Field(default_factory=list)
+    summary_file: FileReference | None = None
     summary_metrics: JsonObject = Field(default_factory=dict)
     warnings: list[str] = Field(default_factory=list)
     errors: list[str] = Field(default_factory=list)
