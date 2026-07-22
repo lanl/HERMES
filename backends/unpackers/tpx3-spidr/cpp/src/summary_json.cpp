@@ -1,11 +1,26 @@
 #include "summary_json.h"
 
 #include <nlohmann/json.hpp>
+#include <filesystem>
 #include <fstream>
+#include <stdexcept>
 
 using json = nlohmann::json;
 
 namespace hermes_tpx3_spidr {
+
+namespace {
+
+json categoryJson(const ParquetCategoryFiles& category) {
+    return {
+        {"directory", category.directory},
+        {"row_count", category.row_count},
+        {"file_count", category.files.size()},
+        {"files", category.files}
+    };
+}
+
+}  // namespace
 
 std::string generateSummaryJson(const SummaryJsonContent& content) {
     json j;
@@ -20,9 +35,21 @@ std::string generateSummaryJson(const SummaryJsonContent& content) {
         {"file_bytes", content.source_file_bytes}
     };
 
+    j["configuration"] = {
+        {"rows_per_part", content.rows_per_part}
+    };
+
     j["output"] = {
-        {"directory", content.output_directory},
-        {"status", content.status}
+        {"analysis_directory", content.analysis_directory},
+        {"summary_json_file", content.summary_json_file},
+        {"status", content.status},
+        {"categories", {
+            {"pixel_hits", categoryJson(content.writer_diagnostics.pixel_hits)},
+            {"tdc_triggers", categoryJson(content.writer_diagnostics.tdc_triggers)},
+            {"global_timestamps", categoryJson(content.writer_diagnostics.global_timestamps)},
+            {"control_packets", categoryJson(content.writer_diagnostics.control_packets)},
+            {"unknown_packets", categoryJson(content.writer_diagnostics.unknown_packets)}
+        }}
     };
 
     j["unpack_summary"] = {
@@ -64,11 +91,11 @@ std::string generateSummaryJson(const SummaryJsonContent& content) {
     };
 
     j["writer_diagnostics"] = {
-        {"pixel_files_written", content.writer_diagnostics.pixel_files_written},
-        {"tdc_files_written", content.writer_diagnostics.tdc_files_written},
-        {"global_files_written", content.writer_diagnostics.global_files_written},
-        {"control_files_written", content.writer_diagnostics.control_files_written},
-        {"unknown_files_written", content.writer_diagnostics.unknown_files_written},
+        {"pixel_files_written", content.writer_diagnostics.pixel_hits.files.size()},
+        {"tdc_files_written", content.writer_diagnostics.tdc_triggers.files.size()},
+        {"global_files_written", content.writer_diagnostics.global_timestamps.files.size()},
+        {"control_files_written", content.writer_diagnostics.control_packets.files.size()},
+        {"unknown_files_written", content.writer_diagnostics.unknown_packets.files.size()},
         {"errors", content.writer_diagnostics.errors}
     };
 
@@ -86,9 +113,20 @@ std::string generateSummaryJson(const SummaryJsonContent& content) {
 
 void writeSummaryJsonFile(const std::string& output_path,
                           const SummaryJsonContent& content) {
+    if (std::filesystem::exists(output_path)) {
+        throw std::runtime_error(
+            "Refusing to overwrite existing summary JSON file");
+    }
+
     const auto json_str = generateSummaryJson(content);
     std::ofstream out(output_path);
+    if (!out) {
+        throw std::runtime_error("Unable to open summary JSON file");
+    }
     out << json_str;
+    if (!out) {
+        throw std::runtime_error("Unable to write summary JSON file");
+    }
 }
 
 }  // namespace hermes_tpx3_spidr
