@@ -41,7 +41,7 @@ control-packet count, timing ranges, warnings, and errors.
 ## Shared Analysis Directories
 
 The unpacker should write separate Apache Parquet files for each TPX3 packet type
-instead of combining every row in one large file. 
+instead of combining every row in one large file.
 
 All raw TPX3 files in one measurement use the same category directories. The
 unpacker must not create a new directory tree for each raw file. A measurement
@@ -69,7 +69,7 @@ rows. An empty category has no Parquet file, and its summary entry reports zero
 rows and zero files. The `photons/` and `events/` directories belong to later
 reconstruction steps and are not created by the unpacker.
 
-The directory names and the corresponding Parquet table names are:
+The directory names and the corresponding Parquet data category names are:
 
 | Saved data | Directory | Parquet data category |
 | --- | --- | --- |
