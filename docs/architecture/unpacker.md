@@ -40,23 +40,55 @@ control-packet count, timing ranges, warnings, and errors.
 ## TPX3 Parquet Output Directory
 
 The unpacker should write separate Apache Parquet files for each TPX3 packet type
-instead of combining every row in one large file. The output directory should
+instead of combining every row in one large file. 
+
+Following the working environment laidout by HERMES of 
+
+```text
+working_dir = /tmp/mymeasurements
+data_dir = working_dir / "data"
+raw_data_dir = data_dir / "tpx3"
+analyzed_data_dir = data_dir / "analysis"
+log_dir = working_dir / "logs"
+preview_dir = working_dir / "preview"
+```
+
+The output directory should
 look like:
 
 ```text
-tpx3_parquet/
-  summary.json
-  pixel_hits/
-    chip_0-00000.parquet
-    chip_0-00001.parquet
-  tdc_triggers/
-    tdcs_0-00000.parquet
-  global_timestamps/
-    gs_0-00000.parquet
-  control_packets/
-    controls_0-00000.parquet
-  unknown_packets/
-    unknown_0-00000.parquet
+`data_dir`/
+├── `log_dir`/
+│   ├── `filename_0000.log`
+│   └── `filename_0001.log`
+├── `preview_dir`
+│   ├── `filename_0000.png`
+│   └── `filename_0001.png`
+├── `raw_data_dir`/
+│   ├── `filename_0000.tpx3`
+│   └── `filename_0001.tpx3`
+└── `analyzed_data_dir`/   
+    ├── summaries/
+    │   ├── `filename_0000-unpacker.json`
+    │   └── `filename_0001-unpacker.json`
+    ├── pixel_hits/
+    │   ├── `filename_0000.parquet`
+    │   └── `filename_0001.parquet`
+    ├── tdc_triggers/
+    │   ├── `filename_0000.parquet`
+    │   └── `filename_0001.parquet`
+    ├── global_timestamps/
+    │   ├── `filename_0000.parquet`
+    │   └── `filename_0001.parquet`
+    ├── control_packets/
+    │   ├── `filename_0000.parquet`
+    │   └── `filename_0001.parquet`
+    ├── unknown_packets/
+    │   ├── `filename_0000.parquet`
+    │   └── `filename_0001.parquet`
+    └── integrated_pixels/
+        ├── `filename_0000.parquet`
+        └── `filename_0001.parquet`
 ```
 
 The chip index belongs in each Parquet file name and should not be repeated in
