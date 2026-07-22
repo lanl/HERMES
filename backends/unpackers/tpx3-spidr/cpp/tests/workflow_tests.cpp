@@ -10,13 +10,19 @@ namespace {
 
 void testWorkflowWithEmptyInput(TestContext& test) {
     std::istringstream input("");
-    const auto result = runTwoPassWorkflow(input, "/tmp/test_output");
+    const auto result = runTwoPassWorkflow(
+        input, "/tmp/empty.tpx3", "/tmp/test_output");
 
     test.expect(result.success, "workflow succeeded with empty input");
     test.expectEqual(result.output_directory, std::string("/tmp/test_output"),
                      "output directory preserved");
     test.expectEqual(result.summary.status, std::string("complete"),
                      "status set to complete");
+    test.expectEqual(result.summary.source_file_path,
+                     std::string("/tmp/empty.tpx3"),
+                     "source file path preserved");
+    test.expectEqual(result.summary.source_file_bytes, std::uint64_t{0},
+                     "empty source file size recorded");
 }
 
 void testWorkflowWithSingleChunk(TestContext& test) {
@@ -25,7 +31,8 @@ void testWorkflowWithSingleChunk(TestContext& test) {
     appendLittleEndianWord(bytes, header);
 
     std::istringstream input(bytes);
-    const auto result = runTwoPassWorkflow(input, ".scratch/workflow_test_output1");
+    const auto result = runTwoPassWorkflow(
+        input, "/tmp/single-chunk.tpx3", ".scratch/workflow_test_output1");
 
     // Workflow completes even if file writing has issues
     test.expect(result.success || !result.summary.unpack_summary.errors.empty(),
@@ -34,6 +41,11 @@ void testWorkflowWithSingleChunk(TestContext& test) {
                      std::uint64_t{1}, "one chunk read");
     test.expectEqual(result.summary.unpack_summary.packets_read,
                      std::uint64_t{0}, "zero packets in empty chunk");
+    test.expectEqual(result.summary.source_file_path,
+                     std::string("/tmp/single-chunk.tpx3"),
+                     "single-chunk source file path preserved");
+    test.expectEqual(result.summary.source_file_bytes, std::uint64_t{8},
+                     "single-chunk source file size recorded");
 }
 
 void testWorkflowWithPixelPacket(TestContext& test) {
@@ -49,7 +61,8 @@ void testWorkflowWithPixelPacket(TestContext& test) {
     appendLittleEndianWord(bytes, pixel_packet);
 
     std::istringstream input(bytes);
-    const auto result = runTwoPassWorkflow(input, ".scratch/workflow_test_output2");
+    const auto result = runTwoPassWorkflow(
+        input, "/tmp/pixel.tpx3", ".scratch/workflow_test_output2");
 
     // Workflow completes even if file writing has issues
     test.expect(result.success || !result.summary.unpack_summary.errors.empty(),
@@ -63,6 +76,7 @@ void testSummaryJsonGeneration(TestContext& test) {
     content.backend_name = "test-backend";
     content.backend_version = "1.0.0";
     content.source_file_path = "/tmp/test.tpx3";
+    content.source_file_bytes = 2048;
     content.output_directory = "/tmp/output";
     content.status = "complete";
 
@@ -74,6 +88,11 @@ void testSummaryJsonGeneration(TestContext& test) {
                 "JSON contains backend name");
     test.expect(json_str.find("\"source\"") != std::string::npos,
                 "JSON contains source section");
+    test.expect(json_str.find("\"file_path\": \"/tmp/test.tpx3\"") !=
+                    std::string::npos,
+                "JSON contains source file path");
+    test.expect(json_str.find("\"file_bytes\": 2048") != std::string::npos,
+                "JSON contains source file size");
     test.expect(json_str.find("\"output\"") != std::string::npos,
                 "JSON contains output section");
     test.expect(json_str.find("\"complete\"") != std::string::npos,
@@ -106,7 +125,8 @@ void testWorkflowErrorHandling(TestContext& test) {
     appendLittleEndianWord(bytes, malformed_header);
 
     std::istringstream input(bytes);
-    const auto result = runTwoPassWorkflow(input, "/tmp/test_output");
+    const auto result = runTwoPassWorkflow(
+        input, "/tmp/malformed.tpx3", "/tmp/test_output");
 
     test.expect(result.summary.unpack_summary.malformed_chunk_count > 0,
                 "malformed chunks detected");
