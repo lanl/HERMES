@@ -23,14 +23,14 @@ UnpackResult unpack(std::istream& input);
 
 struct WorkflowResult {
     bool success = false;
-    std::string output_directory;
+    std::string analysis_directory;
     SummaryJsonContent summary;
     std::vector<std::string> errors;
 };
 
 WorkflowResult runTwoPassWorkflow(std::istream& input,
                                   const std::string& source_file_path,
-                                  const std::string& output_directory);
+                                  const std::string& analysis_directory);
 
 }  // namespace hermes_tpx3_spidr
 
