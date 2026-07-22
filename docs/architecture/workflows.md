@@ -11,7 +11,7 @@ Create acquisition plan
   -> run acquisition
   -> record raw TPX3 files and image files
   -> unpack raw TPX3 files into Parquet files if needed
-  -> record the TPX3 Parquet output directory and summary JSON file
+  -> record the shared analysis directory and each input's summary JSON file
   -> run analysis workflow
   -> record image, plot, or photon-event output files and their counts
   -> persist final HERMES record
@@ -34,12 +34,17 @@ The first workflow should be intentionally narrow:
 4. Start acquisition and wait for completion.
 5. Use `hermes.state_service` to save the raw TPX3 file path in the HERMES
    record.
-6. Run the TPX3 SPIDR unpacker selected by the user on the raw TPX3 file.
-7. Write pixel-hit, TDC-hit, timestamp, and control-packet Parquet files and a
-   summary JSON file.
-8. Use `hermes.state_service` to save the TPX3 Parquet output directory, summary
-   JSON file, pixel-hit count, TDC-hit count, global-timestamp count,
-   control-packet count, warnings, and errors in the same HERMES record.
+6. Check that all raw TPX3 filename stems are unique before starting analysis.
+7. Run the selected TPX3 SPIDR unpacker once for each raw TPX3 file, using the
+   same analysis directory for every run.
+8. Write each packet category to its shared directory. Start every Parquet
+   filename with the raw TPX3 filename stem, followed by its chip and part
+   numbers.
+9. Write one input-specific unpacker summary JSON file under `analysis/logs/`.
+10. Use `hermes.state_service` to save the shared analysis directory, summary
+    JSON file, pixel-hit count, TDC-hit count, global-timestamp count,
+    control-packet count, warnings, and errors for each raw TPX3 file in the
+    same HERMES record.
 
 This workflow is enough to test the HERMES state, file tracking, logging, and
 the connection between Python and a selected C++ or Rust backend.
