@@ -15,4 +15,4 @@
 - If the architecture is missing details necessary to implement a workflow, ask for clarification or propose a change to the architecture docs before proceeding.
 - If requests do not align with the architecture, ask for clarification or propose a change to the architecture docs before proceeding.
 - Loguru is used for logging, and logs should be structured and informative to aid in debugging and understanding the flow of data through the system.
-- Use plain language and avoid abstract terms, like artifacts, contracts, shape, and products; instead use concrete, descriptive terms that clearly convey the meaning.
+- Use plain language and avoid abstract terms, like artifacts, contracts, shape, patloads, and products; instead use concrete, descriptive terms that clearly convey the meaning.
