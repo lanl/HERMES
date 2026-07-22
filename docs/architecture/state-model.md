@@ -24,27 +24,24 @@ The initial `HermesRecord` is recorded by the state logger. Every later durable
 state change is also logged with the changed state path, previous value, new
 value, status, proposer, origin, approver or approval-bypass marker, and
 timestamps. This creates an audit trail that can reconstruct the state at any
-point in the measurement, assuming any separately saved detector-configuration
-files or other state-value files referenced by the state are still available.
+point in the measurement, assuming the saved detector-configuration files named
+in the state are still available.
 
-Large configuration structures that are part of reproducibility, such as the
-detector `PixelConfig` or DAC settings observed through SERVAL, are still state
-values. They should be recorded when they first enter state and only recorded
-again if they change. If a value is too large or awkward to duplicate inline in
-the state log, it may be saved as a separate detector-configuration file under
-`logs/payloads/`. The record and state log then contain an `ExternalPayloadRef`
-that identifies that file.
+HERMES saves the SoPhy `.bpc` pixel-configuration file and `.dacs` DAC-settings
+file under the run's `config/` directory. The state names each file directly
+with `PixelConfigFile` or `DacsFile`. Parsed JSON returned by SERVAL endpoints is
+stored in its typed detector or SERVAL model; HERMES does not create a second
+generic file for a server response body.
 
 Operational logs are not the source of truth for reconstructing state. They may
-reference state paths, file hashes, and `ExternalPayloadRef` values, but they
-should not duplicate complete detector configurations or other large state
-values.
+reference state paths and file hashes, but they should not duplicate complete
+detector configurations or server response bodies.
 
 The final `HermesRecord` should be saved to disk as a YAML file for later
 reference. YAML is the primary persisted record format because it is readable and
 practical for user-authored run inputs. JSON may still be supported as an
 optional export format for tools that need strict machine-readable records, but
-the Pydantic `HermesRecord` schema remains the canonical contract.
+the Pydantic `HermesRecord` schema remains the authoritative field definition.
 
 ## Expected model groups ###
 Expected model groups and their responsibilities include:
@@ -98,40 +95,30 @@ FileReference
   description: str | None
 ```
 
-#### ExternalPayloadRef ####
-Large detector configurations or other durable state values may be saved in
-separate files under the run's `logs/payloads/` directory. There should not be a
-separate `state_payload_dir`. When a state value is saved this way, its state
-field should contain an `ExternalPayloadRef` rather than a bare path string.
+#### Saved calibration files ####
+The two SERVAL calibration files have separate models because their formats and
+uses are different. `path` names the copy saved under the run directory and must
+be relative so the run directory can be moved. `source_path` records where the
+user supplied the file from. `file_hash` is the 64-character hexadecimal SHA-256
+hash of the saved file. The hash is required so HERMES can verify that the saved
+file has not changed. File size, media type, creation time, and a generic
+description are not needed in these models.
 
 ```python
-ExternalPayloadRef
-  kind: Literal["external_payload_ref"]
+PixelConfigFile
   path: Path
-  media_type: str
-  sha256: str
-  size_bytes: int
-  created_at: datetime
-  description: str | None
   source_path: Path | None
+  file_hash: str
+
+DacsFile
+  path: Path
+  source_path: Path | None
+  file_hash: str
 ```
 
-The `path` should be relative to the run `working_dir` or to the persisted
-record location so the record can be moved as a bundle. The hash and size make
-the saved detector-configuration file or other state-value file verifiable when
-reconstructing or reloading state.
-
-Fields that may be large should use a typed union rather than loose `Any`. For
-example:
-
-```python
-pixel_config: str | ExternalPayloadRef
-dacs: list[dict[str, int]] | ExternalPayloadRef
-```
-
-The Pydantic model should validate the shape of `ExternalPayloadRef`, but it
-should not write files. Saving detector configurations or other large state
-values in separate files belongs in `hermes.state_service`.
+`PixelConfigFile.path` must end with `.bpc`. `DacsFile.path` must end with
+`.dacs`. The models validate names and metadata but do not copy files; the
+SERVAL acquisition workflow performs the copy before recording the paths.
 
 #### MeasurementInfo ####
 MeasurementInfo should capture all relevant metadata about the measurement, including:
@@ -284,8 +271,8 @@ DetectorConfiguration
   tdc: list[str] | None
   global_timestamp_interval_s: float | None
   external_reference_clock: bool | None
-  pixel_config: str | ExternalPayloadRef | None
-  dacs: list[dict[str, int]] | ExternalPayloadRef | None
+  pixel_config: str | None
+  dacs: list[dict[str, int]] | None
 ```
 
 Detector configuration constraints should mirror the SERVAL manual ranges:
@@ -351,32 +338,38 @@ ServalEnvironment
 ```
 
 CalibrationState should capture the HERMES-side calibration files and the
-SERVAL-side `/config/load` requests and results. SERVAL loads TPX3Cam
+SERVAL-side `/config/load` results. SERVAL loads TPX3Cam
 calibration files with `GET /config/load?format=<format>&file=<filepath>`, not
 with `PUT`. The `file` parameter is a string resolved by the SERVAL host, so it
 should not be modeled as a local HERMES `Path`.
 
 ```python
 CalibrationState
-  pixel_config_file: FileReference | None
-  dacs_file: FileReference | None
-  pixel_config_load_request: ServalConfigLoadRequest | None
-  dacs_load_request: ServalConfigLoadRequest | None
-  pixel_config_load_result: ServalConfigLoadResult | None
-  dacs_load_result: ServalConfigLoadResult | None
+  pixel_config_file: PixelConfigFile | None
+  dacs_file: DacsFile | None
+  pixel_config_load: PixelConfigLoad | None
+  dacs_load: DacsLoad | None
 
-ServalConfigLoadRequest
-  format: pixelconfig | dacs
-  serval_file_path: str
-  source_file: FileReference | None
-
-ServalConfigLoadResult
+PixelConfigLoad
+  server_file_path: str
   applied_at: datetime | None
   status: str | None
   http_status_code: int | None
-  response_text: str | None
-  response_summary: JsonObject
+  server_response_body: str | None
+
+DacsLoad
+  server_file_path: str
+  applied_at: datetime | None
+  status: str | None
+  http_status_code: int | None
+  server_response_body: str | None
 ```
+
+The class identifies whether the request used SERVAL's `pixelconfig` or `dacs`
+format, so the state does not repeat a separate `format` field. The optional
+`server_response_body` records the short text returned by `/config/load` when it
+is useful for diagnosing a load failure. Large or unrelated response bodies
+should remain in bounded acquisition logs rather than the HERMES record.
 
 ServalDashboard should model the SERVAL `/dashboard` response with aliases for
 the backend JSON keys and Pythonic field names in HERMES code:
@@ -561,7 +554,6 @@ src/
         └── models/
             ├── __init__.py                 # makes models a Python package. Keep __init__.py empty!
             ├── measurement.py              # measurement info and metadata
-            ├── payloads.py                 # references to separately saved state-value files
             ├── analysis/                   # analysis environments that are unioned in the top-level record
             │   ├── empir.py                # EMPIR analysis environment, configuration, and related settings
             │   └── hermes_tpx3_spidr.py    # TPX3 SPIDR analysis environment, configuration, and related settings
