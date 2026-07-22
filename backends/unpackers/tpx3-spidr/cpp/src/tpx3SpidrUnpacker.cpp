@@ -58,7 +58,8 @@ int main(const int argc, char* argv[]) {
         return 2;
     }
 
-    std::ifstream input(argv[1], std::ios::binary);
+    const std::string input_path = argv[1];
+    std::ifstream input(input_path, std::ios::binary);
     if (!input) {
         std::cerr << "Unable to open TPX3 input file: " << argv[1] << '\n';
         return 2;
@@ -67,7 +68,8 @@ int main(const int argc, char* argv[]) {
     if (argc == 3) {
         // Two-pass workflow with output
         const std::string output_dir = argv[2];
-        const auto result = hermes_tpx3_spidr::runTwoPassWorkflow(input, output_dir);
+        const auto result = hermes_tpx3_spidr::runTwoPassWorkflow(
+            input, input_path, output_dir);
 
         if (!result.success) {
             std::cerr << "Workflow failed with errors:\n";
