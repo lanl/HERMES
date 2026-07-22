@@ -229,7 +229,7 @@ def test_state_manager_rejects_invalid_paths(tmp_path: Path) -> None:
         manager.get_value("acquisition.result.not_a_field")
 
     with pytest.raises(StatePathError, match="invalid state path"):
-        manager.get_value("acquisition.result.artifacts[0]")
+        manager.get_value("acquisition.result.output_files[0]")
 
     with pytest.raises(StatePathError, match="unset value"):
         StateManager(

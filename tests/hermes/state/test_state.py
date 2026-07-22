@@ -13,7 +13,7 @@ from hermes.state.models.analysis.hermes_tpx3_spidr import (
 )
 from hermes.state.models.environment import RuntimeEnvironment
 from hermes.state.models.measurement import MeasurementInfo
-from hermes.state.models.shared_models import ArtifactRef
+from hermes.state.models.shared_models import FileReference
 from hermes.state.state import HermesRecord
 
 
@@ -21,16 +21,14 @@ HASH = "a" * 64
 
 
 def test_hermes_record_serializes_paths_datetimes_and_mode_tags(tmp_path: Path) -> None:
-    raw_artifact = ArtifactRef(
+    raw_file = FileReference(
         path=tmp_path / "run-001/data/tpx3/raw.tpx3",
-        kind="raw_tpx3",
         media_type="application/octet-stream",
         sha256=HASH,
         size_bytes=1024,
     )
-    decoded_artifact = ArtifactRef(
+    event_file = FileReference(
         path=tmp_path / "run-001/data/analyzed/events.parquet",
-        kind="decoded_events",
         media_type="application/parquet",
     )
     record = HermesRecord(
@@ -41,13 +39,13 @@ def test_hermes_record_serializes_paths_datetimes_and_mode_tags(tmp_path: Path) 
         ),
         environment=RuntimeEnvironment(working_dir=tmp_path / "run-001"),
         acquisition=ServalAcquisitionState(
-            result=ServalAcquisitionResult(status="completed", artifacts=[raw_artifact])
+            result=ServalAcquisitionResult(status="completed", output_files=[raw_file])
         ),
         analysis=HermesTpx3SpidrAnalysisState(
             result=HermesTpx3SpidrResult(
                 status="completed",
-                input_artifacts=[raw_artifact],
-                output_artifacts=[decoded_artifact],
+                input_files=[raw_file],
+                output_files=[event_file],
                 summary_metrics={"events": 42, "duration_s": 1.5},
             )
         ),
@@ -61,7 +59,9 @@ def test_hermes_record_serializes_paths_datetimes_and_mode_tags(tmp_path: Path) 
     )
     assert dumped["environment"]["raw_data_dir"]["resolved_path"] is None
     assert dumped["acquisition"]["mode"] == "serval"
-    assert dumped["acquisition"]["result"]["artifacts"][0]["path"].endswith("raw.tpx3")
+    assert dumped["acquisition"]["result"]["output_files"][0]["path"].endswith(
+        "raw.tpx3"
+    )
     assert dumped["analysis"]["mode"] == "hermes_tpx3_spidr"
     assert dumped["analysis"]["result"]["summary_metrics"]["events"] == 42
 
@@ -69,16 +69,14 @@ def test_hermes_record_serializes_paths_datetimes_and_mode_tags(tmp_path: Path) 
 def test_hermes_record_serializes_serval_requested_applied_and_calibration(
     tmp_path: Path,
 ) -> None:
-    pixel_config_artifact = ArtifactRef(
+    pixel_config_file = FileReference(
         path=tmp_path / "config/tpx3-demo.bpc",
-        kind="pixel_config",
         media_type="application/octet-stream",
         sha256=HASH,
         size_bytes=2048,
     )
-    dacs_artifact = ArtifactRef(
+    dacs_file = FileReference(
         path=tmp_path / "config/tpx3-demo.dacs",
-        kind="dacs",
         media_type="application/json",
         size_bytes=512,
     )
@@ -104,17 +102,17 @@ def test_hermes_record_serializes_serval_requested_applied_and_calibration(
                 "Raw": [{"Base": "file:/applied/raw", "QueueSize": 16384}],
             },
             calibration=CalibrationState(
-                pixel_config_file=pixel_config_artifact,
-                dacs_file=dacs_artifact,
+                pixel_config_file=pixel_config_file,
+                dacs_file=dacs_file,
                 pixel_config_load_request={
                     "format": "pixelconfig",
                     "file": "tpx3-demo.bpc",
-                    "source_artifact": pixel_config_artifact.model_dump(mode="json"),
+                    "source_file": pixel_config_file.model_dump(mode="json"),
                 },
                 dacs_load_request={
                     "format": "dacs",
                     "file": "tpx3-demo.dacs",
-                    "source_artifact": dacs_artifact.model_dump(mode="json"),
+                    "source_file": dacs_file.model_dump(mode="json"),
                 },
                 pixel_config_load_result={
                     "status": "completed",

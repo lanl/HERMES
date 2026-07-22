@@ -13,7 +13,7 @@ from hermes.state.models.acquisition.serval import (
     ServalConfigLoadRequest,
     ServalDashboard,
 )
-from hermes.state.models.shared_models import ArtifactRef
+from hermes.state.models.shared_models import FileReference
 
 
 HASH = "a" * 64
@@ -217,9 +217,8 @@ def test_destination_configuration_rejects_invalid_output_mode() -> None:
 
 
 def test_serval_config_load_request_models_manual_query_shape(tmp_path: Path) -> None:
-    source_artifact = ArtifactRef(
+    source_file = FileReference(
         path=tmp_path / "tpx3-demo.bpc",
-        kind="pixel_config",
         media_type="application/octet-stream",
         sha256=HASH,
         size_bytes=2048,
@@ -229,19 +228,19 @@ def test_serval_config_load_request_models_manual_query_shape(tmp_path: Path) ->
         {
             "format": "pixelconfig",
             "file": "~/tpx3Detector_asi.bpc",
-            "source_artifact": source_artifact.model_dump(mode="json"),
+            "source_file": source_file.model_dump(mode="json"),
         }
     )
 
     assert request.format == "pixelconfig"
     assert request.serval_file_path == "~/tpx3Detector_asi.bpc"
-    assert request.source_artifact is not None
-    assert request.source_artifact.kind == "pixel_config"
+    assert request.source_file is not None
+    assert request.source_file.media_type == "application/octet-stream"
 
     dumped = request.model_dump(mode="json", by_alias=True)
     assert dumped["format"] == "pixelconfig"
     assert dumped["file"] == "~/tpx3Detector_asi.bpc"
-    assert dumped["source_artifact"]["path"].endswith("tpx3-demo.bpc")
+    assert dumped["source_file"]["path"].endswith("tpx3-demo.bpc")
 
 
 def test_serval_config_load_request_rejects_unsupported_format() -> None:
@@ -254,16 +253,14 @@ def test_serval_config_load_request_rejects_unsupported_format() -> None:
 def test_calibration_state_records_typed_serval_load_activity(
     tmp_path: Path,
 ) -> None:
-    pixel_config_file = ArtifactRef(
+    pixel_config_file = FileReference(
         path=tmp_path / "tpx3-demo.bpc",
-        kind="pixel_config",
         media_type="application/octet-stream",
         sha256=HASH,
         size_bytes=2048,
     )
-    dacs_file = ArtifactRef(
+    dacs_file = FileReference(
         path=tmp_path / "tpx3-demo.dacs",
-        kind="dacs",
         media_type="application/json",
         size_bytes=512,
     )
@@ -275,12 +272,12 @@ def test_calibration_state_records_typed_serval_load_activity(
             "pixel_config_load_request": {
                 "format": "pixelconfig",
                 "file": "tpx3-demo.bpc",
-                "source_artifact": pixel_config_file.model_dump(mode="json"),
+                "source_file": pixel_config_file.model_dump(mode="json"),
             },
             "dacs_load_request": {
                 "format": "dacs",
                 "file": "tpx3-demo.dacs",
-                "source_artifact": dacs_file.model_dump(mode="json"),
+                "source_file": dacs_file.model_dump(mode="json"),
             },
             "pixel_config_load_result": {
                 "applied_at": "2026-05-04T12:00:00Z",
