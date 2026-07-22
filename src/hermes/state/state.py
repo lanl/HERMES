@@ -1,19 +1,23 @@
 from __future__ import annotations
 
-from typing import TypeAlias
+from typing import Annotated, TypeAlias
 
 from pydantic import Field
 
 from hermes.state.models.acquisition.serval import ServalAcquisitionState
+from hermes.state.models.analysis.empir import EmpirAnalysisState
 from hermes.state.models.analysis.hermes_tpx3_spidr import (
-    HermesTpx3SpidrAnalysisState,
+    HermesTpx3AnalysisState,
 )
 from hermes.state.models.environment import RuntimeEnvironment
 from hermes.state.models.measurement import MeasurementInfo
 from hermes.state.models.shared_models import StrictBaseModel
 
 AcquisitionState: TypeAlias = ServalAcquisitionState
-AnalysisState: TypeAlias = HermesTpx3SpidrAnalysisState
+AnalysisState: TypeAlias = Annotated[
+    HermesTpx3AnalysisState | EmpirAnalysisState,
+    Field(discriminator="mode"),
+]
 
 
 class HermesRecord(StrictBaseModel):
