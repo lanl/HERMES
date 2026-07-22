@@ -22,82 +22,94 @@ program. Code in `src/hermes/analysis/` should run the selected executable,
 check the summary JSON file, and save the results through
 `hermes.state_service`. It must not change the HERMES state directly.
 
-The CLI should have an explicit interface, for example:
+The Python runner should call the unpacker with the raw TPX3 file and the
+shared analysis directory:
 
 ```text
-<executable> input.tpx3 --output tpx3_parquet/ --summary tpx3_parquet/summary.json
+<executable> <input.tpx3> <analysis_directory>
 ```
 
-This is the planned interface. The first C++ output implementation should expose
-the complete workflow through its library, but should not add the `--output` and
-`--summary` argument parsing yet.
+The unpacker derives all category directories and output filenames from those
+two inputs. Do not add separate command options for category directories, a
+filename prefix, or a summary filename.
 
-The HERMES state should save the raw TPX3 input file, TPX3 Parquet output
-directory, summary JSON file, unpacker name, unpacker version, command
+The HERMES state should save the raw TPX3 input file, shared analysis directory,
+summary JSON file, unpacker name, unpacker version, command
 arguments, pixel-hit count, TDC-trigger count, global-timestamp count,
 control-packet count, timing ranges, warnings, and errors.
 
-## TPX3 Parquet Output Directory
+## Shared Analysis Directories
 
 The unpacker should write separate Apache Parquet files for each TPX3 packet type
 instead of combining every row in one large file. 
 
-Following the working environment laidout by HERMES of 
+All raw TPX3 files in one measurement use the same category directories. The
+unpacker must not create a new directory tree for each raw file. A measurement
+uses this layout:
 
 ```text
-working_dir = /tmp/mymeasurements
-data_dir = working_dir / "data"
-raw_data_dir = data_dir / "tpx3"
-analyzed_data_dir = data_dir / "analysis"
-log_dir = working_dir / "logs"
-preview_dir = working_dir / "preview"
+data/
+├── rawTpx3/
+│   ├── DT_2p0V_000000.tpx3
+│   └── DT_2p0V_000001.tpx3
+└── analysis/
+    ├── pixelHits/
+    ├── tdcTriggers/
+    ├── globalTimestamps/
+    ├── controlPackets/
+    ├── unknownPackets/
+    ├── logs/
+    ├── photons/
+    └── events/
 ```
 
-The output directory should
-look like:
+The unpacker creates the five unpacked-data directories and `logs/` before it
+starts writing files. These directories remain present when a category has no
+rows. An empty category has no Parquet file, and its summary entry reports zero
+rows and zero files. The `photons/` and `events/` directories belong to later
+reconstruction steps and are not created by the unpacker.
+
+The directory names and the corresponding Parquet table names are:
+
+| Saved data | Directory | Parquet data category |
+| --- | --- | --- |
+| Pixel hits | `pixelHits/` | `pixel_hits` |
+| TDC triggers | `tdcTriggers/` | `tdc_triggers` |
+| Global timestamps | `globalTimestamps/` | `global_timestamps` |
+| Control packets | `controlPackets/` | `control_packets` |
+| Unknown packets | `unknownPackets/` | `unknown_packets` |
+
+## Parquet Filenames
+
+Every Parquet filename carries the raw TPX3 filename stem, chip index, and part
+index:
 
 ```text
-`data_dir`/
-├── `log_dir`/
-│   ├── `filename_0000.log`
-│   └── `filename_0001.log`
-├── `preview_dir`
-│   ├── `filename_0000.png`
-│   └── `filename_0001.png`
-├── `raw_data_dir`/
-│   ├── `filename_0000.tpx3`
-│   └── `filename_0001.tpx3`
-└── `analyzed_data_dir`/   
-    ├── summaries/
-    │   ├── `filename_0000-unpacker.json`
-    │   └── `filename_0001-unpacker.json`
-    ├── pixel_hits/
-    │   ├── `filename_0000.parquet`
-    │   └── `filename_0001.parquet`
-    ├── tdc_triggers/
-    │   ├── `filename_0000.parquet`
-    │   └── `filename_0001.parquet`
-    ├── global_timestamps/
-    │   ├── `filename_0000.parquet`
-    │   └── `filename_0001.parquet`
-    ├── control_packets/
-    │   ├── `filename_0000.parquet`
-    │   └── `filename_0001.parquet`
-    ├── unknown_packets/
-    │   ├── `filename_0000.parquet`
-    │   └── `filename_0001.parquet`
-    └── integrated_pixels/
-        ├── `filename_0000.parquet`
-        └── `filename_0001.parquet`
+<raw-file-stem>-chip-<chip-index>-part-<five-digit-part-index>.parquet
 ```
 
-The chip index belongs in each Parquet file name and should not be repeated in
-its rows. Part numbers start at zero independently for each chip and dataset.
-When a schema includes `packet_index`, it is the packet index within its chunk.
+For example, the first pixel-hit part for chip 0 from
+`DT_2p0V_000000.tpx3` is:
+
+```text
+analysis/pixelHits/DT_2p0V_000000-chip-0-part-00000.parquet
+```
+
+Part numbers start at zero independently for each raw file, chip, and data
+category. The category name does not need to be repeated in the filename
+because it is already stated by the parent directory. The chip index belongs in
+the filename and should not be repeated in its rows. When a schema includes
+`packet_index`, it is the packet index within its chunk.
+
+Raw TPX3 filename stems must be unique within one measurement. The HERMES
+runner must reject duplicate stems before launching any unpacker so one input
+cannot overwrite another input's files. Existing files with the same expected
+names must also cause the run to stop; the unpacker must not silently overwrite
+them.
 
 Integrated-ToT packets should be decoded and counted, but the first output
-contract does not write them. A later acquisition-mode-specific version may add
-an `integrated_pixels/` directory.
+format does not write them. A later acquisition-mode-specific version may add
+an `integratedPixels/` directory.
 
 The C++ decoder should use the native integer timing fields to calculate final
 timestamps, but it should not copy those raw timing fields into Parquet. Each
@@ -234,10 +246,66 @@ files.
 
 ## Summary JSON File
 
+Each raw TPX3 file has one summary JSON file in `analysis/logs/`:
+
+```text
+<raw-file-stem>-unpacker-summary.json
+```
+
+For example:
+
+```text
+analysis/logs/DT_2p0V_000000-unpacker-summary.json
+```
+
 The summary JSON file should use nested `backend`, `configuration`, `source`,
 and `output` objects. `source` describes the one raw `.tpx3` input file.
-`output` contains the output directory, summary filename, and one entry for each
-Parquet dataset with its row count, file count, and relative file paths.
+`output` contains the shared analysis directory, summary JSON filename, and one
+entry for each Parquet category with its directory, row count, file count, and
+relative Parquet filenames. Relative filenames are resolved from the shared
+analysis directory.
+
+The `output` object should have this structure:
+
+```yaml
+output:
+  analysis_directory: /data/analysis
+  summary_json_file: logs/DT_2p0V_000000-unpacker-summary.json
+  status: complete
+  categories:
+    pixel_hits:
+      directory: pixelHits
+      row_count: 1200000
+      file_count: 2
+      files:
+        - pixelHits/DT_2p0V_000000-chip-0-part-00000.parquet
+        - pixelHits/DT_2p0V_000000-chip-0-part-00001.parquet
+    tdc_triggers:
+      directory: tdcTriggers
+      row_count: 0
+      file_count: 0
+      files: []
+    global_timestamps:
+      directory: globalTimestamps
+      row_count: 0
+      file_count: 0
+      files: []
+    control_packets:
+      directory: controlPackets
+      row_count: 0
+      file_count: 0
+      files: []
+    unknown_packets:
+      directory: unknownPackets
+      row_count: 0
+      file_count: 0
+      files: []
+```
+
+All five category entries are required, including categories with no rows. The
+file list contains only final Parquet files written for the raw TPX3 file named
+by `source.file_path`; it must not list temporary sorting files or files from a
+different input.
 
 Packet-family counts, validation counts, warnings, and errors should remain
 separate top-level objects or arrays. A complete success summary should be
