@@ -4,6 +4,8 @@ from pathlib import Path
 
 from hermes.state.models.acquisition.serval import (
     CalibrationState,
+    DacsFile,
+    PixelConfigFile,
     ServalAcquisitionResult,
     ServalAcquisitionState,
 )
@@ -94,16 +96,15 @@ def test_hermes_record_serializes_paths_datetimes_and_mode_tags(tmp_path: Path) 
 def test_hermes_record_serializes_serval_requested_applied_and_calibration(
     tmp_path: Path,
 ) -> None:
-    pixel_config_file = FileReference(
-        path=tmp_path / "config/tpx3-demo.bpc",
-        media_type="application/octet-stream",
-        sha256=HASH,
-        size_bytes=2048,
+    pixel_config_file = PixelConfigFile(
+        path="config/pixelConfig.bpc",
+        source_path=tmp_path / "tpx3-demo.bpc",
+        file_hash=HASH,
     )
-    dacs_file = FileReference(
-        path=tmp_path / "config/tpx3-demo.dacs",
-        media_type="application/json",
-        size_bytes=512,
+    dacs_file = DacsFile(
+        path="config/dacsFile.dacs",
+        source_path=tmp_path / "tpx3-demo.dacs",
+        file_hash=HASH,
     )
     record = HermesRecord(
         measurement_info=MeasurementInfo(measurement_id="LC-20231024", run_number=2),
@@ -129,20 +130,17 @@ def test_hermes_record_serializes_serval_requested_applied_and_calibration(
             calibration=CalibrationState(
                 pixel_config_file=pixel_config_file,
                 dacs_file=dacs_file,
-                pixel_config_load_request={
-                    "format": "pixelconfig",
-                    "file": "tpx3-demo.bpc",
-                    "source_file": pixel_config_file.model_dump(mode="json"),
-                },
-                dacs_load_request={
-                    "format": "dacs",
-                    "file": "tpx3-demo.dacs",
-                    "source_file": dacs_file.model_dump(mode="json"),
-                },
-                pixel_config_load_result={
+                pixel_config_load={
+                    "server_file_path": "tpx3-demo.bpc",
                     "status": "completed",
                     "http_status_code": 200,
-                    "response_text": "Successfully uploaded config.",
+                    "server_response_body": "Successfully uploaded config.",
+                },
+                dacs_load={
+                    "server_file_path": "tpx3-demo.dacs",
+                    "status": "completed",
+                    "http_status_code": 200,
+                    "server_response_body": "Successfully uploaded config.",
                 },
             ),
         ),
@@ -162,13 +160,19 @@ def test_hermes_record_serializes_serval_requested_applied_and_calibration(
         acquisition["applied_destination_configuration"]["Raw"][0]["QueueSize"]
         == 16384
     )
-    assert acquisition["calibration"]["pixel_config_file"]["path"].endswith(
+    assert acquisition["calibration"]["pixel_config_file"]["path"] == (
+        "config/pixelConfig.bpc"
+    )
+    assert acquisition["calibration"]["pixel_config_load"][
+        "server_file_path"
+    ] == (
         "tpx3-demo.bpc"
     )
-    assert acquisition["calibration"]["pixel_config_load_request"]["file"] == (
-        "tpx3-demo.bpc"
+    assert acquisition["calibration"]["dacs_load"]["server_file_path"] == (
+        "tpx3-demo.dacs"
     )
-    assert acquisition["calibration"]["dacs_load_request"]["file"] == "tpx3-demo.dacs"
-    assert acquisition["calibration"]["pixel_config_load_result"]["response_text"] == (
+    assert acquisition["calibration"]["pixel_config_load"][
+        "server_response_body"
+    ] == (
         "Successfully uploaded config."
     )

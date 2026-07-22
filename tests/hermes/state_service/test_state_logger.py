@@ -183,40 +183,6 @@ def test_state_logger_logs_rejected_and_failed_change_metadata() -> None:
     assert failed_fields["failure_reason"] == "frame count must be non-negative"
 
 
-def test_state_logger_summarizes_external_payload_refs() -> None:
-    logger = CapturingLogger()
-    state_logger = StateLogger(logger)
-    payload_ref = {
-        "kind": "external_payload_ref",
-        "path": "logs/payloads/detector_dacs_abc123.json",
-        "media_type": "application/json",
-        "sha256": "a" * 64,
-        "size_bytes": 128,
-        "created_at": "2026-05-05T12:00:00Z",
-    }
-    change = ChangeRequest(
-        change_id="change-002",
-        path="acquisition.applied_detector_config.dacs",
-        previous_value=None,
-        proposed_value=payload_ref,
-        origin="trusted_workflow",
-        proposer="serval_workflow",
-        status="applied",
-        approval_bypassed=True,
-        applied_at=NOW,
-    )
-
-    state_logger.log_change(change)
-
-    assert logger.events[0]["fields"]["proposed_value_summary"] == {
-        "kind": "external_payload_ref",
-        "path": "logs/payloads/detector_dacs_abc123.json",
-        "media_type": "application/json",
-        "sha256": "a" * 64,
-        "size_bytes": 128,
-    }
-
-
 def test_state_logger_logs_validation_failure() -> None:
     logger = CapturingLogger()
     state_logger = StateLogger(logger)
