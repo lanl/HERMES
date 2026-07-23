@@ -63,16 +63,6 @@ void testWorkflowWithEmptyInput(TestContext& test) {
     test.expect(result.success, "workflow succeeded with empty input");
     test.expectEqual(result.analysis_directory, analysis_directory.string(),
                      "analysis directory preserved");
-    test.expectEqual(result.summary.status, std::string("complete"),
-                     "status set to complete");
-    test.expectEqual(result.summary.source_file_path,
-                     std::string("/tmp/empty.tpx3"),
-                     "source file path preserved");
-    test.expectEqual(result.summary.source_file_bytes, std::uint64_t{0},
-                     "empty source file size recorded");
-    test.expectEqual(result.summary.summary_json_file,
-                     std::string("logs/empty-unpacker-summary.json"),
-                     "input-specific summary filename recorded");
 
     for (const auto* directory : {"pixelHits", "tdcTriggers",
                                   "globalTimestamps", "controlPackets",
@@ -131,15 +121,11 @@ void testSharedDirectoriesForTwoInputs(TestContext& test) {
     if (std::filesystem::exists(first_summary)) {
         const auto first_json = readJson(first_summary);
         test.expectEqual(
-            first_json["output"]["analysis_directory"].get<std::string>(),
-            analysis_directory.string(),
-            "summary records shared analysis directory");
-        test.expectEqual(
-            first_json["output"]["categories"]["pixel_hits"]["row_count"]
+            first_json["parquet"]["pixel_hits"]["row_count"]
                 .get<std::uint64_t>(),
             std::uint64_t{1}, "summary records pixel row count");
         test.expectEqual(
-            first_json["output"]["categories"]["pixel_hits"]["files"][0]
+            first_json["parquet"]["pixel_hits"]["files"][0]
                 .get<std::string>(),
             std::string(
                 "pixelHits/DT_2p0V_000000-chip-0-part-00000.parquet"),
@@ -189,52 +175,82 @@ void testExistingFilesAreNotOverwritten(TestContext& test) {
 
 void testSummaryJsonGeneration(TestContext& test) {
     SummaryJsonContent content;
-    content.backend_name = "test-backend";
-    content.backend_version = "1.0.0";
-    content.source_file_path = "/tmp/test.tpx3";
-    content.source_file_bytes = 2048;
-    content.analysis_directory = "/tmp/output";
-    content.summary_json_file = "logs/test-unpacker-summary.json";
-    content.status = "complete";
+    content.unpack_summary.chunks_read = 2;
+    content.unpack_summary.packets_read = 3;
+    content.unpack_summary.pixel_hit_count = 1;
+    content.anchor_diagnostics.total_anchors = 4;
+    content.epoch_diagnostics.tdcs_assigned = 5;
+    content.sorting_diagnostics.estimated_memory_bytes = 2048;
     content.writer_diagnostics.pixel_hits.row_count = 1;
     content.writer_diagnostics.pixel_hits.files.push_back(
         "pixelHits/test-chip-0-part-00000.parquet");
+    content.timing_diagnostics.total_seconds = 1.25;
 
     const auto parsed = nlohmann::json::parse(generateSummaryJson(content));
 
-    test.expectEqual(parsed["backend"]["name"].get<std::string>(),
-                     std::string("test-backend"),
-                     "JSON contains backend name");
-    test.expectEqual(parsed["source"]["file_path"].get<std::string>(),
-                     std::string("/tmp/test.tpx3"),
-                     "JSON contains source file path");
-    test.expectEqual(parsed["source"]["file_bytes"].get<std::uint64_t>(),
-                     std::uint64_t{2048}, "JSON contains source file size");
     test.expectEqual(
-        parsed["output"]["categories"]["pixel_hits"]["file_count"]
+        parsed["unpacking"]["decoded_pixel_hits"].get<std::uint64_t>(),
+        std::uint64_t{1}, "JSON contains decoded pixel count");
+    test.expectEqual(
+        parsed["timestamp_processing"]["anchors"]["total"].get<std::uint64_t>(),
+        std::uint64_t{4}, "JSON contains anchor count");
+    test.expectEqual(
+        parsed["timestamp_processing"]["epoch_assignment"]
+              ["tdc_triggers_assigned"]
             .get<std::uint64_t>(),
-        std::uint64_t{1}, "JSON contains category file count");
-    test.expect(parsed["output"]["categories"]["tdc_triggers"]["files"]
-                    .empty(),
+        std::uint64_t{5}, "JSON contains assigned TDC trigger count");
+    test.expectEqual(
+        parsed["sorting"]["estimated_memory_bytes"].get<std::uint64_t>(),
+        std::uint64_t{2048}, "JSON contains sorting memory estimate");
+    test.expectEqual(
+        parsed["parquet"]["pixel_hits"]["row_count"].get<std::uint64_t>(),
+        std::uint64_t{1}, "JSON contains pixel Parquet row count");
+    test.expectEqual(
+        parsed["parquet"]["pixel_hits"]["files"][0].get<std::string>(),
+        std::string("pixelHits/test-chip-0-part-00000.parquet"),
+        "JSON contains relative pixel Parquet filename");
+    test.expect(parsed["parquet"]["tdc_triggers"]["files"].empty(),
                 "JSON contains empty TDC file list");
+    test.expectEqual(
+        parsed["processing_times_seconds"]["total"].get<double>(),
+        1.25, "JSON contains total processing time");
 }
 
 void testSummaryJsonStructure(TestContext& test) {
     SummaryJsonContent content;
     const auto parsed = nlohmann::json::parse(generateSummaryJson(content));
 
-    test.expect(parsed.contains("configuration"),
-                "JSON contains configuration");
-    test.expect(parsed.contains("unpack_summary"),
-                "JSON contains unpack_summary");
-    test.expect(parsed.contains("anchor_diagnostics"),
-                "JSON contains anchor_diagnostics");
-    test.expect(parsed.contains("epoch_diagnostics"),
-                "JSON contains epoch_diagnostics");
-    test.expect(parsed.contains("sorting_diagnostics"),
-                "JSON contains sorting_diagnostics");
-    test.expect(parsed.contains("writer_diagnostics"),
-                "JSON contains writer_diagnostics");
+    test.expectEqual(parsed.size(), std::size_t{5},
+                     "JSON contains exactly five top-level sections");
+    for (const auto* section : {"unpacking", "timestamp_processing", "sorting",
+                                "parquet", "processing_times_seconds"}) {
+        test.expect(parsed.contains(section),
+                    std::string("JSON contains ") + section);
+    }
+    for (const auto* removed : {"backend", "source", "configuration", "output",
+                                "unpack_summary", "anchor_diagnostics",
+                                "epoch_diagnostics", "sorting_diagnostics",
+                                "writer_diagnostics", "timing_diagnostics"}) {
+        test.expect(!parsed.contains(removed),
+                    std::string("JSON omits ") + removed);
+    }
+
+    for (const auto* category : {"pixel_hits", "tdc_triggers",
+                                 "global_timestamps", "control_packets",
+                                 "unknown_packets"}) {
+        const auto& category_json = parsed["parquet"][category];
+        test.expectEqual(category_json.size(), std::size_t{2},
+                         std::string(category) +
+                             " contains only row_count and files");
+        test.expect(category_json.contains("row_count"),
+                    std::string(category) + " contains row_count");
+        test.expect(category_json.contains("files"),
+                    std::string(category) + " contains files");
+        test.expect(!category_json.contains("directory"),
+                    std::string(category) + " omits directory");
+        test.expect(!category_json.contains("file_count"),
+                    std::string(category) + " omits file_count");
+    }
 }
 
 void testWorkflowErrorHandling(TestContext& test) {
