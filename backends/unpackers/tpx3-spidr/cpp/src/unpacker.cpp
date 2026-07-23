@@ -305,7 +305,8 @@ void findExistingOutputFiles(const std::filesystem::path& analysis_directory,
                          summary_path.string());
     }
 
-    const std::string parquet_prefix = raw_file_stem + "-chip-";
+    const std::string parquet_prefix_with_chip = raw_file_stem + "-chip-";
+    const std::string parquet_prefix_without_chip = raw_file_stem + "-part-";
     for (const char* directory_name : parquet_directories) {
         const auto directory = analysis_directory / directory_name;
         if (!std::filesystem::exists(directory)) {
@@ -317,8 +318,9 @@ void findExistingOutputFiles(const std::filesystem::path& analysis_directory,
                 continue;
             }
             const auto filename = entry.path().filename().string();
-            if (filename.rfind(parquet_prefix, 0) == 0 &&
-                entry.path().extension() == ".parquet") {
+            if (entry.path().extension() == ".parquet" &&
+                (filename.rfind(parquet_prefix_with_chip, 0) == 0 ||
+                 filename.rfind(parquet_prefix_without_chip, 0) == 0)) {
                 errors.push_back("Refusing to overwrite existing Parquet file " +
                                  entry.path().string());
             }
