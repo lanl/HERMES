@@ -177,7 +177,7 @@ void testSummaryJsonGeneration(TestContext& test) {
     SummaryJsonContent content;
     content.unpack_summary.chunks_read = 2;
     content.unpack_summary.packets_read = 3;
-    content.unpack_summary.pixel_hit_count = 1;
+    content.unpack_summary.pixel_data_packet_count = 1;
     content.anchor_diagnostics.total_anchors = 4;
     content.epoch_diagnostics.tdcs_assigned = 5;
     content.sorting_diagnostics.estimated_memory_bytes = 2048;
