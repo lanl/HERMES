@@ -480,64 +480,65 @@ AnalysisState
   mode: hermes | empir
 ```
 
-For `hermes`, record one unpacking run for each raw TPX3 file. Photon and event
-reconstruction remain optional empty models until their settings and output
-columns are defined.
+For `hermes`, record one unpacker program, one shared analysis directory, the
+raw TPX3 files, and one overall result section. Detailed results for each raw
+file remain in its input-specific summary JSON file. Reconstruction remains an
+optional empty model until its settings and output columns are defined.
 
 ##### HermesTpx3AnalysisState ####
 ```python
 HermesTpx3AnalysisState
   mode: Literal["hermes"]
-  unpacking_runs: list[Tpx3SpidrUnpackingRun]
-  photon_reconstruction: HermesPhotonReconstructionState | None
-  event_reconstruction: HermesEventReconstructionState | None
-
-Tpx3SpidrUnpackingRun
-  program: Tpx3SpidrUnpackerProgram
-  settings: Tpx3SpidrUnpackerSettings
-  result: Tpx3SpidrUnpackerResult
+  unpacker_program: Tpx3SpidrUnpackerProgram
+  analysis_directory: Path
+  tpx3_files: list[FileReference]
+  results: HermesTpx3AnalysisResults
 
 Tpx3SpidrUnpackerProgram
   name: str
   executable_path: Path
   version: str | None
 
-Tpx3SpidrUnpackerSettings
-  input_tpx3_file: FileReference
-  analysis_directory: Path
-  command_args: list[str]
+HermesTpx3AnalysisResults
+  unpacking: HermesTpx3UnpackingResult
+  reconstruction: HermesTpx3ReconstructionResult | None
 
-Tpx3SpidrUnpackerResult
-  status: planned | running | completed | failed | skipped | unknown
+HermesTpx3UnpackingResult
+  status: planned | running | completed | failed
   started_at: datetime | None
-  completed_at: datetime | None
-  exit_code: int | None
-  summary_json_file: FileReference | None
-  pixel_hit_count: int | None
-  tdc_hit_count: int | None
-  global_timestamp_count: int | None
-  spidr_control_count: int | None
-  tpx3_control_count: int | None
-  unknown_packet_count: int | None
-  warnings: list[str]
-  errors: list[str]
+  finished_at: datetime | None
 
-HermesPhotonReconstructionState
-
-HermesEventReconstructionState
+HermesTpx3ReconstructionResult
 ```
 
-Every `Tpx3SpidrUnpackingRun` uses the same `analysis_directory`. The separate
-run entries keep each raw TPX3 file's status, timestamps, counts, warnings,
-errors, and summary JSON file together. The analysis runner must reject a
-HERMES analysis configuration when its unpacking runs specify different
-analysis directories or duplicate raw TPX3 filename stems.
+`tpx3_files` must contain at least one raw TPX3 file. The analysis runner must
+reject duplicate raw filename stems because the stem is used in every derived
+Parquet and summary JSON filename.
 
 The shared directory contains `pixelHits/`, `tdcTriggers/`,
 `globalTimestamps/`, `controlPackets/`, `unknownPackets/`, and `logs/`.
 Parquet filenames begin with the corresponding raw TPX3 filename stem. The
-`summary_json_file` is the input-specific
-`logs/<raw-file-stem>-unpacker-summary.json` file.
+input-specific summary path is derived as
+`<analysis_directory>/logs/<raw-file-stem>-unpacker-summary.json`.
+
+The HERMES state does not save one result per raw file, generated command
+arguments, summary JSON paths, Parquet filenames, file counts, packet or row
+counts, warnings, errors, timestamp diagnostics, sorting diagnostics,
+processing times, or per-file exit codes. Each summary JSON file is the sole
+saved detailed result for its raw TPX3 file.
+
+The unpacking status applies to the complete `tpx3_files` list:
+
+- `planned`: processing has not started
+- `running`: HERMES is checking or unpacking the list
+- `completed`: every raw file has a valid summary and valid listed Parquet files
+- `failed`: at least one raw file could not be unpacked or validated
+
+A repeated run skips a raw file only when its summary is valid and every listed
+Parquet file exists. It runs an input only when neither its summary nor matching
+Parquet files exist. Matching Parquet files without a valid summary, or an
+invalid existing summary, cause the overall run to fail. No resume flag is
+saved.
 
 The EMPIR fields remain undecided. When an EMPIR workflow is defined, name its
 input files, output directories, configuration files, and result files directly:

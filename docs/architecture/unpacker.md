@@ -258,64 +258,89 @@ For example:
 analysis/logs/DT_2p0V_000000-unpacker-summary.json
 ```
 
-The summary JSON file should use nested `backend`, `configuration`, `source`,
-and `output` objects. `source` describes the one raw `.tpx3` input file.
-`output` contains the shared analysis directory, summary JSON filename, and one
-entry for each Parquet category with its directory, row count, file count, and
-relative Parquet filenames. Relative filenames are resolved from the shared
-analysis directory.
+The summary JSON file is the sole saved detailed result for that raw TPX3 file.
+It contains information calculated by the unpacker and does not repeat the
+unpacker program, raw input path, raw input byte count, shared analysis
+directory, summary filename, or overall HERMES unpacking status.
 
-The `output` object should have this structure:
+The summary should have this structure:
 
 ```yaml
-output:
-  analysis_directory: /data/analysis
-  summary_json_file: logs/DT_2p0V_000000-unpacker-summary.json
-  status: complete
-  categories:
-    pixel_hits:
-      directory: pixelHits
-      row_count: 1200000
-      file_count: 2
-      files:
-        - pixelHits/DT_2p0V_000000-chip-0-part-00000.parquet
-        - pixelHits/DT_2p0V_000000-chip-0-part-00001.parquet
-    tdc_triggers:
-      directory: tdcTriggers
-      row_count: 0
-      file_count: 0
-      files: []
-    global_timestamps:
-      directory: globalTimestamps
-      row_count: 0
-      file_count: 0
-      files: []
-    control_packets:
-      directory: controlPackets
-      row_count: 0
-      file_count: 0
-      files: []
-    unknown_packets:
-      directory: unknownPackets
-      row_count: 0
-      file_count: 0
-      files: []
+unpacking:
+  chunks_read: 0
+  packets_read: 0
+  decoded_pixel_hits: 0
+  decoded_tdc_triggers: 0
+  decoded_global_timestamps: 0
+  decoded_spidr_control_packets: 0
+  decoded_tpx3_control_packets: 0
+  decoded_unknown_packets: 0
+  warnings: []
+  errors: []
+
+timestamp_processing:
+  anchors:
+    total: 0
+    unpaired_low: 0
+    unpaired_high: 0
+    warnings: []
+  epoch_assignment:
+    pixels_assigned: 0
+    tdc_triggers_assigned: 0
+    controls_assigned: 0
+    ambiguous_timestamps: 0
+    unresolved_timestamps: 0
+    used_fallback: false
+    warnings: []
+
+sorting:
+  method: in_memory
+  memory_budget_bytes: 0
+  estimated_memory_bytes: 0
+  temporary_runs_created: 0
+
+parquet:
+  pixel_hits:
+    row_count: 1200000
+    files:
+      - pixelHits/DT_2p0V_000000-chip-0-part-00000.parquet
+      - pixelHits/DT_2p0V_000000-chip-0-part-00001.parquet
+  tdc_triggers:
+    row_count: 0
+    files: []
+  global_timestamps:
+    row_count: 0
+    files: []
+  control_packets:
+    row_count: 0
+    files: []
+  unknown_packets:
+    row_count: 0
+    files: []
+  errors: []
+
+processing_times_seconds:
+  unpacking: 0.0
+  epoch_assignment: 0.0
+  conversion: 0.0
+  sorting: 0.0
+  parquet_writing: 0.0
+  total: 0.0
 ```
 
 All five category entries are required, including categories with no rows. The
 file list contains only final Parquet files written for the raw TPX3 file named
-by `source.file_path`; it must not list temporary sorting files or files from a
-different input.
+by the summary filename; it must not list temporary sorting files or files from
+a different input. Paths are relative to the shared analysis directory and
+begin with their category directory, so the directory is not repeated in
+another field. The file count is calculated from `len(files)` and is not saved.
 
-Packet-family counts, validation counts, warnings, and errors should remain
-separate top-level objects or arrays. A complete success summary should be
-written only after every final Parquet file closes successfully.
+Decoded packet counts and Parquet row counts both remain because they describe
+different processing stages. A decoded packet may be rejected before a
+Parquet row is written. Warnings and errors remain in the section that produced
+them.
 
-The summary should also contain a top-level `timing` object for pixel hits, TDC
-triggers, and global timestamps. Each entry should record the counter width,
-native unit, raw maximum, rollover tick count and period, half-range rollover
-detection threshold, canonical units per rollover, and detected rollover count
-for each chip.
+Write the summary only after every final Parquet file closes successfully.
 
 ## Photon Reconstruction
 

@@ -147,8 +147,10 @@ raw TPX3 files
 ```
 
 `hermes/run.py` should call the functions in `hermes/unpacker.py` for every raw
-TPX3 file listed in `HermesTpx3AnalysisState.unpacking_runs`. All inputs use one
-shared analysis directory with `pixelHits/`, `tdcTriggers/`,
+TPX3 file listed in `HermesTpx3AnalysisState.tpx3_files`. The state contains one
+unpacker program, one shared analysis directory, and one overall unpacking
+result for the complete list. All inputs use the shared analysis directory with
+`pixelHits/`, `tdcTriggers/`,
 `globalTimestamps/`, `controlPackets/`, `unknownPackets/`, and `logs/`
 directories. The unpacker carries the raw TPX3 filename stem into every
 Parquet filename and its summary JSON filename. The runner rejects duplicate
@@ -158,6 +160,24 @@ For example, `DT_2p0V_000000.tpx3` produces filenames beginning with
 `DT_2p0V_000000-`. A Parquet part uses the full form
 `DT_2p0V_000000-chip-0-part-00000.parquet`. Its unpacker summary is
 `logs/DT_2p0V_000000-unpacker-summary.json`.
+
+Each input-specific summary JSON file is the sole saved detailed result for
+that raw TPX3 file. Packet counts, Parquet row counts and filenames, warnings,
+errors, timestamp diagnostics, sorting diagnostics, and processing times stay
+in that file. They are not copied into the HERMES YAML file.
+
+When HERMES runs the same analysis again, it handles each raw TPX3 file in list
+order:
+
+1. Skip the raw file when its summary is valid and every listed Parquet file
+   exists.
+2. Run the unpacker when neither its summary nor matching Parquet files exist.
+3. Stop when matching Parquet files exist without a valid summary.
+4. Stop when the summary exists but is invalid.
+5. Mark the overall unpacking result `completed` only after every raw file
+   passes validation.
+
+No resume flag is needed.
 
 Only unpacking is currently defined. `hermes/reconstruction.py` should remain
 empty until the HERMES photon and event settings, Arrow tables, saved Parquet
@@ -207,8 +227,10 @@ Each mode-specific pipeline should:
   its selected analysis model
 - apply `planned`, `running`, `completed`, and `failed` status through
   `StateManager`
-- record start and completion times, exit codes, saved files, counts, warnings,
-  and errors in the corresponding Pydantic result model
+- record the overall step start and finish times in the corresponding Pydantic
+  result model
+- keep detailed results in the program-specific files defined by the selected
+  analysis mode
 - stop before launching an executable when a required state change has not been
   approved
 - return completed or failed state through `StateManager`
