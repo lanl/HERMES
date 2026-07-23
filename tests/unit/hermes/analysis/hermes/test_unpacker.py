@@ -804,6 +804,7 @@ def test_parallel_unpacking_logs_resource_calculation(tmp_path: Path) -> None:
 
 def test_parallel_unpacking_one_failure_stops_remaining_work(tmp_path: Path) -> None:
     analysis = _analysis(tmp_path, "a.tpx3", "failing.tpx3", "c.tpx3", "d.tpx3")
+    analysis.resource_limit_percent = 1
     _write_fake_unpacker(analysis.unpacker_program.executable_path)
     analysis.tpx3_files[0].path.write_text("success", encoding="utf-8")
     analysis.tpx3_files[1].path.write_text("nonzero", encoding="utf-8")
