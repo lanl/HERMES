@@ -26,12 +26,12 @@ std::string generateSummaryJson(const SummaryJsonContent& content) {
     j["unpacking"] = {
         {"chunks_read", content.unpack_summary.chunks_read},
         {"packets_read", content.unpack_summary.packets_read},
-        {"decoded_pixel_hits", content.unpack_summary.pixel_hit_count},
-        {"decoded_tdc_triggers", content.unpack_summary.tdc_hit_count},
-        {"decoded_global_timestamps", content.unpack_summary.global_timestamp_count},
+        {"decoded_pixel_hits", content.unpack_summary.pixel_data_packet_count},
+        {"decoded_tdc_triggers", content.unpack_summary.tdc_timestamp_count},
+        {"decoded_global_timestamps", content.unpack_summary.heartbeat_packet_count},
         {"decoded_spidr_control_packets", content.unpack_summary.spidr_control_count},
         {"decoded_tpx3_control_packets", content.unpack_summary.tpx3_control_count},
-        {"decoded_unknown_packets", content.unpack_summary.unknown_packet_count},
+        {"decoded_unknown_packets", content.unpack_summary.unrecognized_packet_count},
         {"warnings", content.unpack_summary.warnings},
         {"errors", content.unpack_summary.errors}
     };
