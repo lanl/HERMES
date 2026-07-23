@@ -313,19 +313,24 @@ def _validate_completed_files(
 
     analysis_root = analysis_directory.resolve()
     categories = (
-        ("pixelHits", summary.parquet.pixel_hits),
-        ("tdcTriggers", summary.parquet.tdc_triggers),
-        ("globalTimestamps", summary.parquet.global_timestamps),
-        ("controlPackets", summary.parquet.control_packets),
-        ("unknownPackets", summary.parquet.unknown_packets),
+        ("pixelHits", summary.parquet.pixel_hits, True),  # includes chip ID
+        ("tdcTriggers", summary.parquet.tdc_triggers, False),  # no chip ID
+        ("globalTimestamps", summary.parquet.global_timestamps, False),
+        ("controlPackets", summary.parquet.control_packets, False),
+        ("unknownPackets", summary.parquet.unknown_packets, False),
     )
     listed_files: set[Path] = set()
-    filename_pattern = re.compile(
+    filename_pattern_with_chip = re.compile(
         rf"^{re.escape(raw_file_stem)}-chip-(\d+)-part-(\d{{5}})\.parquet$"
     )
-    for expected_directory, category in categories:
+    filename_pattern_without_chip = re.compile(
+        rf"^{re.escape(raw_file_stem)}-part-(\d{{5}})\.parquet$"
+    )
+    for expected_directory, category, has_chip_id in categories:
         observed_rows = 0
         parts_by_chip: dict[int, list[int]] = {}
+        filename_pattern = filename_pattern_with_chip if has_chip_id else filename_pattern_without_chip
+
         for relative_path in category.files:
             filename_match = filename_pattern.fullmatch(relative_path.name)
             if (
@@ -342,8 +347,14 @@ def _validate_completed_files(
                     f"summary lists the same Parquet file more than once: "
                     f"{relative_path}"
                 )
-            chip_index = int(filename_match.group(1))
-            part_index = int(filename_match.group(2))
+
+            if has_chip_id:
+                chip_index = int(filename_match.group(1))
+                part_index = int(filename_match.group(2))
+            else:
+                chip_index = 0  # No chip ID in filename, use default
+                part_index = int(filename_match.group(1))
+
             parts_by_chip.setdefault(chip_index, []).append(part_index)
             parquet_path = analysis_directory / relative_path
             resolved_path = parquet_path.resolve()
@@ -366,9 +377,10 @@ def _validate_completed_files(
 
         for chip_index, part_indexes in parts_by_chip.items():
             if sorted(part_indexes) != list(range(len(part_indexes))):
+                chip_info = f" chip {chip_index}" if has_chip_id else ""
                 raise HermesTpx3OutputError(
-                    f"unexpected Parquet part numbers for {expected_directory} "
-                    f"chip {chip_index}: {sorted(part_indexes)}"
+                    f"unexpected Parquet part numbers for {expected_directory}"
+                    f"{chip_info}: {sorted(part_indexes)}"
                 )
 
         if observed_rows != category.row_count:
