@@ -9,7 +9,7 @@ from pydantic import Field, model_validator
 from hermes.state.models.shared_models import FileReference, StrictBaseModel
 
 AnalysisRunStatus = Literal["planned", "running", "completed", "failed"]
-SortingMethod = Literal["in_memory", "external_merge"]
+SortingStrategy = Literal["in_memory", "external_merge"]
 
 
 class Tpx3SpidrUnpackerProgram(StrictBaseModel):
@@ -57,42 +57,42 @@ class HermesTpx3AnalysisState(StrictBaseModel):
 
 
 class Tpx3SpidrUnpackingSummary(StrictBaseModel):
+    bytes_read: int = Field(ge=0)
     chunks_read: int = Field(ge=0)
     packets_read: int = Field(ge=0)
-    decoded_pixel_hits: int = Field(ge=0)
-    decoded_tdc_triggers: int = Field(ge=0)
-    decoded_global_timestamps: int = Field(ge=0)
-    decoded_spidr_control_packets: int = Field(ge=0)
-    decoded_tpx3_control_packets: int = Field(ge=0)
-    decoded_unknown_packets: int = Field(ge=0)
-    warnings: list[str]
+    pixel_data_packets: int = Field(ge=0)
+    tdc_timestamps: int = Field(ge=0)
+    heartbeat_packets: int = Field(ge=0)
+    spidr_control_packets: int = Field(ge=0)
+    tpx3_control_packets: int = Field(ge=0)
+    unrecognized_packets: int = Field(ge=0)
+    tdc1_rising: int = Field(ge=0)
+    tdc1_falling: int = Field(ge=0)
+    tdc2_rising: int = Field(ge=0)
+    tdc2_falling: int = Field(ge=0)
+    unknown_tdc_edges: int = Field(ge=0)
     errors: list[str]
-
-
-class Tpx3SpidrAnchorSummary(StrictBaseModel):
-    total: int = Field(ge=0)
-    unpaired_low: int = Field(ge=0)
-    unpaired_high: int = Field(ge=0)
     warnings: list[str]
 
 
-class Tpx3SpidrEpochAssignmentSummary(StrictBaseModel):
-    pixels_assigned: int = Field(ge=0)
-    tdc_triggers_assigned: int = Field(ge=0)
-    controls_assigned: int = Field(ge=0)
-    ambiguous_timestamps: int = Field(ge=0)
-    unresolved_timestamps: int = Field(ge=0)
-    used_fallback: bool
-    warnings: list[str]
+class Tpx3SpidrHeartbeatPairsSummary(StrictBaseModel):
+    number_of_beats: int = Field(ge=0)
+
+
+class Tpx3SpidrTimeAdjustmentsSummary(StrictBaseModel):
+    pixel_packets: int = Field(ge=0)
+    tdc_packets: int = Field(ge=0)
+    control_packets: int = Field(ge=0)
+    failed: int = Field(ge=0)
 
 
 class Tpx3SpidrTimestampProcessingSummary(StrictBaseModel):
-    anchors: Tpx3SpidrAnchorSummary
-    epoch_assignment: Tpx3SpidrEpochAssignmentSummary
+    heartbeat_pairs: Tpx3SpidrHeartbeatPairsSummary
+    time_adjustments: Tpx3SpidrTimeAdjustmentsSummary
 
 
 class Tpx3SpidrSortingSummary(StrictBaseModel):
-    method: SortingMethod
+    strategy: SortingStrategy
     memory_budget_bytes: int = Field(ge=0)
     estimated_memory_bytes: int = Field(ge=0)
     temporary_runs_created: int = Field(ge=0)
@@ -112,21 +112,21 @@ class Tpx3SpidrParquetCategorySummary(StrictBaseModel):
 
 
 class Tpx3SpidrParquetSummary(StrictBaseModel):
-    pixel_hits: Tpx3SpidrParquetCategorySummary
-    tdc_triggers: Tpx3SpidrParquetCategorySummary
-    global_timestamps: Tpx3SpidrParquetCategorySummary
+    pixel_data: Tpx3SpidrParquetCategorySummary
+    tdc_timestamps: Tpx3SpidrParquetCategorySummary
+    heartbeat_packets: Tpx3SpidrParquetCategorySummary
     control_packets: Tpx3SpidrParquetCategorySummary
-    unknown_packets: Tpx3SpidrParquetCategorySummary
+    unrecognized_packets: Tpx3SpidrParquetCategorySummary
     errors: list[str]
 
     @model_validator(mode="after")
     def require_category_relative_paths(self) -> Tpx3SpidrParquetSummary:
         expected_directories = {
-            "pixel_hits": "pixelHits",
-            "tdc_triggers": "tdcTriggers",
-            "global_timestamps": "globalTimestamps",
+            "pixel_data": "pixelHits",
+            "tdc_timestamps": "tdcTriggers",
+            "heartbeat_packets": "globalTimestamps",
             "control_packets": "controlPackets",
-            "unknown_packets": "unknownPackets",
+            "unrecognized_packets": "unknownPackets",
         }
         for field_name, expected_directory in expected_directories.items():
             category = getattr(self, field_name)
@@ -144,13 +144,20 @@ class Tpx3SpidrParquetSummary(StrictBaseModel):
         return self
 
 
+class Tpx3SpidrThroughputSummary(StrictBaseModel):
+    packets_per_second: float = Field(ge=0)
+    megabytes_per_second: float = Field(ge=0)
+
+
 class Tpx3SpidrProcessingTimesSummary(StrictBaseModel):
+    canonical_time_seconds: float = Field(gt=0)
     unpacking: float = Field(ge=0)
-    epoch_assignment: float = Field(ge=0)
-    conversion: float = Field(ge=0)
+    canonical_conversion: float = Field(ge=0)
+    time_adjustments: float = Field(ge=0)
     sorting: float = Field(ge=0)
     parquet_writing: float = Field(ge=0)
     total: float = Field(ge=0)
+    throughput: Tpx3SpidrThroughputSummary
 
 
 class Tpx3SpidrSummary(StrictBaseModel):
