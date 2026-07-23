@@ -132,6 +132,7 @@ def test_real_cpp_unpacker_handles_two_inputs_and_skips_completed_files(
         "unpacker_program",
         "analysis_directory",
         "tpx3_files",
+        "resource_limit_percent",
         "results",
     }
     assert set(saved_analysis["results"]["unpacking"]) == {
