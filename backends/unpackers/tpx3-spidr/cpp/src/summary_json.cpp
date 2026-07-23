@@ -5,7 +5,7 @@
 #include <fstream>
 #include <stdexcept>
 
-using json = nlohmann::json;
+using json = nlohmann::ordered_json;
 
 namespace hermes_tpx3_spidr {
 
@@ -22,61 +22,87 @@ json categoryJson(const ParquetCategoryFiles& category) {
 
 std::string generateSummaryJson(const SummaryJsonContent& content) {
     json j;
+    const auto total_seconds = content.timing_diagnostics.total_seconds;
+    const auto packets_per_second =
+        total_seconds > 0.0
+            ? static_cast<double>(content.unpack_summary.packets_read) /
+                  total_seconds
+            : 0.0;
+    const auto megabytes_per_second =
+        total_seconds > 0.0
+            ? static_cast<double>(content.unpack_summary.bytes_read) /
+                  total_seconds / 1'000'000.0
+            : 0.0;
 
     j["unpacking"] = {
+        {"bytes_read", content.unpack_summary.bytes_read},
         {"chunks_read", content.unpack_summary.chunks_read},
         {"packets_read", content.unpack_summary.packets_read},
-        {"decoded_pixel_hits", content.unpack_summary.pixel_data_packet_count},
-        {"decoded_tdc_triggers", content.unpack_summary.tdc_timestamp_count},
-        {"decoded_global_timestamps", content.unpack_summary.heartbeat_packet_count},
-        {"decoded_spidr_control_packets", content.unpack_summary.spidr_control_count},
-        {"decoded_tpx3_control_packets", content.unpack_summary.tpx3_control_count},
-        {"decoded_unknown_packets", content.unpack_summary.unrecognized_packet_count},
-        {"warnings", content.unpack_summary.warnings},
-        {"errors", content.unpack_summary.errors}
+        {"pixel_data_packets",
+         content.unpack_summary.pixel_data_packet_count},
+        {"tdc_timestamps", content.unpack_summary.tdc_timestamp_count},
+        {"heartbeat_packets", content.unpack_summary.heartbeat_packet_count},
+        {"spidr_control_packets", content.unpack_summary.spidr_control_count},
+        {"tpx3_control_packets", content.unpack_summary.tpx3_control_count},
+        {"unrecognized_packets",
+         content.unpack_summary.unrecognized_packet_count},
+        {"tdc1_rising", content.unpack_summary.tdc1_rising_count},
+        {"tdc1_falling", content.unpack_summary.tdc1_falling_count},
+        {"tdc2_rising", content.unpack_summary.tdc2_rising_count},
+        {"tdc2_falling", content.unpack_summary.tdc2_falling_count},
+        {"unknown_tdc_edges",
+         content.unpack_summary.unknown_tdc_edge_count},
+        {"errors", content.unpack_summary.errors},
+        {"warnings", content.unpack_summary.warnings}
     };
 
     j["timestamp_processing"] = {
-        {"anchors", {
-            {"total", content.anchor_diagnostics.total_anchors},
-            {"unpaired_low", content.anchor_diagnostics.unpaired_low_count},
-            {"unpaired_high", content.anchor_diagnostics.unpaired_high_count},
-            {"warnings", content.anchor_diagnostics.warnings}
+        {"heartbeat_pairs", {
+            {"number_of_beats", content.anchor_diagnostics.total_anchors}
         }},
-        {"epoch_assignment", {
-            {"pixels_assigned", content.epoch_diagnostics.pixels_assigned},
-            {"tdc_triggers_assigned", content.epoch_diagnostics.tdcs_assigned},
-            {"controls_assigned", content.epoch_diagnostics.controls_assigned},
-            {"ambiguous_timestamps", content.epoch_diagnostics.ambiguous_timestamps},
-            {"unresolved_timestamps", content.epoch_diagnostics.unresolved_timestamps},
-            {"used_fallback", content.epoch_diagnostics.used_fallback},
-            {"warnings", content.epoch_diagnostics.warnings}
+        {"time_adjustments", {
+            {"pixel_packets", content.epoch_diagnostics.pixels_assigned},
+            {"tdc_packets", content.epoch_diagnostics.tdcs_assigned},
+            {"control_packets", content.epoch_diagnostics.controls_assigned},
+            {"failed", content.epoch_diagnostics.unresolved_timestamps}
         }}
     };
 
     j["sorting"] = {
-        {"method", content.sorting_diagnostics.path_used == SortingPath::in_memory ? "in_memory" : "external_merge"},
+        {"strategy",
+         content.sorting_diagnostics.path_used == SortingPath::in_memory
+             ? "in_memory"
+             : "external_merge"},
         {"memory_budget_bytes", content.sorting_diagnostics.memory_budget_bytes},
         {"estimated_memory_bytes", content.sorting_diagnostics.estimated_memory_bytes},
         {"temporary_runs_created", content.sorting_diagnostics.temporary_runs_created}
     };
 
     j["parquet"] = {
-        {"pixel_hits", categoryJson(content.writer_diagnostics.pixel_hits)},
-        {"tdc_triggers", categoryJson(content.writer_diagnostics.tdc_triggers)},
-        {"global_timestamps", categoryJson(content.writer_diagnostics.global_timestamps)},
+        {"pixel_data", categoryJson(content.writer_diagnostics.pixel_hits)},
+        {"tdc_timestamps", categoryJson(content.writer_diagnostics.tdc_triggers)},
+        {"heartbeat_packets",
+         categoryJson(content.writer_diagnostics.global_timestamps)},
         {"control_packets", categoryJson(content.writer_diagnostics.control_packets)},
-        {"unknown_packets", categoryJson(content.writer_diagnostics.unknown_packets)},
+        {"unrecognized_packets",
+         categoryJson(content.writer_diagnostics.unknown_packets)},
         {"errors", content.writer_diagnostics.errors}
     };
 
     j["processing_times_seconds"] = {
+        {"canonical_time_seconds", 2.0345e-12},
         {"unpacking", content.timing_diagnostics.unpacking_seconds},
-        {"epoch_assignment", content.timing_diagnostics.epoch_assignment_seconds},
-        {"conversion", content.timing_diagnostics.conversion_seconds},
+        {"canonical_conversion",
+         content.timing_diagnostics.conversion_seconds},
+        {"time_adjustments",
+         content.timing_diagnostics.epoch_assignment_seconds},
         {"sorting", content.timing_diagnostics.sorting_seconds},
         {"parquet_writing", content.timing_diagnostics.parquet_writing_seconds},
-        {"total", content.timing_diagnostics.total_seconds}
+        {"total", total_seconds},
+        {"throughput", {
+            {"packets_per_second", packets_per_second},
+            {"megabytes_per_second", megabytes_per_second}
+        }}
     };
 
     return j.dump(2);
