@@ -82,7 +82,7 @@ void unpackPixelHit(const PacketPosition& position, UnpackResult& result) {
         coarse_time_25ns,
         fine_time_1p5625ns,
     });
-    ++result.summary.pixel_hit_count;
+    ++result.summary.pixel_data_packet_count;
 }
 
 void unpackTdcHit(const PacketPosition& position, UnpackResult& result) {
@@ -150,7 +150,7 @@ void unpackTdcHit(const PacketPosition& position, UnpackResult& result) {
         fine_value_valid,
         time_canonical_ticks,
     });
-    ++result.summary.tdc_hit_count;
+    ++result.summary.tdc_timestamp_count;
 }
 
 void unpackGlobalTime(const PacketPosition& position, UnpackResult& result) {
@@ -181,7 +181,7 @@ void unpackGlobalTime(const PacketPosition& position, UnpackResult& result) {
         position,
         packet_id,
     });
-    ++result.summary.unknown_packet_count;
+    ++result.summary.unrecognized_packet_count;
     result.summary.warnings.push_back(
         "Unknown global-time packet at " + packetLocation(position));
 }
@@ -274,7 +274,7 @@ void unpackUnknown(const PacketPosition& position, UnpackResult& result) {
         position,
         static_cast<std::uint8_t>(position.raw_word >> 56U),
     });
-    ++result.summary.unknown_packet_count;
+    ++result.summary.unrecognized_packet_count;
     result.summary.warnings.push_back(
         "Unknown packet at " + packetLocation(position));
 }
@@ -470,7 +470,7 @@ UnpackResult unpack(std::istream& input) {
                      << 32U) |
                         low.global_time_low_raw,
                 });
-                ++result.summary.global_timestamp_count;
+                ++result.summary.heartbeat_packet_count;
                 pending_global_time_lows[chunk_read.chip_index].reset();
             }
         }
