@@ -350,3 +350,6 @@ ipython_config.py
 # Data directory - only README is tracked
 data/*
 !data/README.md
+
+# Checked-in TPX3 fixture used by unpacker integration tests
+!tests/data/Example_1kHz_5frames.tpx3
