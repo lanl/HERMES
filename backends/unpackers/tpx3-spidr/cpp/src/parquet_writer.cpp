@@ -28,6 +28,14 @@ std::string makePartFileName(const std::string& prefix,
     return oss.str();
 }
 
+std::string makePartFileNameWithoutChip(const std::string& prefix,
+                                        std::uint64_t part_number) {
+    std::ostringstream oss;
+    oss << prefix << "-part-"
+        << std::setw(5) << std::setfill('0') << part_number << ".parquet";
+    return oss.str();
+}
+
 bool ensureDirectory(const std::string& path, std::vector<std::string>& errors) {
     try {
         std::filesystem::create_directories(path);
@@ -304,13 +312,14 @@ std::shared_ptr<arrow::Table> buildUnknownTable(
     return arrow::Table::Make(schema, {chunk_array, packet_array, word_array, byte_array});
 }
 
-template <typename Row, typename TableBuilder>
+template <typename Row, typename TableBuilder, typename FilenameGenerator>
 void writeRowsToParquet(
     const std::vector<Row>& rows,
     const ParquetWriterConfig& config,
     ParquetCategoryFiles& category,
     std::vector<std::string>& errors,
-    TableBuilder table_builder) {
+    TableBuilder table_builder,
+    FilenameGenerator filename_generator) {
 
     category.row_count = rows.size();
     if (rows.empty()) {
@@ -332,8 +341,7 @@ void writeRowsToParquet(
 
         auto table = table_builder(rows, start_idx, count);
 
-        const std::string filename = makePartFileName(
-            config.raw_file_stem, config.chip_index, part);
+        const std::string filename = filename_generator(config, part);
         const std::string relative_path = category.directory + "/" + filename;
         const std::string full_path = config.analysis_directory + "/" + relative_path;
 
@@ -369,36 +377,51 @@ void writeRowsToParquet(
 void writePixelHitsParquet(const std::vector<PixelOutputRow>& rows,
                            const ParquetWriterConfig& config,
                            ParquetWriterDiagnostics& diagnostics) {
+    auto filename_gen = [](const ParquetWriterConfig& cfg, std::uint64_t part) {
+        return makePartFileName(cfg.raw_file_stem, cfg.chip_index, part);
+    };
     writeRowsToParquet(rows, config, diagnostics.pixel_hits,
-                      diagnostics.errors, buildPixelTable);
+                      diagnostics.errors, buildPixelTable, filename_gen);
 }
 
 void writeTdcTriggersParquet(const std::vector<TdcOutputRow>& rows,
                              const ParquetWriterConfig& config,
                              ParquetWriterDiagnostics& diagnostics) {
+    auto filename_gen = [](const ParquetWriterConfig& cfg, std::uint64_t part) {
+        return makePartFileNameWithoutChip(cfg.raw_file_stem, part);
+    };
     writeRowsToParquet(rows, config, diagnostics.tdc_triggers,
-                      diagnostics.errors, buildTdcTable);
+                      diagnostics.errors, buildTdcTable, filename_gen);
 }
 
 void writeGlobalTimestampsParquet(const std::vector<GlobalOutputRow>& rows,
                                    const ParquetWriterConfig& config,
                                    ParquetWriterDiagnostics& diagnostics) {
+    auto filename_gen = [](const ParquetWriterConfig& cfg, std::uint64_t part) {
+        return makePartFileNameWithoutChip(cfg.raw_file_stem, part);
+    };
     writeRowsToParquet(rows, config, diagnostics.global_timestamps,
-                      diagnostics.errors, buildGlobalTable);
+                      diagnostics.errors, buildGlobalTable, filename_gen);
 }
 
 void writeControlPacketsParquet(const std::vector<ControlOutputRow>& rows,
                                 const ParquetWriterConfig& config,
                                 ParquetWriterDiagnostics& diagnostics) {
+    auto filename_gen = [](const ParquetWriterConfig& cfg, std::uint64_t part) {
+        return makePartFileNameWithoutChip(cfg.raw_file_stem, part);
+    };
     writeRowsToParquet(rows, config, diagnostics.control_packets,
-                      diagnostics.errors, buildControlTable);
+                      diagnostics.errors, buildControlTable, filename_gen);
 }
 
 void writeUnknownPacketsParquet(const std::vector<UnknownOutputRow>& rows,
                                 const ParquetWriterConfig& config,
                                 ParquetWriterDiagnostics& diagnostics) {
+    auto filename_gen = [](const ParquetWriterConfig& cfg, std::uint64_t part) {
+        return makePartFileNameWithoutChip(cfg.raw_file_stem, part);
+    };
     writeRowsToParquet(rows, config, diagnostics.unknown_packets,
-                      diagnostics.errors, buildUnknownTable);
+                      diagnostics.errors, buildUnknownTable, filename_gen);
 }
 
 #else
