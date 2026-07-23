@@ -857,3 +857,41 @@ def test_parallel_unpacking_skips_valid_files(tmp_path: Path) -> None:
     ]
     assert len(skipped_records) == 1
     assert "skip-me" in skipped_records[0]["extra"]["raw_tpx3_file"]
+
+
+def test_resource_calculation_uses_only_pending_files(tmp_path: Path) -> None:
+    analysis = _analysis(tmp_path, "large-skip.tpx3", "small-run.tpx3")
+    _write_fake_unpacker(analysis.unpacker_program.executable_path)
+
+    # Make the first file large but already completed (will be skipped)
+    analysis.tpx3_files[0].path.write_bytes(b"x" * (100 * 1024 * 1024))
+    _save_completed_files(analysis, analysis.tpx3_files[0], pixel_rows=1)
+
+    # Make the second file small (will be run)
+    analysis.tpx3_files[1].path.write_text("success", encoding="utf-8")
+
+    records: list[dict[str, Any]] = []
+    sink_id = logger.add(lambda msg: records.append(msg.record))
+
+    try:
+        manager = StateManager(
+            _record(tmp_path, analysis),
+            config=StateServiceConfig(allow_trusted_workflow_bypass=True),
+            state_logger=CapturingStateLogger(),
+        )
+        run_hermes_analysis(manager)
+    finally:
+        logger.remove(sink_id)
+
+    resource_records = [
+        r
+        for r in records
+        if r["extra"].get("event_type")
+        == "analysis.tpx3_unpacking.resource_calculation"
+    ]
+    assert len(resource_records) == 1
+    resource_record = resource_records[0]
+
+    # The resource calculation should be based on the small file, not the large skipped one
+    assert resource_record["extra"]["pending_file_count"] == 1
+    assert resource_record["extra"]["largest_pending_file_mb"] < 1.0
