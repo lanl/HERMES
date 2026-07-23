@@ -114,7 +114,7 @@ void testPixels(TestContext& test) {
     test.expectEqual(hit.fine_time_1p5625ns,
                      static_cast<std::int64_t>(coarse << 4U) - 0x0B,
                      "pixel fine-time subtraction");
-    test.expectEqual(result.summary.pixel_hit_count, std::uint64_t{1},
+    test.expectEqual(result.summary.pixel_data_packet_count, std::uint64_t{1},
                      "pixel summary count");
 
     UnpackResult boundaries;
@@ -141,7 +141,7 @@ void testTdc(TestContext& test) {
             1U, 2U, index, result);
     }
 
-    test.expectEqual(result.summary.tdc_hit_count, std::uint64_t{4},
+    test.expectEqual(result.summary.tdc_timestamp_count, std::uint64_t{4},
                      "TDC total count");
     test.expectEqual(result.summary.tdc1_rising_count, std::uint64_t{1},
                      "TDC1 rising count");

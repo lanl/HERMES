@@ -137,8 +137,8 @@ struct UnpackSummary {
     std::uint64_t chunks_read = 0;
     std::uint64_t packets_read = 0;
     std::uint64_t integrated_tot_count = 0;
-    std::uint64_t pixel_hit_count = 0;
-    std::uint64_t tdc_hit_count = 0;
+    std::uint64_t pixel_data_packet_count = 0;
+    std::uint64_t tdc_timestamp_count = 0;
     std::uint64_t tdc1_rising_count = 0;
     std::uint64_t tdc1_falling_count = 0;
     std::uint64_t tdc2_rising_count = 0;
@@ -146,7 +146,7 @@ struct UnpackSummary {
     std::uint64_t unknown_tdc_edge_count = 0;
     std::uint64_t global_time_low_count = 0;
     std::uint64_t global_time_high_count = 0;
-    std::uint64_t global_timestamp_count = 0;
+    std::uint64_t heartbeat_packet_count = 0;
     std::uint64_t spidr_control_count = 0;
     std::uint64_t packet_count_control_count = 0;
     std::uint64_t shutter_open_count = 0;
@@ -163,7 +163,7 @@ struct UnpackSummary {
     std::uint64_t malformed_chunk_count = 0;
     std::uint64_t truncated_chunk_count = 0;
     std::uint64_t invalid_tdc_fine_value_count = 0;
-    std::uint64_t unknown_packet_count = 0;
+    std::uint64_t unrecognized_packet_count = 0;
     std::vector<std::string> warnings;
     std::vector<std::string> errors;
 };

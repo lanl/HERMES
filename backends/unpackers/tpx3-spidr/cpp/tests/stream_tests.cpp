@@ -144,7 +144,7 @@ void testGlobalTimePairing(TestContext& test) {
                      "global low count");
     test.expectEqual(result.summary.global_time_high_count, std::uint64_t{2},
                      "global high count");
-    test.expectEqual(result.summary.global_timestamp_count,
+    test.expectEqual(result.summary.heartbeat_packet_count,
                      std::uint64_t{1}, "paired global count");
     test.expectEqual(result.summary.packets_read, std::uint64_t{3},
                      "global stream packet count");

@@ -138,9 +138,9 @@ The HERMES pipeline is:
 ```text
 raw TPX3 files
   -> HERMES TPX3 SPIDR unpacker
-  -> sorted pixel_hits Parquet files
-  -> sorted tdc_triggers Parquet files
-  -> sorted global_timestamps Parquet files
+  -> sorted pixel_data Parquet files
+  -> sorted tdc_timestamps Parquet files
+  -> sorted heartbeat_packets Parquet files
   -> sorted control_packets Parquet files
   -> future HERMES pixel-to-photon reconstruction
   -> future HERMES photon-to-event reconstruction

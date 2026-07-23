@@ -9,8 +9,8 @@ void printSummary(const UnpackSummary& summary, std::ostream& output) {
            << " chunks=" << summary.chunks_read
            << " packets=" << summary.packets_read << '\n'
            << "integrated_tot=" << summary.integrated_tot_count
-           << " pixel_hits=" << summary.pixel_hit_count << '\n'
-           << "tdc_hits=" << summary.tdc_hit_count
+           << " pixel_hits=" << summary.pixel_data_packet_count << '\n'
+           << "tdc_hits=" << summary.tdc_timestamp_count
            << " tdc1_rising=" << summary.tdc1_rising_count
            << " tdc1_falling=" << summary.tdc1_falling_count
            << " tdc2_rising=" << summary.tdc2_rising_count
@@ -18,7 +18,7 @@ void printSummary(const UnpackSummary& summary, std::ostream& output) {
            << " unknown_tdc_edge=" << summary.unknown_tdc_edge_count << '\n'
            << "global_time_low=" << summary.global_time_low_count
            << " global_time_high=" << summary.global_time_high_count
-           << " global_timestamps=" << summary.global_timestamp_count << '\n'
+           << " global_timestamps=" << summary.heartbeat_packet_count << '\n'
            << "spidr_controls=" << summary.spidr_control_count
            << " packet_count=" << summary.packet_count_control_count
            << " shutter_open=" << summary.shutter_open_count
@@ -34,7 +34,7 @@ void printSummary(const UnpackSummary& summary, std::ostream& output) {
            << " request_time_high=" << summary.request_time_high_count
            << " other_chip_cmd=" << summary.other_chip_command_count
            << " unknown_tpx3=" << summary.unknown_tpx3_control_count << '\n'
-           << "unknown_packets=" << summary.unknown_packet_count << '\n'
+           << "unknown_packets=" << summary.unrecognized_packet_count << '\n'
            << "malformed_chunks=" << summary.malformed_chunk_count
            << " truncated_chunks=" << summary.truncated_chunk_count
            << " invalid_tdc_fine="

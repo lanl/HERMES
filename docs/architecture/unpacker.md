@@ -33,10 +33,11 @@ The unpacker derives all category directories and output filenames from those
 two inputs. Do not add separate command options for category directories, a
 filename prefix, or a summary filename.
 
-The HERMES state should save the raw TPX3 input file, shared analysis directory,
-summary JSON file, unpacker name, unpacker version, command
-arguments, pixel-hit count, TDC-trigger count, global-timestamp count,
-control-packet count, timing ranges, warnings, and errors.
+The HERMES state should save the raw TPX3 input files, shared analysis
+directory, unpacker program, and overall unpacking status and times. Each
+input-specific summary JSON file should save its byte and packet counts,
+Parquet filenames and row counts, timestamp-processing information, sorting
+information, processing times, throughput, warnings, and errors.
 
 ## Shared Analysis Directories
 
@@ -73,11 +74,11 @@ The directory names and the corresponding Parquet data category names are:
 
 | Saved data | Directory | Parquet data category |
 | --- | --- | --- |
-| Pixel hits | `pixelHits/` | `pixel_hits` |
-| TDC triggers | `tdcTriggers/` | `tdc_triggers` |
-| Global timestamps | `globalTimestamps/` | `global_timestamps` |
+| Pixel data | `pixelHits/` | `pixel_data` |
+| TDC timestamps | `tdcTriggers/` | `tdc_timestamps` |
+| Heartbeat packets | `globalTimestamps/` | `heartbeat_packets` |
 | Control packets | `controlPackets/` | `control_packets` |
-| Unknown packets | `unknownPackets/` | `unknown_packets` |
+| Unrecognized packets | `unknownPackets/` | `unrecognized_packets` |
 
 ## Parquet Filenames
 
@@ -88,7 +89,7 @@ index:
 <raw-file-stem>-chip-<chip-index>-part-<five-digit-part-index>.parquet
 ```
 
-For example, the first pixel-hit part for chip 0 from
+For example, the first pixel-data part for chip 0 from
 `DT_2p0V_000000.tpx3` is:
 
 ```text
@@ -107,11 +108,11 @@ cannot overwrite another input's files. Existing files with the same expected
 names must also cause the run to stop; the unpacker must not silently overwrite
 them.
 
-Integrated-ToT packets should be decoded and counted, but the first output
+Integrated-ToT packets should be unpacked and counted, but the first output
 format does not write them. A later acquisition-mode-specific version may add
 an `integratedPixels/` directory.
 
-The C++ decoder should use the native integer timing fields to calculate final
+The C++ unpacker should use the native integer timing fields to calculate final
 timestamps, but it should not copy those raw timing fields into Parquet. Each
 known timestamped dataset should contain only `timestamp_canonical` for time.
 The Parquet metadata and summary JSON file should define the canonical unit.
@@ -120,16 +121,16 @@ Pixel ToT should remain in the pixel table because it is a detector measurement,
 not an arrival-timestamp component. The TDC table should contain only
 `trigger_type` and `timestamp_canonical`. `trigger_type` uses `0` for TDC1
 rising, `1` for TDC1 falling, `2` for TDC2 rising, and `3` for TDC2 falling.
-Invalid-time TDC packets should be counted as decoder errors and omitted from
+Invalid-time TDC packets should be counted as unpacking errors and omitted from
 Parquet.
 
 ## Parquet Schemas
 
 Known-packet tables should contain the final analysis values rather than copies
-of raw packet words or raw timestamp components. Unknown packets retain their
-raw word because no reliable decoded representation exists for them.
+of raw packet words or raw timestamp components. Unrecognized packets retain
+their raw word because no reliable unpacked representation exists for them.
 
-### `pixel_hits`
+### `pixel_data`
 
 | Column | Arrow type | Nullable | Description |
 | --- | --- | --- | --- |
@@ -140,11 +141,11 @@ raw word because no reliable decoded representation exists for them.
 | `tot_raw` | `uint16` | no | Pixel ToT measurement |
 | `timestamp_canonical` | `uint64` | no | Unwrapped final timestamp |
 
-The raw `pixel_address`, ToA, FToA, and SPIDR time are used by the C++ decoder
+The raw `pixel_address`, ToA, FToA, and SPIDR time are used by the C++ unpacker
 but are not copied into Parquet. `local_x` and `local_y` contain the complete
-decoded pixel location.
+unpacked pixel location.
 
-### `tdc_triggers`
+### `tdc_timestamps`
 
 | Column | Arrow type | Nullable | Description |
 | --- | --- | --- | --- |
@@ -153,10 +154,10 @@ decoded pixel location.
 
 The normalized trigger type replaces separate channel and edge columns. Raw
 edge code, trigger counter, reserved bits, fine-time validity, and packet
-provenance remain decoder diagnostics and are not written. A TDC packet with an
+provenance remain unpacker diagnostics and are not written. A TDC packet with an
 invalid fine-time value does not produce a Parquet row.
 
-### `global_timestamps`
+### `heartbeat_packets`
 
 | Column | Arrow type | Nullable | Description |
 | --- | --- | --- | --- |
@@ -164,9 +165,8 @@ invalid fine-time value does not produce a Parquet row.
 | `packet_index` | `uint64` | no | High packet index within that chunk |
 | `timestamp_canonical` | `uint64` | no | Paired and unwrapped final timestamp |
 
-Only complete low/high pairs are written. The low packet position and raw low,
-high, paired, and SPIDR timing values are not copied into Parquet. Unpaired
-packet counts belong in `summary.json`.
+Only complete heartbeat low/high pairs are written. The low packet position and
+raw low, high, paired, and SPIDR timing values are not copied into Parquet.
 
 ### `control_packets`
 
@@ -185,13 +185,13 @@ packet counts belong in `summary.json`.
 | `control_payload_raw` | `uint64` | yes | TPX3 control value data when present |
 | `timestamp_canonical` | `uint64` | yes | Unwrapped final timestamp when present |
 
-### `unknown_packets`
+### `unrecognized_packets`
 
 | Column | Arrow type | Nullable | Description |
 | --- | --- | --- | --- |
 | `chunk_index` | `uint64` | no | Chunk index in the input file |
 | `packet_index` | `uint64` | no | Packet index within the chunk |
-| `raw_word` | `uint64` | no | Original unknown packet word |
+| `raw_word` | `uint64` | no | Original unrecognized packet word |
 | `most_significant_byte` | `uint8` | no | Raw most-significant byte |
 
 Every schema should record its version and the canonical time unit in Parquet
@@ -214,8 +214,8 @@ Parquet columns:
 | TDC coarse time | packet timestamp field | `25 ns` ticks | Used with finer TDC fields to derive edge time. |
 | TDC sub-coarse time | packet timestamp field | `3.125 ns` ticks | Part of the TDC timestamp. |
 | TDC fine time | 4-bit, values `1..12` | `260.416666 ps` steps | Value `0` is an error state per ASI documentation. |
-| Global timestamp low | 32-bit | `25 ns` ticks | Low part of the 48-bit global timer. |
-| Global timestamp high | 16-bit | high bits of same `25 ns` timer | Combined global timer lasts about `81 days`. |
+| Heartbeat timestamp low | 32-bit | `25 ns` ticks | Low part of the 48-bit global timer. |
+| Heartbeat timestamp high | 16-bit | high bits of same `25 ns` timer | Combined global timer lasts about `81 days`. |
 | SPIDR control timestamp | packet type `0x5` | `25 ns` ticks | Used for shutter and heartbeat-style control packets. |
 
 The unpacker should produce a final integer `timestamp_canonical` column when
@@ -231,12 +231,12 @@ and the TDC fine step of `25 ns / 96`. The unpacker should not write derived
 floating-point time columns. Later analysis code may calculate floating-point
 seconds or nanoseconds when needed.
 
-Pixel, TDC, global-timestamp, and timestamped control rows should be calculated
-in canonical time units. Global low and high packets should be paired per chip;
-only paired global timestamps should be written. Timestamp rollovers should be
-tracked independently for each chip and packet category. A paired global row's
-`chunk_index` and `packet_index` should identify the high packet that completed
-the pair; the low packet position should not be written.
+Pixel-data, TDC-timestamp, heartbeat, and timestamped control rows should be
+calculated in canonical time units. Heartbeat low and high packets should be
+paired per chip; only paired heartbeat timestamps should be written. Timestamp
+rollovers should be tracked independently for each chip and packet category. A
+paired heartbeat row's `chunk_index` and `packet_index` should identify the high
+packet that completed the pair; the low packet position should not be written.
 
 Each timestamped dataset should be sorted by `timestamp_canonical`, using source
 stream order internally as a stable tie breaker. For very large files, the
@@ -259,73 +259,77 @@ analysis/logs/DT_2p0V_000000-unpacker-summary.json
 ```
 
 The summary JSON file is the sole saved detailed result for that raw TPX3 file.
-It contains information calculated by the unpacker and does not repeat the
-unpacker program, raw input path, raw input byte count, shared analysis
+It contains information calculated by the unpacker, including the raw byte
+count. It does not repeat the unpacker program, raw input path, shared analysis
 directory, summary filename, or overall HERMES unpacking status.
 
 The summary should have this structure:
 
 ```yaml
 unpacking:
+  bytes_read: 0
   chunks_read: 0
   packets_read: 0
-  decoded_pixel_hits: 0
-  decoded_tdc_triggers: 0
-  decoded_global_timestamps: 0
-  decoded_spidr_control_packets: 0
-  decoded_tpx3_control_packets: 0
-  decoded_unknown_packets: 0
-  warnings: []
+  pixel_data_packets: 0
+  tdc_timestamps: 0
+  heartbeat_packets: 0
+  spidr_control_packets: 0
+  tpx3_control_packets: 0
+  unrecognized_packets: 0
+  tdc1_rising: 0
+  tdc1_falling: 0
+  tdc2_rising: 0
+  tdc2_falling: 0
+  unknown_tdc_edges: 0
   errors: []
+  warnings: []
 
 timestamp_processing:
-  anchors:
-    total: 0
-    unpaired_low: 0
-    unpaired_high: 0
-    warnings: []
-  epoch_assignment:
-    pixels_assigned: 0
-    tdc_triggers_assigned: 0
-    controls_assigned: 0
-    ambiguous_timestamps: 0
-    unresolved_timestamps: 0
-    used_fallback: false
-    warnings: []
+  heartbeat_pairs:
+    number_of_beats: 0
+  time_adjustments:
+    pixel_packets: 0
+    tdc_packets: 0
+    control_packets: 0
+    failed: 0
 
 sorting:
-  method: in_memory
+  strategy: in_memory
   memory_budget_bytes: 0
   estimated_memory_bytes: 0
   temporary_runs_created: 0
 
 parquet:
-  pixel_hits:
+  pixel_data:
     row_count: 1200000
     files:
       - pixelHits/DT_2p0V_000000-chip-0-part-00000.parquet
       - pixelHits/DT_2p0V_000000-chip-0-part-00001.parquet
-  tdc_triggers:
+  tdc_timestamps:
     row_count: 0
     files: []
-  global_timestamps:
+  heartbeat_packets:
     row_count: 0
     files: []
   control_packets:
     row_count: 0
     files: []
-  unknown_packets:
+  unrecognized_packets:
     row_count: 0
     files: []
   errors: []
 
 processing_times_seconds:
+  canonical_time_seconds: 2.0345e-12
   unpacking: 0.0
-  epoch_assignment: 0.0
-  conversion: 0.0
+  canonical_conversion: 0.0
+  time_adjustments: 0.0
   sorting: 0.0
   parquet_writing: 0.0
   total: 0.0
+  throughput:
+    packets_per_second: 0.0
+    megabytes_per_second: 0.0
 ```
 
 All five category entries are required, including categories with no rows. The
@@ -335,10 +339,19 @@ a different input. Paths are relative to the shared analysis directory and
 begin with their category directory, so the directory is not repeated in
 another field. The file count is calculated from `len(files)` and is not saved.
 
-Decoded packet counts and Parquet row counts both remain because they describe
-different processing stages. A decoded packet may be rejected before a
+Unpacked packet counts and Parquet row counts both remain because they describe
+different processing stages. An unpacked packet may be rejected before a
 Parquet row is written. Warnings and errors remain in the section that produced
-them.
+them. `canonical_time_seconds` records the duration of one canonical tick:
+`25 ns / 12288`, or about `2.0345 ps`. Throughput uses the total processing
+time, with megabytes calculated as `1,000,000` bytes.
+
+The TDC edge counts show how the unpacked timestamps divide between TDC1 and
+TDC2 rising and falling edges. `heartbeat_pairs.number_of_beats` reports the
+paired heartbeat timestamps used for time adjustment. The `time_adjustments`
+counts show how many pixel, TDC, and control packets received adjusted times
+and how many adjustments failed. `sorting.strategy` is either `in_memory` or
+`external_merge`.
 
 Write the summary only after every final Parquet file closes successfully.
 
@@ -346,7 +359,7 @@ Write the summary only after every final Parquet file closes successfully.
 
 Photon reconstruction is a separate analysis step, not a required part of the
 unpacker. A user-selected photon reconstruction backend should read the
-`pixel_hits` Parquet files and write photon Parquet files. Possible C++ and Rust
+`pixel_data` Parquet files and write photon Parquet files. Possible C++ and Rust
 versions should be grouped under:
 
 ```text
@@ -355,10 +368,11 @@ backends/photon-reconstructors/<name>/
 └── rust/
 ```
 
-The purpose of photon clustering is to group adjacent pixel hits that likely came
-from one photon entering the image intensifier and producing a phosphor response
-across multiple TPX3 pixels. A first clustering pass should be configurable and
-should save its full settings in the summary and HERMES state.
+The purpose of photon clustering is to group adjacent pixel-data rows that
+likely came from one photon entering the image intensifier and producing a
+phosphor response across multiple TPX3 pixels. A first clustering pass should
+be configurable and should save its full settings in the summary and HERMES
+state.
 
 Important clustering parameters include:
 
@@ -374,7 +388,7 @@ Important clustering parameters include:
 The photon output directory should contain two Parquet file groups:
 
 - `photon_events`: one row per reconstructed photon candidate
-- `photon_pixels`: membership rows linking source pixel hits to photon candidates
+- `photon_pixels`: membership rows linking source pixel data to photon candidates
 
 `photon_events` should be a minimal event table with only the reconstructed
 photon coordinates and signal values:
@@ -401,7 +415,7 @@ HERMES state, or optional diagnostic tables.
 - `timestamp_canonical`
 
 The HERMES state should save the photon-clustering settings, run status,
-pixel-hit input directory, photon-event output directory, photon-pixel output
+pixel-data input directory, photon-event output directory, photon-pixel output
 directory, program version, photon counts, warnings, and errors.
 
 ## Event Reconstruction

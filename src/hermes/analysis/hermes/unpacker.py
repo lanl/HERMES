@@ -313,11 +313,11 @@ def _validate_completed_files(
 
     analysis_root = analysis_directory.resolve()
     categories = (
-        ("pixelHits", summary.parquet.pixel_hits, True),  # includes chip ID
-        ("tdcTriggers", summary.parquet.tdc_triggers, False),  # no chip ID
-        ("globalTimestamps", summary.parquet.global_timestamps, False),
+        ("pixelHits", summary.parquet.pixel_data, True),  # includes chip ID
+        ("tdcTriggers", summary.parquet.tdc_timestamps, False),  # no chip ID
+        ("globalTimestamps", summary.parquet.heartbeat_packets, False),
         ("controlPackets", summary.parquet.control_packets, False),
-        ("unknownPackets", summary.parquet.unknown_packets, False),
+        ("unknownPackets", summary.parquet.unrecognized_packets, False),
     )
     listed_files: set[Path] = set()
     filename_pattern_with_chip = re.compile(

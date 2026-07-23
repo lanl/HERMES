@@ -121,11 +121,11 @@ void testSharedDirectoriesForTwoInputs(TestContext& test) {
     if (std::filesystem::exists(first_summary)) {
         const auto first_json = readJson(first_summary);
         test.expectEqual(
-            first_json["parquet"]["pixel_hits"]["row_count"]
+            first_json["parquet"]["pixel_data"]["row_count"]
                 .get<std::uint64_t>(),
             std::uint64_t{1}, "summary records pixel row count");
         test.expectEqual(
-            first_json["parquet"]["pixel_hits"]["files"][0]
+            first_json["parquet"]["pixel_data"]["files"][0]
                 .get<std::string>(),
             std::string(
                 "pixelHits/DT_2p0V_000000-chip-0-part-00000.parquet"),
@@ -175,45 +175,131 @@ void testExistingFilesAreNotOverwritten(TestContext& test) {
 
 void testSummaryJsonGeneration(TestContext& test) {
     SummaryJsonContent content;
+    content.unpack_summary.bytes_read = 2'000'000;
     content.unpack_summary.chunks_read = 2;
-    content.unpack_summary.packets_read = 3;
-    content.unpack_summary.pixel_hit_count = 1;
+    content.unpack_summary.packets_read = 4;
+    content.unpack_summary.pixel_data_packet_count = 1;
+    content.unpack_summary.tdc_timestamp_count = 6;
+    content.unpack_summary.heartbeat_packet_count = 7;
+    content.unpack_summary.spidr_control_count = 8;
+    content.unpack_summary.tpx3_control_count = 9;
+    content.unpack_summary.unrecognized_packet_count = 10;
+    content.unpack_summary.tdc1_rising_count = 11;
+    content.unpack_summary.tdc1_falling_count = 12;
+    content.unpack_summary.tdc2_rising_count = 13;
+    content.unpack_summary.tdc2_falling_count = 14;
+    content.unpack_summary.unknown_tdc_edge_count = 15;
     content.anchor_diagnostics.total_anchors = 4;
+    content.epoch_diagnostics.pixels_assigned = 3;
     content.epoch_diagnostics.tdcs_assigned = 5;
+    content.epoch_diagnostics.controls_assigned = 6;
+    content.epoch_diagnostics.unresolved_timestamps = 7;
+    content.sorting_diagnostics.path_used = SortingPath::external_merge;
     content.sorting_diagnostics.estimated_memory_bytes = 2048;
     content.writer_diagnostics.pixel_hits.row_count = 1;
     content.writer_diagnostics.pixel_hits.files.push_back(
         "pixelHits/test-chip-0-part-00000.parquet");
-    content.timing_diagnostics.total_seconds = 1.25;
+    content.timing_diagnostics.conversion_seconds = 0.25;
+    content.timing_diagnostics.epoch_assignment_seconds = 0.5;
+    content.timing_diagnostics.total_seconds = 2.0;
 
     const auto parsed = nlohmann::json::parse(generateSummaryJson(content));
 
     test.expectEqual(
-        parsed["unpacking"]["decoded_pixel_hits"].get<std::uint64_t>(),
-        std::uint64_t{1}, "JSON contains decoded pixel count");
+        parsed["unpacking"]["bytes_read"].get<std::uint64_t>(),
+        std::uint64_t{2'000'000}, "JSON contains byte count");
     test.expectEqual(
-        parsed["timestamp_processing"]["anchors"]["total"].get<std::uint64_t>(),
-        std::uint64_t{4}, "JSON contains anchor count");
+        parsed["unpacking"]["pixel_data_packets"].get<std::uint64_t>(),
+        std::uint64_t{1}, "JSON contains pixel data packet count");
     test.expectEqual(
-        parsed["timestamp_processing"]["epoch_assignment"]
-              ["tdc_triggers_assigned"]
+        parsed["unpacking"]["tdc_timestamps"].get<std::uint64_t>(),
+        std::uint64_t{6}, "JSON contains TDC timestamp count");
+    test.expectEqual(
+        parsed["unpacking"]["heartbeat_packets"].get<std::uint64_t>(),
+        std::uint64_t{7}, "JSON contains heartbeat packet count");
+    test.expectEqual(
+        parsed["unpacking"]["spidr_control_packets"].get<std::uint64_t>(),
+        std::uint64_t{8}, "JSON contains SPIDR control packet count");
+    test.expectEqual(
+        parsed["unpacking"]["tpx3_control_packets"].get<std::uint64_t>(),
+        std::uint64_t{9}, "JSON contains TPX3 control packet count");
+    test.expectEqual(
+        parsed["unpacking"]["unrecognized_packets"].get<std::uint64_t>(),
+        std::uint64_t{10}, "JSON contains unrecognized packet count");
+    test.expectEqual(
+        parsed["unpacking"]["tdc1_rising"].get<std::uint64_t>(),
+        std::uint64_t{11}, "JSON contains TDC1 rising count");
+    test.expectEqual(
+        parsed["unpacking"]["tdc1_falling"].get<std::uint64_t>(),
+        std::uint64_t{12}, "JSON contains TDC1 falling count");
+    test.expectEqual(
+        parsed["unpacking"]["tdc2_rising"].get<std::uint64_t>(),
+        std::uint64_t{13}, "JSON contains TDC2 rising count");
+    test.expectEqual(
+        parsed["unpacking"]["tdc2_falling"].get<std::uint64_t>(),
+        std::uint64_t{14}, "JSON contains TDC2 falling count");
+    test.expectEqual(
+        parsed["unpacking"]["unknown_tdc_edges"].get<std::uint64_t>(),
+        std::uint64_t{15}, "JSON contains unknown TDC edge count");
+    test.expectEqual(
+        parsed["timestamp_processing"]["heartbeat_pairs"]["number_of_beats"]
             .get<std::uint64_t>(),
-        std::uint64_t{5}, "JSON contains assigned TDC trigger count");
+        std::uint64_t{4}, "JSON contains heartbeat pair count");
+    test.expectEqual(
+        parsed["timestamp_processing"]["time_adjustments"]["pixel_packets"]
+            .get<std::uint64_t>(),
+        std::uint64_t{3}, "JSON contains adjusted pixel packet count");
+    test.expectEqual(
+        parsed["timestamp_processing"]["time_adjustments"]["tdc_packets"]
+            .get<std::uint64_t>(),
+        std::uint64_t{5}, "JSON contains adjusted TDC packet count");
+    test.expectEqual(
+        parsed["timestamp_processing"]["time_adjustments"]["control_packets"]
+            .get<std::uint64_t>(),
+        std::uint64_t{6}, "JSON contains adjusted control packet count");
+    test.expectEqual(
+        parsed["timestamp_processing"]["time_adjustments"]["failed"]
+            .get<std::uint64_t>(),
+        std::uint64_t{7}, "JSON contains failed adjustment count");
+    test.expectEqual(
+        parsed["sorting"]["strategy"].get<std::string>(),
+        std::string("external_merge"), "JSON contains sorting strategy");
     test.expectEqual(
         parsed["sorting"]["estimated_memory_bytes"].get<std::uint64_t>(),
         std::uint64_t{2048}, "JSON contains sorting memory estimate");
     test.expectEqual(
-        parsed["parquet"]["pixel_hits"]["row_count"].get<std::uint64_t>(),
+        parsed["parquet"]["pixel_data"]["row_count"].get<std::uint64_t>(),
         std::uint64_t{1}, "JSON contains pixel Parquet row count");
     test.expectEqual(
-        parsed["parquet"]["pixel_hits"]["files"][0].get<std::string>(),
+        parsed["parquet"]["pixel_data"]["files"][0].get<std::string>(),
         std::string("pixelHits/test-chip-0-part-00000.parquet"),
         "JSON contains relative pixel Parquet filename");
-    test.expect(parsed["parquet"]["tdc_triggers"]["files"].empty(),
+    test.expect(parsed["parquet"]["tdc_timestamps"]["files"].empty(),
                 "JSON contains empty TDC file list");
     test.expectEqual(
         parsed["processing_times_seconds"]["total"].get<double>(),
-        1.25, "JSON contains total processing time");
+        2.0, "JSON contains total processing time");
+    test.expectEqual(
+        parsed["processing_times_seconds"]["canonical_time_seconds"]
+            .get<double>(),
+        2.0345e-12, "JSON contains canonical time unit");
+    test.expectEqual(
+        parsed["processing_times_seconds"]["canonical_conversion"]
+            .get<double>(),
+        0.25, "JSON contains canonical conversion time");
+    test.expectEqual(
+        parsed["processing_times_seconds"]["time_adjustments"].get<double>(),
+        0.5, "JSON contains time adjustment duration");
+    test.expectEqual(
+        parsed["processing_times_seconds"]["throughput"]
+              ["packets_per_second"]
+            .get<double>(),
+        2.0, "JSON contains packet throughput");
+    test.expectEqual(
+        parsed["processing_times_seconds"]["throughput"]
+              ["megabytes_per_second"]
+            .get<double>(),
+        1.0, "JSON contains megabyte throughput");
 }
 
 void testSummaryJsonStructure(TestContext& test) {
@@ -235,9 +321,9 @@ void testSummaryJsonStructure(TestContext& test) {
                     std::string("JSON omits ") + removed);
     }
 
-    for (const auto* category : {"pixel_hits", "tdc_triggers",
-                                 "global_timestamps", "control_packets",
-                                 "unknown_packets"}) {
+    for (const auto* category : {"pixel_data", "tdc_timestamps",
+                                 "heartbeat_packets", "control_packets",
+                                 "unrecognized_packets"}) {
         const auto& category_json = parsed["parquet"][category];
         test.expectEqual(category_json.size(), std::size_t{2},
                          std::string(category) +
@@ -251,6 +337,20 @@ void testSummaryJsonStructure(TestContext& test) {
         test.expect(!category_json.contains("file_count"),
                     std::string(category) + " omits file_count");
     }
+
+    test.expectEqual(
+        parsed["timestamp_processing"]["heartbeat_pairs"].size(),
+        std::size_t{1}, "heartbeat pairs contain only number_of_beats");
+    test.expectEqual(
+        parsed["timestamp_processing"]["time_adjustments"].size(),
+        std::size_t{4}, "time adjustments contain four packet counts");
+    test.expect(!parsed["sorting"].contains("method"),
+                "sorting omits old method field");
+    test.expect(!parsed["processing_times_seconds"].contains("conversion"),
+                "processing times omit old conversion field");
+    test.expect(
+        !parsed["processing_times_seconds"].contains("epoch_assignment"),
+        "processing times omit old epoch assignment field");
 }
 
 void testWorkflowErrorHandling(TestContext& test) {

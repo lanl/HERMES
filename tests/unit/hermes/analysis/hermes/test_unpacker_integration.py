@@ -100,11 +100,11 @@ def test_real_cpp_unpacker_handles_two_inputs_and_skips_completed_files(
         listed_paths = {
             relative_path
             for category in (
-                summary.parquet.pixel_hits,
-                summary.parquet.tdc_triggers,
-                summary.parquet.global_timestamps,
+                summary.parquet.pixel_data,
+                summary.parquet.tdc_timestamps,
+                summary.parquet.heartbeat_packets,
                 summary.parquet.control_packets,
-                summary.parquet.unknown_packets,
+                summary.parquet.unrecognized_packets,
             )
             for relative_path in category.files
         }
@@ -123,7 +123,7 @@ def test_real_cpp_unpacker_handles_two_inputs_and_skips_completed_files(
     assert all(not summary.unpacking.errors for summary in summaries)
     assert all(not summary.parquet.errors for summary in summaries)
     assert sum(
-        summary.parquet.pixel_hits.row_count for summary in summaries
+        summary.parquet.pixel_data.row_count for summary in summaries
     ) > 0
 
     saved_analysis = completed_state.analysis.model_dump(mode="json")

@@ -11,7 +11,7 @@ int main() {
     summary.bytes_read = 24U;
     summary.chunks_read = 2U;
     summary.packets_read = 3U;
-    summary.pixel_hit_count = 1U;
+    summary.pixel_data_packet_count = 1U;
     summary.tdc1_rising_count = 1U;
     summary.shutter_open_count = 1U;
     summary.unknown_tpx3_control_count = 1U;

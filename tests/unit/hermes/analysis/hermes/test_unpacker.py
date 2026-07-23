@@ -107,58 +107,63 @@ def _summary(raw_stem: str, *, pixel_rows: int = 0) -> Tpx3SpidrSummary:
     return Tpx3SpidrSummary.model_validate(
         {
             "unpacking": {
+                "bytes_read": 0,
                 "chunks_read": 0,
                 "packets_read": pixel_rows,
-                "decoded_pixel_hits": pixel_rows,
-                "decoded_tdc_triggers": 0,
-                "decoded_global_timestamps": 0,
-                "decoded_spidr_control_packets": 0,
-                "decoded_tpx3_control_packets": 0,
-                "decoded_unknown_packets": 0,
-                "warnings": [],
+                "pixel_data_packets": pixel_rows,
+                "tdc_timestamps": 0,
+                "heartbeat_packets": 0,
+                "spidr_control_packets": 0,
+                "tpx3_control_packets": 0,
+                "unrecognized_packets": 0,
+                "tdc1_rising": 0,
+                "tdc1_falling": 0,
+                "tdc2_rising": 0,
+                "tdc2_falling": 0,
+                "unknown_tdc_edges": 0,
                 "errors": [],
+                "warnings": [],
             },
             "timestamp_processing": {
-                "anchors": {
-                    "total": 0,
-                    "unpaired_low": 0,
-                    "unpaired_high": 0,
-                    "warnings": [],
+                "heartbeat_pairs": {
+                    "number_of_beats": 0,
                 },
-                "epoch_assignment": {
-                    "pixels_assigned": pixel_rows,
-                    "tdc_triggers_assigned": 0,
-                    "controls_assigned": 0,
-                    "ambiguous_timestamps": 0,
-                    "unresolved_timestamps": 0,
-                    "used_fallback": False,
-                    "warnings": [],
+                "time_adjustments": {
+                    "pixel_packets": pixel_rows,
+                    "tdc_packets": 0,
+                    "control_packets": 0,
+                    "failed": 0,
                 },
             },
             "sorting": {
-                "method": "in_memory",
+                "strategy": "in_memory",
                 "memory_budget_bytes": 0,
                 "estimated_memory_bytes": 0,
                 "temporary_runs_created": 0,
             },
             "parquet": {
-                "pixel_hits": {
+                "pixel_data": {
                     "row_count": pixel_rows,
                     "files": pixel_files,
                 },
-                "tdc_triggers": {"row_count": 0, "files": []},
-                "global_timestamps": {"row_count": 0, "files": []},
+                "tdc_timestamps": {"row_count": 0, "files": []},
+                "heartbeat_packets": {"row_count": 0, "files": []},
                 "control_packets": {"row_count": 0, "files": []},
-                "unknown_packets": {"row_count": 0, "files": []},
+                "unrecognized_packets": {"row_count": 0, "files": []},
                 "errors": [],
             },
             "processing_times_seconds": {
+                "canonical_time_seconds": 2.0345e-12,
                 "unpacking": 0,
-                "epoch_assignment": 0,
-                "conversion": 0,
+                "canonical_conversion": 0,
+                "time_adjustments": 0,
                 "sorting": 0,
                 "parquet_writing": 0,
                 "total": 0,
+                "throughput": {
+                    "packets_per_second": 0,
+                    "megabytes_per_second": 0,
+                },
             },
         }
     )
@@ -171,7 +176,7 @@ def _save_completed_files(
     pixel_rows: int = 0,
 ) -> None:
     summary = _summary(raw_file.path.stem, pixel_rows=pixel_rows)
-    for relative_path in summary.parquet.pixel_hits.files:
+    for relative_path in summary.parquet.pixel_data.files:
         parquet_path = analysis.analysis_directory / relative_path
         parquet_path.parent.mkdir(parents=True, exist_ok=True)
         pq.write_table(pa.table({"value": [1]}), parquet_path)
@@ -242,64 +247,69 @@ def _write_fake_unpacker(executable: Path) -> None:
         row_count = 2 if mode == "row_mismatch" else 1
         summary = {{
             "unpacking": {{
+                "bytes_read": 16,
                 "chunks_read": 1,
                 "packets_read": 1,
-                "decoded_pixel_hits": 1,
-                "decoded_tdc_triggers": 0,
-                "decoded_global_timestamps": 0,
-                "decoded_spidr_control_packets": 0,
-                "decoded_tpx3_control_packets": 0,
-                "decoded_unknown_packets": 0,
-                "warnings": ["test warning"],
+                "pixel_data_packets": 1,
+                "tdc_timestamps": 0,
+                "heartbeat_packets": 0,
+                "spidr_control_packets": 0,
+                "tpx3_control_packets": 0,
+                "unrecognized_packets": 0,
+                "tdc1_rising": 0,
+                "tdc1_falling": 0,
+                "tdc2_rising": 0,
+                "tdc2_falling": 0,
+                "unknown_tdc_edges": 0,
                 "errors": (
                     ["test unpacking error"]
                     if mode == "unpacking_errors"
                     else []
                 ),
+                "warnings": ["test warning"],
             }},
             "timestamp_processing": {{
-                "anchors": {{
-                    "total": 0,
-                    "unpaired_low": 0,
-                    "unpaired_high": 0,
-                    "warnings": [],
+                "heartbeat_pairs": {{
+                    "number_of_beats": 0,
                 }},
-                "epoch_assignment": {{
-                    "pixels_assigned": 1,
-                    "tdc_triggers_assigned": 0,
-                    "controls_assigned": 0,
-                    "ambiguous_timestamps": 0,
-                    "unresolved_timestamps": 0,
-                    "used_fallback": False,
-                    "warnings": [],
+                "time_adjustments": {{
+                    "pixel_packets": 1,
+                    "tdc_packets": 0,
+                    "control_packets": 0,
+                    "failed": 0,
                 }},
             }},
             "sorting": {{
-                "method": "in_memory",
+                "strategy": "in_memory",
                 "memory_budget_bytes": 1000,
                 "estimated_memory_bytes": 100,
                 "temporary_runs_created": 0,
             }},
             "parquet": {{
-                "pixel_hits": {{
+                "pixel_data": {{
                     "row_count": row_count,
                     "files": [str(relative_parquet)],
                 }},
-                "tdc_triggers": {{"row_count": 0, "files": []}},
-                "global_timestamps": {{"row_count": 0, "files": []}},
+                "tdc_timestamps": {{"row_count": 0, "files": []}},
+                "heartbeat_packets": {{"row_count": 0, "files": []}},
                 "control_packets": {{"row_count": 0, "files": []}},
-                "unknown_packets": {{"row_count": 0, "files": []}},
+                "unrecognized_packets": {{"row_count": 0, "files": []}},
                 "errors": (
                     ["test Parquet error"] if mode == "summary_errors" else []
                 ),
             }},
             "processing_times_seconds": {{
+                "canonical_time_seconds": 2.0345e-12,
                 "unpacking": 0.1,
-                "epoch_assignment": 0.1,
-                "conversion": 0.1,
+                "canonical_conversion": 0.1,
+                "time_adjustments": 0.1,
                 "sorting": 0.1,
                 "parquet_writing": 0.1,
                 "total": 0.5,
+                "throughput": {{
+                    "packets_per_second": 2.0,
+                    "megabytes_per_second": 0.000032,
+                }},
             }},
         }}
         summary_path.write_text(json.dumps(summary), encoding="utf-8")
@@ -546,9 +556,9 @@ def test_run_executes_fake_unpacker_logs_details_and_round_trips_yaml(
     assert completed["extra"]["exit_code"] == 0
     assert len(completed["extra"]["stdout_excerpt"]) == 4_000
     assert len(completed["extra"]["stderr_excerpt"]) == 4_000
-    assert completed["extra"]["summary"]["unpacking"]["decoded_pixel_hits"] == 1
-    assert completed["extra"]["summary"]["sorting"]["method"] == "in_memory"
-    assert completed["extra"]["summary"]["parquet"]["pixel_hits"][
+    assert completed["extra"]["summary"]["unpacking"]["pixel_data_packets"] == 1
+    assert completed["extra"]["summary"]["sorting"]["strategy"] == "in_memory"
+    assert completed["extra"]["summary"]["parquet"]["pixel_data"][
         "row_count"
     ] == 1
 
