@@ -70,7 +70,6 @@ HERMES/
 │       │   ├── state_manager.py    # core logic for managing state access, change proposals, validation, and approval workflow
 │       │   ├── change_requests.py  # the ChangeRequest data model and related logic for tracking proposed changes
 │       │   ├── state_io.py         # functions for loading and saving HermesRecord YAML files
-│       │   ├── payload_store.py    # writes large state-owned payloads under logs/payloads and returns ExternalPayloadRef values
 │       │   ├── state_logger.py     # functions for logging state changes and maintaining an audit trail
 │       │   └── shared_types.py     # shared types and enums for the state service
 │       │
@@ -81,7 +80,6 @@ HERMES/
 │       │   └── models/
 │       │       ├── __init__.py                 # makes models a Python package. Keep __init__.py empty!
 │       │       ├── measurement.py              # measurement info and metadata
-│       │       ├── payloads.py                 # external payload reference models
 │       │       ├── analysis/                   # analysis environments that are unioned in the top-level record
 │       │       │   ├── empir.py                # EMPIR analysis environment, configuration, and related settings
 │       │       │   └── hermes_tpx3_spidr.py    # TPX3 SPIDR analysis environment, configuration, and related settings

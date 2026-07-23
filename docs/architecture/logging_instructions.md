@@ -49,16 +49,16 @@ A practical run directory layout is:
 
 ```text
 working_dir/
+├── config/
+│   ├── pixelConfig.bpc             # saved pixel-configuration file for the run
+│   └── dacsFile.dacs               # saved DAC-settings file for the run
 └── logs/
     ├── hermes-record.initial.yaml  # initial HermesRecord snapshot
     ├── hermes-record.final.yaml    # final HermesRecord snapshot
     ├── state.jsonl                 # live log with all appended state events
     ├── acquisition.serval.jsonl    # acquisition logs filtered for acquisition backend
-    ├── workflow.jsonl              # workflow logs filtered for workflow domain  
-    ├── analysis.jsonl              # analysis logs filtered for analysis domain  
-    └── payloads/                   # all external payload files referenced by the state record and state log
-        ├── detector_pixel_config_<hash>.bpc
-        └── detector_dacs_<hash>.json
+    ├── workflow.jsonl              # workflow logs filtered for workflow domain
+    └── analysis.jsonl              # analysis logs filtered for analysis domain
 ```
 
 ## Startup Configuration
@@ -163,10 +163,9 @@ Responsibilities:
 - avoid mutating state
 
 For small scalar or bounded structured values, state logs may include old and
-new values inline. Large durable values, such as PixelConfig or DAC structures,
-should be logged inline only when that is practical. Otherwise, the state value
-should be externalized first and the state log should record the resulting
-`ExternalPayloadRef`.
+new values inline. For saved `.bpc` and `.dacs` files, state logs should include
+the relative saved path, original source path when available, and file hash—not
+the file contents.
 
 ## WorkflowLogger
 
@@ -239,20 +238,16 @@ Operational logs should contain process detail:
 - external command execution summaries
 - warnings, retries, failures, and timing
 
-Do not duplicate large durable state payloads into operational logs. If
-PixelConfig or DAC settings are part of the state record, acquisition logs should
-reference them by state path, length, digest, or `ExternalPayloadRef` rather than
-logging the full payload.
+Do not duplicate detector-configuration file contents into operational logs.
+Acquisition logs should reference the saved `.bpc` or `.dacs` file by state
+path, saved file path, and file hash.
 
 State logs are different: they record state values. If a large value is stored
 inline in the state, it may appear in the initial state log or in the change log
-when that field changes. If the value is externalized, the state log records the
-`ExternalPayloadRef` instead of the full payload.
+when that field changes. Calibration file contents are not state values; their
+specific file models are the state values.
 
-The state service should decide whether to store a value inline or externalize
-it before applying and logging the state change.
-
-## Payload Policy
+## File-content Policy
 
 Never write the following directly into logs or the HERMES record:
 
@@ -260,7 +255,7 @@ Never write the following directly into logs or the HERMES record:
 - pixel-hit, TDC-hit, timestamp, and control-packet Parquet files
 - large image stacks
 - generated plot binaries
-- raw detector data payloads
+- raw detector data bytes
 - large stdout or stderr streams
 
 Store pixel-hit, TDC-hit, timestamp, and control-packet tables as Parquet files.
@@ -269,10 +264,9 @@ hashes, formats, and summaries.
 Logs may include bounded excerpts or summaries when useful, but not full file
 contents.
 
-Large configuration values are handled differently. If they are needed for
-reproducibility, they are saved state values and may be stored inline or in files
-under `logs/payloads/` referenced by `ExternalPayloadRef`. HERMES should not
-define a separate `state_payload_dir`.
+Calibration files are handled explicitly. Save `.bpc` and `.dacs` files under
+the run's `config/` directory and record them with `PixelConfigFile` and
+`DacsFile`.
 
 ## Anti-Patterns
 
@@ -281,7 +275,7 @@ Avoid:
 - calling `logger.add(...)` outside centralized startup configuration
 - creating sinks inside `StateLogger`, `AcquisitionLogger`, `AnalysisLogger`, or
   workflow code
-- logging full SERVAL `PixelConfig` or DAC payloads in acquisition logs
+- logging complete SERVAL `PixelConfig` or DAC settings in acquisition logs
 - logging raw images, Parquet table contents, or large stdout/stderr
 - treating backend communication logs as state record fields
 - adding a catch-all `app` logging domain or unfiltered `app.log` sink
@@ -295,6 +289,6 @@ Use domain wrappers for state, workflow, acquisition, and analysis.
 Write each domain to filtered structured sinks.
 Keep durable state in the HERMES record.
 Keep operational detail in domain logs.
-Use ExternalPayloadRef for large state-owned payload files.
-Reference large operational payloads by path, size, hash, and state path.
+Record saved calibration files by their specific model, path, and hash.
+Reference large data files by path, size, hash, and state path.
 ```

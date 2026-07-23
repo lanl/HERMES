@@ -36,7 +36,7 @@ def test_change_request_defaults_to_pending_with_generated_id() -> None:
         "",
         " ",
         "acquisition..result",
-        "acquisition.result.artifacts[0]",
+        "acquisition.result.output_files[0]",
         "acquisition.result.status-code",
     ],
 )

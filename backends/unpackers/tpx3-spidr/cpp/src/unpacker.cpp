@@ -279,6 +279,70 @@ void unpackUnknown(const PacketPosition& position, UnpackResult& result) {
         "Unknown packet at " + packetLocation(position));
 }
 
+constexpr std::array<const char*, 6> analysis_directories = {
+    "pixelHits",
+    "tdcTriggers",
+    "globalTimestamps",
+    "controlPackets",
+    "unknownPackets",
+    "logs",
+};
+
+constexpr std::array<const char*, 5> parquet_directories = {
+    "pixelHits",
+    "tdcTriggers",
+    "globalTimestamps",
+    "controlPackets",
+    "unknownPackets",
+};
+
+void findExistingOutputFiles(const std::filesystem::path& analysis_directory,
+                             const std::string& raw_file_stem,
+                             const std::filesystem::path& summary_path,
+                             std::vector<std::string>& errors) {
+    if (std::filesystem::exists(summary_path)) {
+        errors.push_back("Refusing to overwrite existing summary JSON file " +
+                         summary_path.string());
+    }
+
+    const std::string parquet_prefix_with_chip = raw_file_stem + "-chip-";
+    const std::string parquet_prefix_without_chip = raw_file_stem + "-part-";
+    for (const char* directory_name : parquet_directories) {
+        const auto directory = analysis_directory / directory_name;
+        if (!std::filesystem::exists(directory)) {
+            continue;
+        }
+
+        for (const auto& entry : std::filesystem::directory_iterator(directory)) {
+            if (!entry.is_regular_file()) {
+                continue;
+            }
+            const auto filename = entry.path().filename().string();
+            if (entry.path().extension() == ".parquet" &&
+                (filename.rfind(parquet_prefix_with_chip, 0) == 0 ||
+                 filename.rfind(parquet_prefix_without_chip, 0) == 0)) {
+                errors.push_back("Refusing to overwrite existing Parquet file " +
+                                 entry.path().string());
+            }
+        }
+    }
+}
+
+bool createAnalysisDirectories(const std::filesystem::path& analysis_directory,
+                               std::vector<std::string>& errors) {
+    try {
+        for (const char* directory_name : analysis_directories) {
+            std::filesystem::create_directories(
+                analysis_directory / directory_name);
+        }
+        return true;
+    } catch (const std::exception& error) {
+        errors.push_back("Failed to create analysis directories: " +
+                         std::string(error.what()));
+        return false;
+    }
+}
+
 }  // namespace
 
 void unpackPacket(const std::uint64_t raw_word,
@@ -421,14 +485,40 @@ UnpackResult unpack(std::istream& input) {
 }
 
 WorkflowResult runTwoPassWorkflow(std::istream& input,
-                                  const std::string& output_directory) {
+                                  const std::string& source_file_path,
+                                  const std::string& analysis_directory) {
     using Clock = std::chrono::high_resolution_clock;
     using Duration = std::chrono::duration<double>;
 
     auto workflow_start = Clock::now();
 
     WorkflowResult workflow_result;
-    workflow_result.output_directory = output_directory;
+    workflow_result.analysis_directory = analysis_directory;
+
+    const std::string raw_file_stem =
+        std::filesystem::path(source_file_path).stem().string();
+    if (raw_file_stem.empty()) {
+        workflow_result.errors.push_back(
+            "Cannot derive an output filename from the raw TPX3 file path");
+        return workflow_result;
+    }
+
+    const std::string summary_json_file =
+        "logs/" + raw_file_stem + "-unpacker-summary.json";
+    const auto summary_path = std::filesystem::path(analysis_directory) /
+                              summary_json_file;
+
+    try {
+        findExistingOutputFiles(analysis_directory, raw_file_stem,
+                                summary_path, workflow_result.errors);
+    } catch (const std::exception& error) {
+        workflow_result.errors.push_back(
+            "Failed to check existing analysis files: " +
+            std::string(error.what()));
+    }
+    if (!workflow_result.errors.empty()) {
+        return workflow_result;
+    }
 
     // Pass 1: Unpack and decode all packets
     auto unpack_start = Clock::now();
@@ -441,7 +531,6 @@ WorkflowResult runTwoPassWorkflow(std::istream& input,
     if (!unpack_result.summary.errors.empty()) {
         workflow_result.success = false;
         workflow_result.errors = unpack_result.summary.errors;
-        workflow_result.summary.status = "failed";
         return workflow_result;
     }
 
@@ -511,14 +600,10 @@ WorkflowResult runTwoPassWorkflow(std::istream& input,
         Duration(sort_end - sort_start).count();
     workflow_result.summary.sorting_diagnostics = sort_diag;
 
-    // Create output directory
-    try {
-        std::filesystem::create_directories(output_directory);
-    } catch (const std::exception& e) {
+    // Create the shared category and diagnostic directories.
+    if (!createAnalysisDirectories(analysis_directory,
+                                   workflow_result.errors)) {
         workflow_result.success = false;
-        workflow_result.errors.push_back("Failed to create output directory: " +
-                                        std::string(e.what()));
-        workflow_result.summary.status = "failed";
         return workflow_result;
     }
 
@@ -526,7 +611,8 @@ WorkflowResult runTwoPassWorkflow(std::istream& input,
     auto writing_start = Clock::now();
     ParquetWriterDiagnostics writer_diag;
     ParquetWriterConfig writer_config;
-    writer_config.output_directory = output_directory;
+    writer_config.analysis_directory = analysis_directory;
+    writer_config.raw_file_stem = raw_file_stem;
     writer_config.chip_index = 0;  // Single chip for now
 
     writePixelHitsParquet(output_rows.pixels, writer_config, writer_diag);
@@ -545,14 +631,18 @@ WorkflowResult runTwoPassWorkflow(std::istream& input,
     workflow_result.summary.timing_diagnostics.total_seconds =
         Duration(workflow_end - workflow_start).count();
 
-    // Write summary.json
-    workflow_result.summary.output_directory = output_directory;
-    workflow_result.summary.status = writer_diag.errors.empty() ? "complete" : "partial";
+    if (writer_diag.errors.empty()) {
+        try {
+            writeSummaryJsonFile(summary_path.string(), workflow_result.summary);
+        } catch (const std::exception& error) {
+            workflow_result.errors.push_back(
+                "Failed to write summary JSON file " + summary_path.string() +
+                ": " + error.what());
+        }
+    }
 
-    writeSummaryJsonFile(output_directory + "/summary.json",
-                        workflow_result.summary);
-
-    workflow_result.success = writer_diag.errors.empty();
+    workflow_result.success = writer_diag.errors.empty() &&
+                              workflow_result.errors.empty();
     workflow_result.errors.insert(workflow_result.errors.end(),
                                  writer_diag.errors.begin(),
                                  writer_diag.errors.end());

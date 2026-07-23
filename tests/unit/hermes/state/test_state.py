@@ -4,16 +4,20 @@ from pathlib import Path
 
 from hermes.state.models.acquisition.serval import (
     CalibrationState,
+    DacsFile,
+    PixelConfigFile,
     ServalAcquisitionResult,
     ServalAcquisitionState,
 )
 from hermes.state.models.analysis.hermes_tpx3_spidr import (
-    HermesTpx3SpidrAnalysisState,
-    HermesTpx3SpidrResult,
+    HermesTpx3AnalysisResults,
+    HermesTpx3AnalysisState,
+    HermesTpx3UnpackingResult,
+    Tpx3SpidrUnpackerProgram,
 )
 from hermes.state.models.environment import RuntimeEnvironment
 from hermes.state.models.measurement import MeasurementInfo
-from hermes.state.models.shared_models import ArtifactRef
+from hermes.state.models.shared_models import FileReference
 from hermes.state.state import HermesRecord
 
 
@@ -21,17 +25,11 @@ HASH = "a" * 64
 
 
 def test_hermes_record_serializes_paths_datetimes_and_mode_tags(tmp_path: Path) -> None:
-    raw_artifact = ArtifactRef(
+    raw_file = FileReference(
         path=tmp_path / "run-001/data/tpx3/raw.tpx3",
-        kind="raw_tpx3",
         media_type="application/octet-stream",
         sha256=HASH,
         size_bytes=1024,
-    )
-    decoded_artifact = ArtifactRef(
-        path=tmp_path / "run-001/data/analyzed/events.parquet",
-        kind="decoded_events",
-        media_type="application/parquet",
     )
     record = HermesRecord(
         measurement_info=MeasurementInfo(
@@ -41,15 +39,19 @@ def test_hermes_record_serializes_paths_datetimes_and_mode_tags(tmp_path: Path) 
         ),
         environment=RuntimeEnvironment(working_dir=tmp_path / "run-001"),
         acquisition=ServalAcquisitionState(
-            result=ServalAcquisitionResult(status="completed", artifacts=[raw_artifact])
+            result=ServalAcquisitionResult(status="completed", output_files=[raw_file])
         ),
-        analysis=HermesTpx3SpidrAnalysisState(
-            result=HermesTpx3SpidrResult(
-                status="completed",
-                input_artifacts=[raw_artifact],
-                output_artifacts=[decoded_artifact],
-                summary_metrics={"events": 42, "duration_s": 1.5},
-            )
+        analysis=HermesTpx3AnalysisState(
+            unpacker_program=Tpx3SpidrUnpackerProgram(
+                name="tpx3-spidr-cpp",
+                executable_path=tmp_path / "bin/hermes-tpx3-spidr",
+                version="0.1.0",
+            ),
+            analysis_directory=tmp_path / "run-001/data/analyzed",
+            tpx3_files=[raw_file],
+            results=HermesTpx3AnalysisResults(
+                unpacking=HermesTpx3UnpackingResult(status="completed")
+            ),
         ),
     )
 
@@ -61,26 +63,26 @@ def test_hermes_record_serializes_paths_datetimes_and_mode_tags(tmp_path: Path) 
     )
     assert dumped["environment"]["raw_data_dir"]["resolved_path"] is None
     assert dumped["acquisition"]["mode"] == "serval"
-    assert dumped["acquisition"]["result"]["artifacts"][0]["path"].endswith("raw.tpx3")
-    assert dumped["analysis"]["mode"] == "hermes_tpx3_spidr"
-    assert dumped["analysis"]["result"]["summary_metrics"]["events"] == 42
+    assert dumped["acquisition"]["result"]["output_files"][0]["path"].endswith(
+        "raw.tpx3"
+    )
+    assert dumped["analysis"]["mode"] == "hermes"
+    assert dumped["analysis"]["tpx3_files"][0]["path"].endswith("raw.tpx3")
+    assert dumped["analysis"]["results"]["unpacking"]["status"] == "completed"
 
 
 def test_hermes_record_serializes_serval_requested_applied_and_calibration(
     tmp_path: Path,
 ) -> None:
-    pixel_config_artifact = ArtifactRef(
-        path=tmp_path / "config/tpx3-demo.bpc",
-        kind="pixel_config",
-        media_type="application/octet-stream",
-        sha256=HASH,
-        size_bytes=2048,
+    pixel_config_file = PixelConfigFile(
+        path="config/pixelConfig.bpc",
+        source_path=tmp_path / "tpx3-demo.bpc",
+        file_hash=HASH,
     )
-    dacs_artifact = ArtifactRef(
-        path=tmp_path / "config/tpx3-demo.dacs",
-        kind="dacs",
-        media_type="application/json",
-        size_bytes=512,
+    dacs_file = DacsFile(
+        path="config/dacsFile.dacs",
+        source_path=tmp_path / "tpx3-demo.dacs",
+        file_hash=HASH,
     )
     record = HermesRecord(
         measurement_info=MeasurementInfo(measurement_id="LC-20231024", run_number=2),
@@ -104,22 +106,19 @@ def test_hermes_record_serializes_serval_requested_applied_and_calibration(
                 "Raw": [{"Base": "file:/applied/raw", "QueueSize": 16384}],
             },
             calibration=CalibrationState(
-                pixel_config_file=pixel_config_artifact,
-                dacs_file=dacs_artifact,
-                pixel_config_load_request={
-                    "format": "pixelconfig",
-                    "file": "tpx3-demo.bpc",
-                    "source_artifact": pixel_config_artifact.model_dump(mode="json"),
-                },
-                dacs_load_request={
-                    "format": "dacs",
-                    "file": "tpx3-demo.dacs",
-                    "source_artifact": dacs_artifact.model_dump(mode="json"),
-                },
-                pixel_config_load_result={
+                pixel_config_file=pixel_config_file,
+                dacs_file=dacs_file,
+                pixel_config_load={
+                    "server_file_path": "tpx3-demo.bpc",
                     "status": "completed",
                     "http_status_code": 200,
-                    "response_text": "Successfully uploaded config.",
+                    "server_response_body": "Successfully uploaded config.",
+                },
+                dacs_load={
+                    "server_file_path": "tpx3-demo.dacs",
+                    "status": "completed",
+                    "http_status_code": 200,
+                    "server_response_body": "Successfully uploaded config.",
                 },
             ),
         ),
@@ -139,13 +138,19 @@ def test_hermes_record_serializes_serval_requested_applied_and_calibration(
         acquisition["applied_destination_configuration"]["Raw"][0]["QueueSize"]
         == 16384
     )
-    assert acquisition["calibration"]["pixel_config_file"]["path"].endswith(
+    assert acquisition["calibration"]["pixel_config_file"]["path"] == (
+        "config/pixelConfig.bpc"
+    )
+    assert acquisition["calibration"]["pixel_config_load"][
+        "server_file_path"
+    ] == (
         "tpx3-demo.bpc"
     )
-    assert acquisition["calibration"]["pixel_config_load_request"]["file"] == (
-        "tpx3-demo.bpc"
+    assert acquisition["calibration"]["dacs_load"]["server_file_path"] == (
+        "tpx3-demo.dacs"
     )
-    assert acquisition["calibration"]["dacs_load_request"]["file"] == "tpx3-demo.dacs"
-    assert acquisition["calibration"]["pixel_config_load_result"]["response_text"] == (
+    assert acquisition["calibration"]["pixel_config_load"][
+        "server_response_body"
+    ] == (
         "Successfully uploaded config."
     )

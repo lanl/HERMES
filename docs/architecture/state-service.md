@@ -39,16 +39,7 @@ Responsibilities
     5. Change Tracking / History
         - Log all approved (and optionally rejected) changes
         - Maintain audit trail for experiments
-    6. External Payload Handling
-        - Store large durable state values as payload files under
-          `logs/payloads/` when they should not be duplicated inline
-        - Compute payload size and hash
-        - Replace the proposed state value with an ExternalPayloadRef before
-          applying and logging the change
-        Examples:
-        - externalize_payload("detector.pixel_config", pixel_config)
-        - externalize_payload("detector.dacs", dacs)
-    7. High-Level Actions
+    6. High-Level Actions
         - Provide safe operations that encapsulate common workflows
         Examples:
         - load_hermes_record_from_yaml("LC-20231023.yaml")
@@ -114,23 +105,11 @@ The `src/hermes/state_service/` module is organized into several key components:
         - `load_hermes_record_from_yaml(file_path)`: loads a `HermesRecord` from a YAML file.
         - `save_hermes_record_to_yaml(record, file_path)`: saves the given `HermesRecord` to a YAML file.
 
-- `payload_store.py`:
-    - writes large state-owned payloads to the run `logs/payloads/` directory.
-    - does not use or create a separate `state_payload_dir`.
-    - computes `sha256`, `size_bytes`, media type, creation timestamp, and a
-      stable relative path.
-    - returns an `ExternalPayloadRef` that can be stored in the HERMES record and
-      written to the state log.
-    - does not decide acquisition or analysis behavior; it only materializes
-      durable state payloads.
-
 - `state_logger.py`: 
     - handles logging of all state changes for traceability and audit purposes.
     - logs the initial state record and later state changes, including details
       of the change, proposer, timestamp, and status.
-    - logs `ExternalPayloadRef` values when large state fields have been
-      externalized.
-    - does not configure Loguru sinks or write external payload files.
+    - does not configure Loguru sinks or write detector-configuration files.
     - functions include:
         - `log_change(change_request)`: logs the details of a ChangeRequest when it is proposed, approved, applied, rejected, or failed.
 
@@ -147,7 +126,6 @@ src/
         ├── state_manager.py    # core logic for managing state access, change proposals, validation, and approval workflow
         ├── change_requests.py  # the ChangeRequest data model and related logic for tracking proposed changes
         ├── state_io.py         # functions for loading and saving HermesRecord YAML files
-        ├── payload_store.py    # writes large state-owned payloads under logs/payloads and returns ExternalPayloadRef values
         ├── state_logger.py     # functions for logging state changes and maintaining an audit trail
         └── shared_types.py     # shared types and enums for the state service
 ``` 

@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from datetime import datetime
+from pathlib import Path
 from typing import Annotated, Literal, TypeAlias
 
-from pydantic import ConfigDict, Field, model_validator
+from pydantic import ConfigDict, Field, field_validator
 
 from hermes.state.models.detector import DetectorConfiguration, DetectorSnapshot
-from hermes.state.models.shared_models import ArtifactRef, JsonObject, StrictBaseModel
+from hermes.state.models.shared_models import FileReference, JsonObject, StrictBaseModel
 
 AcquisitionRunStatus = Literal[
     "planned",
@@ -31,9 +32,7 @@ ServalRawSplitStrategy = Literal["single_file", "frame", "SINGLE_FILE", "FRAME"]
 ServalPreviewSamplingMode = Literal["skipOnFrame", "skipOnPeriod"]
 ServalIntegrationMode = Literal["sum", "average", "last"]
 ServalCorrection = Literal["multiply"]
-ServalConfigLoadFormat = Literal["pixelconfig", "dacs"]
 ServalDestinationBase = Annotated[str, Field(min_length=1)]
-ServalConfigLoadPath = Annotated[str, Field(min_length=1)]
 ServalThreshold = Annotated[int, Field(ge=0, le=7)]
 ServalQueueSize = Annotated[int, Field(gt=0)]
 ServalIntegrationSize = Annotated[int, Field(ge=-1, le=32)]
@@ -176,43 +175,69 @@ class DestinationConfiguration(ServalApiModel):
     preview: ServalPreviewDestination | None = Field(default=None, alias="Preview")
 
 
-class ServalConfigLoadRequest(ServalApiModel):
-    format: ServalConfigLoadFormat
-    serval_file_path: ServalConfigLoadPath = Field(alias="file")
-    source_artifact: ArtifactRef | None = None
+class PixelConfigFile(StrictBaseModel):
+    """Saved SoPhy pixel-configuration file used for this run."""
+
+    path: Path
+    source_path: Path | None = None
+    file_hash: str = Field(pattern=r"^[A-Fa-f0-9]{64}$")
+
+    @field_validator("path")
+    @classmethod
+    def validate_saved_path(cls, value: Path) -> Path:
+        if value.is_absolute() or ".." in value.parts:
+            msg = "pixel config file path must be relative to the run directory"
+            raise ValueError(msg)
+        if value.suffix.lower() != ".bpc":
+            msg = "pixel config file path must end with .bpc"
+            raise ValueError(msg)
+        return value
 
 
-class ServalConfigLoadResult(StrictBaseModel):
+class DacsFile(StrictBaseModel):
+    """Saved SoPhy DAC-settings file used for this run."""
+
+    path: Path
+    source_path: Path | None = None
+    file_hash: str = Field(pattern=r"^[A-Fa-f0-9]{64}$")
+
+    @field_validator("path")
+    @classmethod
+    def validate_saved_path(cls, value: Path) -> Path:
+        if value.is_absolute() or ".." in value.parts:
+            msg = "DAC settings file path must be relative to the run directory"
+            raise ValueError(msg)
+        if value.suffix.lower() != ".dacs":
+            msg = "DAC settings file path must end with .dacs"
+            raise ValueError(msg)
+        return value
+
+
+class PixelConfigLoad(StrictBaseModel):
+    """Result of asking SERVAL to load a .bpc file."""
+
+    server_file_path: str = Field(min_length=1)
     applied_at: datetime | None = None
     status: str | None = Field(default=None, min_length=1)
     http_status_code: int | None = Field(default=None, ge=100, le=599)
-    response_text: str | None = None
-    response_summary: JsonObject = Field(default_factory=dict)
+    server_response_body: str | None = None
+
+
+class DacsLoad(StrictBaseModel):
+    """Result of asking SERVAL to load a .dacs file."""
+
+    server_file_path: str = Field(min_length=1)
+    applied_at: datetime | None = None
+    status: str | None = Field(default=None, min_length=1)
+    http_status_code: int | None = Field(default=None, ge=100, le=599)
+    server_response_body: str | None = None
 
 
 class CalibrationState(StrictBaseModel):
-    pixel_config_file: ArtifactRef | None = None
-    dacs_file: ArtifactRef | None = None
-    pixel_config_load_request: ServalConfigLoadRequest | None = None
-    dacs_load_request: ServalConfigLoadRequest | None = None
-    pixel_config_load_result: ServalConfigLoadResult | None = None
-    dacs_load_result: ServalConfigLoadResult | None = None
-
-    @model_validator(mode="after")
-    def validate_load_request_formats(self) -> CalibrationState:
-        if (
-            self.pixel_config_load_request is not None
-            and self.pixel_config_load_request.format != "pixelconfig"
-        ):
-            msg = "pixel_config_load_request must use format='pixelconfig'"
-            raise ValueError(msg)
-        if (
-            self.dacs_load_request is not None
-            and self.dacs_load_request.format != "dacs"
-        ):
-            msg = "dacs_load_request must use format='dacs'"
-            raise ValueError(msg)
-        return self
+    pixel_config_file: PixelConfigFile | None = None
+    dacs_file: DacsFile | None = None
+    pixel_config_load: PixelConfigLoad | None = None
+    dacs_load: DacsLoad | None = None
 
 
 class ServalAcquisitionPlan(StrictBaseModel):
@@ -220,7 +245,7 @@ class ServalAcquisitionPlan(StrictBaseModel):
     trigger_count: int | None = Field(default=None, ge=0)
     exposure_time_s: float | None = Field(default=None, ge=0)
     trigger_period_s: float | None = Field(default=None, ge=0)
-    expected_artifacts: list[ArtifactRef] = Field(default_factory=list)
+    expected_output_files: list[FileReference] = Field(default_factory=list)
     options: JsonObject = Field(default_factory=dict)
 
 
@@ -233,7 +258,7 @@ class ServalAcquisitionResult(StrictBaseModel):
     dropped_frames: int | None = Field(default=None, ge=0)
     warnings: list[str] = Field(default_factory=list)
     errors: list[str] = Field(default_factory=list)
-    artifacts: list[ArtifactRef] = Field(default_factory=list)
+    output_files: list[FileReference] = Field(default_factory=list)
     final_dashboard: ServalDashboardSnapshot | None = None
 
 

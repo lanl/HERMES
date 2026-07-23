@@ -13,7 +13,7 @@ from hermes.state.models.acquisition.serval import (
 )
 from hermes.state.models.environment import RuntimeEnvironment
 from hermes.state.models.measurement import MeasurementInfo
-from hermes.state.models.shared_models import ArtifactRef
+from hermes.state.models.shared_models import FileReference
 from hermes.state.state import HermesRecord
 from hermes.state_service.shared_types import StateIOError
 from hermes.state_service.state_io import (
@@ -27,9 +27,8 @@ NOW = datetime(2026, 5, 5, 12, 0, tzinfo=timezone.utc)
 
 
 def _example_record(tmp_path: Path) -> HermesRecord:
-    raw_artifact = ArtifactRef(
+    raw_file = FileReference(
         path=tmp_path / "run-001/data/raw.tpx3",
-        kind="raw_tpx3",
         media_type="application/octet-stream",
         sha256=HASH,
         size_bytes=2048,
@@ -51,7 +50,7 @@ def _example_record(tmp_path: Path) -> HermesRecord:
                 status="completed",
                 started_at=NOW,
                 completed_at=NOW,
-                artifacts=[raw_artifact],
+                output_files=[raw_file],
             )
         ),
     )
@@ -71,7 +70,7 @@ def test_save_and_load_hermes_record_yaml_round_trip(tmp_path: Path) -> None:
     assert loaded.acquisition.result is not None
     assert loaded.acquisition.result.status == "completed"
     assert loaded.acquisition.result.started_at == NOW
-    assert loaded.acquisition.result.artifacts[0].created_at == NOW
+    assert loaded.acquisition.result.output_files[0].created_at == NOW
     assert loaded.analysis is None
 
 

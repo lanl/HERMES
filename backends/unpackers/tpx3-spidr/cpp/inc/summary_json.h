@@ -19,15 +19,6 @@ struct TimingDiagnostics {
 };
 
 struct SummaryJsonContent {
-    std::string backend_name = "tpx3-spidr-cpp";
-    std::string backend_version = "0.1.0";
-
-    std::string source_file_path;
-    std::uint64_t source_file_bytes = 0;
-
-    std::string output_directory;
-    std::string status = "incomplete";
-
     UnpackSummary unpack_summary;
     AnchorIndexDiagnostics anchor_diagnostics;
     EpochAssignmentDiagnostics epoch_diagnostics;

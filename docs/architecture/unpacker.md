@@ -22,50 +22,94 @@ program. Code in `src/hermes/analysis/` should run the selected executable,
 check the summary JSON file, and save the results through
 `hermes.state_service`. It must not change the HERMES state directly.
 
-The CLI should have an explicit interface, for example:
+The Python runner should call the unpacker with the raw TPX3 file and the
+shared analysis directory:
 
 ```text
-<executable> input.tpx3 --output tpx3_parquet/ --summary tpx3_parquet/summary.json
+<executable> <input.tpx3> <analysis_directory>
 ```
 
-This is the planned interface. The first C++ output implementation should expose
-the complete workflow through its library, but should not add the `--output` and
-`--summary` argument parsing yet.
+The unpacker derives all category directories and output filenames from those
+two inputs. Do not add separate command options for category directories, a
+filename prefix, or a summary filename.
 
-The HERMES state should save the raw TPX3 input file, TPX3 Parquet output
-directory, summary JSON file, unpacker name, unpacker version, command
+The HERMES state should save the raw TPX3 input file, shared analysis directory,
+summary JSON file, unpacker name, unpacker version, command
 arguments, pixel-hit count, TDC-trigger count, global-timestamp count,
 control-packet count, timing ranges, warnings, and errors.
 
-## TPX3 Parquet Output Directory
+## Shared Analysis Directories
 
 The unpacker should write separate Apache Parquet files for each TPX3 packet type
-instead of combining every row in one large file. The output directory should
-look like:
+instead of combining every row in one large file.
+
+All raw TPX3 files in one measurement use the same category directories. The
+unpacker must not create a new directory tree for each raw file. A measurement
+uses this layout:
 
 ```text
-tpx3_parquet/
-  summary.json
-  pixel_hits/
-    chip_0-00000.parquet
-    chip_0-00001.parquet
-  tdc_triggers/
-    tdcs_0-00000.parquet
-  global_timestamps/
-    gs_0-00000.parquet
-  control_packets/
-    controls_0-00000.parquet
-  unknown_packets/
-    unknown_0-00000.parquet
+data/
+├── rawTpx3/
+│   ├── DT_2p0V_000000.tpx3
+│   └── DT_2p0V_000001.tpx3
+└── analysis/
+    ├── pixelHits/
+    ├── tdcTriggers/
+    ├── globalTimestamps/
+    ├── controlPackets/
+    ├── unknownPackets/
+    ├── logs/
+    ├── photons/
+    └── events/
 ```
 
-The chip index belongs in each Parquet file name and should not be repeated in
-its rows. Part numbers start at zero independently for each chip and dataset.
-When a schema includes `packet_index`, it is the packet index within its chunk.
+The unpacker creates the five unpacked-data directories and `logs/` before it
+starts writing files. These directories remain present when a category has no
+rows. An empty category has no Parquet file, and its summary entry reports zero
+rows and zero files. The `photons/` and `events/` directories belong to later
+reconstruction steps and are not created by the unpacker.
+
+The directory names and the corresponding Parquet data category names are:
+
+| Saved data | Directory | Parquet data category |
+| --- | --- | --- |
+| Pixel hits | `pixelHits/` | `pixel_hits` |
+| TDC triggers | `tdcTriggers/` | `tdc_triggers` |
+| Global timestamps | `globalTimestamps/` | `global_timestamps` |
+| Control packets | `controlPackets/` | `control_packets` |
+| Unknown packets | `unknownPackets/` | `unknown_packets` |
+
+## Parquet Filenames
+
+Every Parquet filename carries the raw TPX3 filename stem, chip index, and part
+index:
+
+```text
+<raw-file-stem>-chip-<chip-index>-part-<five-digit-part-index>.parquet
+```
+
+For example, the first pixel-hit part for chip 0 from
+`DT_2p0V_000000.tpx3` is:
+
+```text
+analysis/pixelHits/DT_2p0V_000000-chip-0-part-00000.parquet
+```
+
+Part numbers start at zero independently for each raw file, chip, and data
+category. The category name does not need to be repeated in the filename
+because it is already stated by the parent directory. The chip index belongs in
+the filename and should not be repeated in its rows. When a schema includes
+`packet_index`, it is the packet index within its chunk.
+
+Raw TPX3 filename stems must be unique within one measurement. The HERMES
+runner must reject duplicate stems before launching any unpacker so one input
+cannot overwrite another input's files. Existing files with the same expected
+names must also cause the run to stop; the unpacker must not silently overwrite
+them.
 
 Integrated-ToT packets should be decoded and counted, but the first output
-contract does not write them. A later acquisition-mode-specific version may add
-an `integrated_pixels/` directory.
+format does not write them. A later acquisition-mode-specific version may add
+an `integratedPixels/` directory.
 
 The C++ decoder should use the native integer timing fields to calculate final
 timestamps, but it should not copy those raw timing fields into Parquet. Each
@@ -202,20 +246,101 @@ files.
 
 ## Summary JSON File
 
-The summary JSON file should use nested `backend`, `configuration`, `source`,
-and `output` objects. `source` describes the one raw `.tpx3` input file.
-`output` contains the output directory, summary filename, and one entry for each
-Parquet dataset with its row count, file count, and relative file paths.
+Each raw TPX3 file has one summary JSON file in `analysis/logs/`:
 
-Packet-family counts, validation counts, warnings, and errors should remain
-separate top-level objects or arrays. A complete success summary should be
-written only after every final Parquet file closes successfully.
+```text
+<raw-file-stem>-unpacker-summary.json
+```
 
-The summary should also contain a top-level `timing` object for pixel hits, TDC
-triggers, and global timestamps. Each entry should record the counter width,
-native unit, raw maximum, rollover tick count and period, half-range rollover
-detection threshold, canonical units per rollover, and detected rollover count
-for each chip.
+For example:
+
+```text
+analysis/logs/DT_2p0V_000000-unpacker-summary.json
+```
+
+The summary JSON file is the sole saved detailed result for that raw TPX3 file.
+It contains information calculated by the unpacker and does not repeat the
+unpacker program, raw input path, raw input byte count, shared analysis
+directory, summary filename, or overall HERMES unpacking status.
+
+The summary should have this structure:
+
+```yaml
+unpacking:
+  chunks_read: 0
+  packets_read: 0
+  decoded_pixel_hits: 0
+  decoded_tdc_triggers: 0
+  decoded_global_timestamps: 0
+  decoded_spidr_control_packets: 0
+  decoded_tpx3_control_packets: 0
+  decoded_unknown_packets: 0
+  warnings: []
+  errors: []
+
+timestamp_processing:
+  anchors:
+    total: 0
+    unpaired_low: 0
+    unpaired_high: 0
+    warnings: []
+  epoch_assignment:
+    pixels_assigned: 0
+    tdc_triggers_assigned: 0
+    controls_assigned: 0
+    ambiguous_timestamps: 0
+    unresolved_timestamps: 0
+    used_fallback: false
+    warnings: []
+
+sorting:
+  method: in_memory
+  memory_budget_bytes: 0
+  estimated_memory_bytes: 0
+  temporary_runs_created: 0
+
+parquet:
+  pixel_hits:
+    row_count: 1200000
+    files:
+      - pixelHits/DT_2p0V_000000-chip-0-part-00000.parquet
+      - pixelHits/DT_2p0V_000000-chip-0-part-00001.parquet
+  tdc_triggers:
+    row_count: 0
+    files: []
+  global_timestamps:
+    row_count: 0
+    files: []
+  control_packets:
+    row_count: 0
+    files: []
+  unknown_packets:
+    row_count: 0
+    files: []
+  errors: []
+
+processing_times_seconds:
+  unpacking: 0.0
+  epoch_assignment: 0.0
+  conversion: 0.0
+  sorting: 0.0
+  parquet_writing: 0.0
+  total: 0.0
+```
+
+All five category entries are required, including categories with no rows. The
+file list contains only final Parquet files written for the raw TPX3 file named
+by the summary filename; it must not list temporary sorting files or files from
+a different input. Paths are relative to the shared analysis directory and
+begin with their category directory, so the directory is not repeated in
+another field. The file count is calculated from `len(files)` and is not saved.
+
+Decoded packet counts and Parquet row counts both remain because they describe
+different processing stages. A decoded packet may be rejected before a
+Parquet row is written. Warnings and errors remain in the section that produced
+them.
+
+Write the summary only after every final Parquet file closes successfully.
 
 ## Photon Reconstruction
 

@@ -24,26 +24,24 @@ The initial `HermesRecord` is recorded by the state logger. Every later durable
 state change is also logged with the changed state path, previous value, new
 value, status, proposer, origin, approver or approval-bypass marker, and
 timestamps. This creates an audit trail that can reconstruct the state at any
-point in the measurement, assuming any external payload files referenced by the
-state are still available.
+point in the measurement, assuming the saved detector-configuration files named
+in the state are still available.
 
-Large configuration structures that are part of reproducibility, such as the
-detector `PixelConfig` or DAC settings observed through SERVAL, are still state
-values. They should be recorded when they first enter state and only recorded
-again if they change. If a value is too large or awkward to duplicate inline in
-the state log, the value may be saved as a separate payload file under
-`logs/payloads/` and represented in the record and state log by an
-`ExternalPayloadRef`.
+HERMES saves the SoPhy `.bpc` pixel-configuration file and `.dacs` DAC-settings
+file under the run's `config/` directory. The state names each file directly
+with `PixelConfigFile` or `DacsFile`. Parsed JSON returned by SERVAL endpoints is
+stored in its typed detector or SERVAL model; HERMES does not create a second
+generic file for a server response body.
 
 Operational logs are not the source of truth for reconstructing state. They may
-reference state paths, hashes, and payload references, but they should not
-duplicate full state payloads.
+reference state paths and file hashes, but they should not duplicate complete
+detector configurations or server response bodies.
 
 The final `HermesRecord` should be saved to disk as a YAML file for later
 reference. YAML is the primary persisted record format because it is readable and
 practical for user-authored run inputs. JSON may still be supported as an
 optional export format for tools that need strict machine-readable records, but
-the Pydantic `HermesRecord` schema remains the canonical contract.
+the Pydantic `HermesRecord` schema remains the authoritative field definition.
 
 ## Expected model groups ###
 Expected model groups and their responsibilities include:
@@ -85,7 +83,7 @@ acquisition-to-analysis workflow may populate both fields.
 #### FileReference ####
 When the record needs more than a file path, use a `FileReference` to store
 basic file metadata. This model is for files, not directories. Output directories
-should use a clearly named `Path` field, such as `tpx3_parquet_directory`.
+should use a clearly named `Path` field, such as `analysis_directory`.
 
 ```python
 FileReference
@@ -97,39 +95,30 @@ FileReference
   description: str | None
 ```
 
-#### ExternalPayloadRef ####
-Large durable state values may be externalized into files under the run's
-`logs/payloads/` directory. There should not be a separate `state_payload_dir`.
-In that case, the state field should contain an
-`ExternalPayloadRef` rather than a bare path string.
+#### Saved calibration files ####
+The two SERVAL calibration files have separate models because their formats and
+uses are different. `path` names the copy saved under the run directory and must
+be relative so the run directory can be moved. `source_path` records where the
+user supplied the file from. `file_hash` is the 64-character hexadecimal SHA-256
+hash of the saved file. The hash is required so HERMES can verify that the saved
+file has not changed. File size, media type, creation time, and a generic
+description are not needed in these models.
 
 ```python
-ExternalPayloadRef
-  kind: Literal["external_payload_ref"]
+PixelConfigFile
   path: Path
-  media_type: str
-  sha256: str
-  size_bytes: int
-  created_at: datetime
-  description: str | None
   source_path: Path | None
+  file_hash: str
+
+DacsFile
+  path: Path
+  source_path: Path | None
+  file_hash: str
 ```
 
-The `path` should be relative to the run `working_dir` or to the persisted
-record location so the record can be moved as a bundle. The hash and size make
-the external payload verifiable when reconstructing or reloading state.
-
-Fields that may be large should use a typed union rather than loose `Any`. For
-example:
-
-```python
-pixel_config: str | ExternalPayloadRef
-dacs: list[dict[str, int]] | ExternalPayloadRef
-```
-
-The Pydantic model should validate the shape of `ExternalPayloadRef`, but it
-should not write files. External payload file creation belongs in
-`hermes.state_service`.
+`PixelConfigFile.path` must end with `.bpc`. `DacsFile.path` must end with
+`.dacs`. The models validate names and metadata but do not copy files; the
+SERVAL acquisition workflow performs the copy before recording the paths.
 
 #### MeasurementInfo ####
 MeasurementInfo should capture all relevant metadata about the measurement, including:
@@ -200,9 +189,9 @@ DetectorSnapshot
   configuration: DetectorConfiguration | None
 ```
 
-`DetectorInfo`, `DetectorHealth`, and `DetectorLayout` should model the SERVAL
-detector endpoint payloads with aliases for backend JSON keys and Pythonic field
-names in HERMES code:
+`DetectorInfo`, `DetectorHealth`, and `DetectorLayout` should model the JSON
+response bodies returned by the SERVAL detector endpoints, with aliases for
+backend JSON keys and Pythonic field names in HERMES code:
 
 ```python
 DetectorInfo
@@ -282,8 +271,8 @@ DetectorConfiguration
   tdc: list[str] | None
   global_timestamp_interval_s: float | None
   external_reference_clock: bool | None
-  pixel_config: str | ExternalPayloadRef | None
-  dacs: list[dict[str, int]] | ExternalPayloadRef | None
+  pixel_config: str | None
+  dacs: list[dict[str, int]] | None
 ```
 
 Detector configuration constraints should mirror the SERVAL manual ranges:
@@ -349,32 +338,38 @@ ServalEnvironment
 ```
 
 CalibrationState should capture the HERMES-side calibration files and the
-SERVAL-side `/config/load` requests and results. SERVAL loads TPX3Cam
+SERVAL-side `/config/load` results. SERVAL loads TPX3Cam
 calibration files with `GET /config/load?format=<format>&file=<filepath>`, not
 with `PUT`. The `file` parameter is a string resolved by the SERVAL host, so it
 should not be modeled as a local HERMES `Path`.
 
 ```python
 CalibrationState
-  pixel_config_file: FileReference | None
-  dacs_file: FileReference | None
-  pixel_config_load_request: ServalConfigLoadRequest | None
-  dacs_load_request: ServalConfigLoadRequest | None
-  pixel_config_load_result: ServalConfigLoadResult | None
-  dacs_load_result: ServalConfigLoadResult | None
+  pixel_config_file: PixelConfigFile | None
+  dacs_file: DacsFile | None
+  pixel_config_load: PixelConfigLoad | None
+  dacs_load: DacsLoad | None
 
-ServalConfigLoadRequest
-  format: pixelconfig | dacs
-  serval_file_path: str
-  source_file: FileReference | None
-
-ServalConfigLoadResult
+PixelConfigLoad
+  server_file_path: str
   applied_at: datetime | None
   status: str | None
   http_status_code: int | None
-  response_text: str | None
-  response_summary: JsonObject
+  server_response_body: str | None
+
+DacsLoad
+  server_file_path: str
+  applied_at: datetime | None
+  status: str | None
+  http_status_code: int | None
+  server_response_body: str | None
 ```
+
+The class identifies whether the request used SERVAL's `pixelconfig` or `dacs`
+format, so the state does not repeat a separate `format` field. The optional
+`server_response_body` records the short text returned by `/config/load` when it
+is useful for diagnosing a load failure. Large or unrelated response bodies
+should remain in bounded acquisition logs rather than the HERMES record.
 
 ServalDashboard should model the SERVAL `/dashboard` response with aliases for
 the backend JSON keys and Pythonic field names in HERMES code:
@@ -416,8 +411,9 @@ ServalDashboardDetector
   detector_type: str | None
 ```
 
-DestinationConfiguration should model the SERVAL `/server/destination` payload
-directly instead of flattening output channels into a generic HERMES list:
+DestinationConfiguration should model the JSON response body returned by the
+SERVAL `/server/destination` endpoint directly instead of flattening output
+channels into a generic HERMES list:
 
 ```python
 DestinationConfiguration
@@ -481,44 +477,68 @@ Pydantic models.
 
 ```python
 AnalysisState
-  mode: hermes_tpx3_spidr | empir
+  mode: hermes | empir
 ```
 
-For `hermes_tpx3_spidr`, use explicit fields for the raw TPX3 input files, TPX3
-Parquet output directory, summary JSON file, unpacker version, clustering
-settings, and run result:
+For `hermes`, record one unpacker program, one shared analysis directory, the
+raw TPX3 files, and one overall result section. Detailed results for each raw
+file remain in its input-specific summary JSON file. Reconstruction remains an
+optional empty model until its settings and output columns are defined.
 
-##### HermesTpx3SpidrAnalysisState ####
+##### HermesTpx3AnalysisState ####
 ```python
-HermesTpx3SpidrAnalysisState
-  mode: Literal["hermes_tpx3_spidr"]
-  environment: HermesTpx3SpidrEnvironment | None
-  config: HermesTpx3SpidrConfig | None
-  result: HermesTpx3SpidrResult | None
+HermesTpx3AnalysisState
+  mode: Literal["hermes"]
+  unpacker_program: Tpx3SpidrUnpackerProgram
+  analysis_directory: Path
+  tpx3_files: list[FileReference]
+  results: HermesTpx3AnalysisResults
 
-HermesTpx3SpidrEnvironment
-  binary_path: Path | None
+Tpx3SpidrUnpackerProgram
+  name: str
+  executable_path: Path
   version: str | None
 
-HermesTpx3SpidrConfig
-  input_tpx3_files: list[FileReference]
-  tpx3_parquet_directory: Path
-  cluster_config: ClusterConfig | ExternalPayloadRef | None
+HermesTpx3AnalysisResults
+  unpacking: HermesTpx3UnpackingResult
+  reconstruction: HermesTpx3ReconstructionResult | None
 
-HermesTpx3SpidrResult
-  status: planned | running | completed | failed | skipped | unknown
+HermesTpx3UnpackingResult
+  status: planned | running | completed | failed
   started_at: datetime | None
-  completed_at: datetime | None
-  exit_code: int | None
-  summary_json_file: FileReference | None
-  pixel_hit_count: int | None
-  tdc_hit_count: int | None
-  global_timestamp_count: int | None
-  control_packet_count: int | None
-  photon_count: int | None
-  warnings: list[str]
-  errors: list[str]
+  finished_at: datetime | None
+
+HermesTpx3ReconstructionResult
 ```
+
+`tpx3_files` must contain at least one raw TPX3 file. The analysis runner must
+reject duplicate raw filename stems because the stem is used in every derived
+Parquet and summary JSON filename.
+
+The shared directory contains `pixelHits/`, `tdcTriggers/`,
+`globalTimestamps/`, `controlPackets/`, `unknownPackets/`, and `logs/`.
+Parquet filenames begin with the corresponding raw TPX3 filename stem. The
+input-specific summary path is derived as
+`<analysis_directory>/logs/<raw-file-stem>-unpacker-summary.json`.
+
+The HERMES state does not save one result per raw file, generated command
+arguments, summary JSON paths, Parquet filenames, file counts, packet or row
+counts, warnings, errors, timestamp diagnostics, sorting diagnostics,
+processing times, or per-file exit codes. Each summary JSON file is the sole
+saved detailed result for its raw TPX3 file.
+
+The unpacking status applies to the complete `tpx3_files` list:
+
+- `planned`: processing has not started
+- `running`: HERMES is checking or unpacking the list
+- `completed`: every raw file has a valid summary and valid listed Parquet files
+- `failed`: at least one raw file could not be unpacked or validated
+
+A repeated run skips a raw file only when its summary is valid and every listed
+Parquet file exists. It runs an input only when neither its summary nor matching
+Parquet files exist. Matching Parquet files without a valid summary, or an
+invalid existing summary, cause the overall run to fail. No resume flag is
+saved.
 
 The EMPIR fields remain undecided. When an EMPIR workflow is defined, name its
 input files, output directories, configuration files, and result files directly:
@@ -547,7 +567,6 @@ src/
         └── models/
             ├── __init__.py                 # makes models a Python package. Keep __init__.py empty!
             ├── measurement.py              # measurement info and metadata
-            ├── payloads.py                 # external payload reference models
             ├── analysis/                   # analysis environments that are unioned in the top-level record
             │   ├── empir.py                # EMPIR analysis environment, configuration, and related settings
             │   └── hermes_tpx3_spidr.py    # TPX3 SPIDR analysis environment, configuration, and related settings

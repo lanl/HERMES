@@ -3,7 +3,7 @@
 Verify that TPX3 unpacker output is properly time-sorted.
 
 Usage:
-    python check_sorting.py <output_directory>
+    python check_sorting.py <analysis_directory>
 
 Example:
     python check_sorting.py .scratch/test_output
@@ -88,11 +88,11 @@ def main():
 
     # Check all dataset types
     datasets = [
-        ("pixel_hits", "Pixel Hits"),
-        ("tdc_triggers", "TDC Triggers"),
-        ("global_timestamps", "Global Timestamps"),
-        ("control_packets", "Control Packets"),
-        ("unknown_packets", "Unknown Packets"),
+        ("pixelHits", "Pixel Hits"),
+        ("tdcTriggers", "TDC Triggers"),
+        ("globalTimestamps", "Global Timestamps"),
+        ("controlPackets", "Control Packets"),
+        ("unknownPackets", "Unknown Packets"),
     ]
 
     all_sorted = True

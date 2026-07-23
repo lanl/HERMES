@@ -10,17 +10,24 @@
 namespace hermes_tpx3_spidr {
 
 struct ParquetWriterConfig {
-    std::string output_directory;
+    std::string analysis_directory;
+    std::string raw_file_stem;
     std::uint64_t rows_per_part = 1000000;
     std::uint8_t chip_index = 0;
 };
 
+struct ParquetCategoryFiles {
+    std::string directory;
+    std::uint64_t row_count = 0;
+    std::vector<std::string> files;
+};
+
 struct ParquetWriterDiagnostics {
-    std::uint64_t pixel_files_written = 0;
-    std::uint64_t tdc_files_written = 0;
-    std::uint64_t global_files_written = 0;
-    std::uint64_t control_files_written = 0;
-    std::uint64_t unknown_files_written = 0;
+    ParquetCategoryFiles pixel_hits{"pixelHits", 0, {}};
+    ParquetCategoryFiles tdc_triggers{"tdcTriggers", 0, {}};
+    ParquetCategoryFiles global_timestamps{"globalTimestamps", 0, {}};
+    ParquetCategoryFiles control_packets{"controlPackets", 0, {}};
+    ParquetCategoryFiles unknown_packets{"unknownPackets", 0, {}};
     std::vector<std::string> errors;
 };
 
