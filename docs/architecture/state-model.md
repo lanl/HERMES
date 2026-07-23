@@ -492,6 +492,7 @@ HermesTpx3AnalysisState
   unpacker_program: Tpx3SpidrUnpackerProgram
   analysis_directory: Path
   tpx3_files: list[FileReference]
+  resource_limit_percent: int = 90  # integer from 1 through 100
   results: HermesTpx3AnalysisResults
 
 Tpx3SpidrUnpackerProgram
@@ -514,6 +515,13 @@ HermesTpx3ReconstructionResult
 `tpx3_files` must contain at least one raw TPX3 file. The analysis runner must
 reject duplicate raw filename stems because the stem is used in every derived
 Parquet and summary JSON filename.
+
+`resource_limit_percent` controls the resource dial for the complete HERMES
+analysis. It accepts any integer from 1 through 100 percent and defaults to 90
+percent. The runner uses this percentage to limit scheduled unpacker
+concurrency based on physical CPU count and available memory. The selected
+percentage is saved in the HERMES YAML file, making the resource limit explicit
+and repeatable.
 
 The shared directory contains `pixelHits/`, `tdcTriggers/`,
 `globalTimestamps/`, `controlPackets/`, `unknownPackets/`, and `logs/`.
