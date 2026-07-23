@@ -40,6 +40,7 @@ class HermesTpx3AnalysisState(StrictBaseModel):
     unpacker_program: Tpx3SpidrUnpackerProgram
     analysis_directory: Path
     tpx3_files: list[FileReference] = Field(min_length=1)
+    resource_limit_percent: int = Field(default=90, ge=1, le=100)
     results: HermesTpx3AnalysisResults = Field(
         default_factory=HermesTpx3AnalysisResults
     )

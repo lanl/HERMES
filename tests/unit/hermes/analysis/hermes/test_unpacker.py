@@ -695,3 +695,203 @@ def test_run_saves_failed_state_for_preflight_failure(tmp_path: Path) -> None:
     assert result.status == "failed"
     assert result.started_at is None
     assert result.finished_at is not None
+
+
+def test_resource_limit_percent_field_defaults_to_90(tmp_path: Path) -> None:
+    analysis = _analysis(tmp_path, "file.tpx3")
+    assert analysis.resource_limit_percent == 90
+
+
+def test_resource_limit_percent_accepts_integers_from_1_to_100(tmp_path: Path) -> None:
+    executable = tmp_path / "bin/hermes-tpx3-spidr"
+    executable.parent.mkdir(parents=True)
+    executable.touch()
+    raw_file = tmp_path / "raw.tpx3"
+    raw_file.touch()
+
+    for percent in [1, 50, 90, 100]:
+        analysis = HermesTpx3AnalysisState(
+            unpacker_program=Tpx3SpidrUnpackerProgram(
+                name="test",
+                executable_path=executable,
+            ),
+            analysis_directory=tmp_path / "analysis",
+            tpx3_files=[FileReference(path=raw_file)],
+            resource_limit_percent=percent,
+        )
+        assert analysis.resource_limit_percent == percent
+
+
+def test_resource_limit_percent_rejects_zero_and_above_100(tmp_path: Path) -> None:
+    executable = tmp_path / "bin/hermes-tpx3-spidr"
+    executable.parent.mkdir(parents=True)
+    executable.touch()
+    raw_file = tmp_path / "raw.tpx3"
+    raw_file.touch()
+
+    for invalid_percent in [0, 101, 200, -1]:
+        with pytest.raises(Exception):
+            HermesTpx3AnalysisState(
+                unpacker_program=Tpx3SpidrUnpackerProgram(
+                    name="test",
+                    executable_path=executable,
+                ),
+                analysis_directory=tmp_path / "analysis",
+                tpx3_files=[FileReference(path=raw_file)],
+                resource_limit_percent=invalid_percent,
+            )
+
+
+def test_parallel_unpacking_returns_files_in_input_order(tmp_path: Path) -> None:
+    analysis = _analysis(tmp_path, "c.tpx3", "a.tpx3", "b.tpx3")
+    _write_fake_unpacker(analysis.unpacker_program.executable_path)
+    for raw_file in analysis.tpx3_files:
+        raw_file.path.write_text("success", encoding="utf-8")
+
+    records: list[dict[str, Any]] = []
+    sink_id = logger.add(lambda msg: records.append(msg.record))
+
+    try:
+        manager = StateManager(
+            _record(tmp_path, analysis),
+            config=StateServiceConfig(allow_trusted_workflow_bypass=True),
+            state_logger=CapturingStateLogger(),
+        )
+        unpacked_files = run_hermes_analysis(manager)
+    finally:
+        logger.remove(sink_id)
+
+    assert len(unpacked_files) == 3
+    assert unpacked_files[0].path.name == "c.tpx3"
+    assert unpacked_files[1].path.name == "a.tpx3"
+    assert unpacked_files[2].path.name == "b.tpx3"
+
+
+def test_parallel_unpacking_logs_resource_calculation(tmp_path: Path) -> None:
+    analysis = _analysis(tmp_path, "a.tpx3", "b.tpx3")
+    _write_fake_unpacker(analysis.unpacker_program.executable_path)
+    for raw_file in analysis.tpx3_files:
+        raw_file.path.write_text("success", encoding="utf-8")
+
+    records: list[dict[str, Any]] = []
+    sink_id = logger.add(lambda msg: records.append(msg.record))
+
+    try:
+        manager = StateManager(
+            _record(tmp_path, analysis),
+            config=StateServiceConfig(allow_trusted_workflow_bypass=True),
+            state_logger=CapturingStateLogger(),
+        )
+        run_hermes_analysis(manager)
+    finally:
+        logger.remove(sink_id)
+
+    resource_records = [
+        r
+        for r in records
+        if r["extra"].get("event_type")
+        == "analysis.tpx3_unpacking.resource_calculation"
+    ]
+    assert len(resource_records) == 1
+    resource_record = resource_records[0]
+    assert resource_record["extra"]["resource_limit_percent"] == 90
+    assert resource_record["extra"]["pending_file_count"] == 2
+    assert resource_record["extra"]["worker_count"] >= 1
+    assert "physical_cpu_count" in resource_record["extra"]
+    assert "cpu_slots" in resource_record["extra"]
+    assert "memory_slots" in resource_record["extra"]
+
+
+def test_parallel_unpacking_one_failure_stops_remaining_work(tmp_path: Path) -> None:
+    analysis = _analysis(tmp_path, "a.tpx3", "failing.tpx3", "c.tpx3", "d.tpx3")
+    analysis.resource_limit_percent = 1
+    _write_fake_unpacker(analysis.unpacker_program.executable_path)
+    analysis.tpx3_files[0].path.write_text("success", encoding="utf-8")
+    analysis.tpx3_files[1].path.write_text("nonzero", encoding="utf-8")
+    analysis.tpx3_files[2].path.write_text("success", encoding="utf-8")
+    analysis.tpx3_files[3].path.write_text("success", encoding="utf-8")
+
+    manager = StateManager(
+        _record(tmp_path, analysis),
+        config=StateServiceConfig(allow_trusted_workflow_bypass=True),
+        state_logger=CapturingStateLogger(),
+    )
+
+    with pytest.raises(HermesTpx3ExecutionError, match="exited with code 7"):
+        run_hermes_analysis(manager)
+
+    result = manager.get_state().analysis.results.unpacking
+    assert result.status == "failed"
+
+    summary_files = list((analysis.analysis_directory / "logs").glob("*.json"))
+    completed_count = len(summary_files)
+    assert completed_count < 4
+
+
+def test_parallel_unpacking_skips_valid_files(tmp_path: Path) -> None:
+    analysis = _analysis(tmp_path, "skip-me.tpx3", "run-me.tpx3")
+    _write_fake_unpacker(analysis.unpacker_program.executable_path)
+    _save_completed_files(analysis, analysis.tpx3_files[0], pixel_rows=1)
+    analysis.tpx3_files[1].path.write_text("success", encoding="utf-8")
+
+    records: list[dict[str, Any]] = []
+    sink_id = logger.add(lambda msg: records.append(msg.record))
+
+    try:
+        manager = StateManager(
+            _record(tmp_path, analysis),
+            config=StateServiceConfig(allow_trusted_workflow_bypass=True),
+            state_logger=CapturingStateLogger(),
+        )
+        unpacked_files = run_hermes_analysis(manager)
+    finally:
+        logger.remove(sink_id)
+
+    assert len(unpacked_files) == 1
+    assert unpacked_files[0].path.name == "run-me.tpx3"
+
+    skipped_records = [
+        r
+        for r in records
+        if r["extra"].get("event_type") == "analysis.tpx3_unpacking.skipped"
+    ]
+    assert len(skipped_records) == 1
+    assert "skip-me" in skipped_records[0]["extra"]["raw_tpx3_file"]
+
+
+def test_resource_calculation_uses_only_pending_files(tmp_path: Path) -> None:
+    analysis = _analysis(tmp_path, "large-skip.tpx3", "small-run.tpx3")
+    _write_fake_unpacker(analysis.unpacker_program.executable_path)
+
+    # Make the first file large but already completed (will be skipped)
+    analysis.tpx3_files[0].path.write_bytes(b"x" * (100 * 1024 * 1024))
+    _save_completed_files(analysis, analysis.tpx3_files[0], pixel_rows=1)
+
+    # Make the second file small (will be run)
+    analysis.tpx3_files[1].path.write_text("success", encoding="utf-8")
+
+    records: list[dict[str, Any]] = []
+    sink_id = logger.add(lambda msg: records.append(msg.record))
+
+    try:
+        manager = StateManager(
+            _record(tmp_path, analysis),
+            config=StateServiceConfig(allow_trusted_workflow_bypass=True),
+            state_logger=CapturingStateLogger(),
+        )
+        run_hermes_analysis(manager)
+    finally:
+        logger.remove(sink_id)
+
+    resource_records = [
+        r
+        for r in records
+        if r["extra"].get("event_type")
+        == "analysis.tpx3_unpacking.resource_calculation"
+    ]
+    assert len(resource_records) == 1
+    resource_record = resource_records[0]
+
+    # The resource calculation should be based on the small file, not the large skipped one
+    assert resource_record["extra"]["pending_file_count"] == 1
+    assert resource_record["extra"]["largest_pending_file_mb"] < 1.0
