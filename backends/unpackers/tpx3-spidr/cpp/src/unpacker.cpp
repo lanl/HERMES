@@ -492,22 +492,19 @@ WorkflowResult runTwoPassWorkflow(std::istream& input,
 
     WorkflowResult workflow_result;
     workflow_result.analysis_directory = analysis_directory;
-    workflow_result.summary.source_file_path = source_file_path;
-    workflow_result.summary.analysis_directory = analysis_directory;
 
     const std::string raw_file_stem =
         std::filesystem::path(source_file_path).stem().string();
     if (raw_file_stem.empty()) {
         workflow_result.errors.push_back(
             "Cannot derive an output filename from the raw TPX3 file path");
-        workflow_result.summary.status = "failed";
         return workflow_result;
     }
 
-    workflow_result.summary.summary_json_file =
+    const std::string summary_json_file =
         "logs/" + raw_file_stem + "-unpacker-summary.json";
     const auto summary_path = std::filesystem::path(analysis_directory) /
-                              workflow_result.summary.summary_json_file;
+                              summary_json_file;
 
     try {
         findExistingOutputFiles(analysis_directory, raw_file_stem,
@@ -518,7 +515,6 @@ WorkflowResult runTwoPassWorkflow(std::istream& input,
             std::string(error.what()));
     }
     if (!workflow_result.errors.empty()) {
-        workflow_result.summary.status = "failed";
         return workflow_result;
     }
 
@@ -529,12 +525,10 @@ WorkflowResult runTwoPassWorkflow(std::istream& input,
     workflow_result.summary.timing_diagnostics.unpacking_seconds =
         Duration(unpack_end - unpack_start).count();
     workflow_result.summary.unpack_summary = unpack_result.summary;
-    workflow_result.summary.source_file_bytes = unpack_result.summary.bytes_read;
 
     if (!unpack_result.summary.errors.empty()) {
         workflow_result.success = false;
         workflow_result.errors = unpack_result.summary.errors;
-        workflow_result.summary.status = "failed";
         return workflow_result;
     }
 
@@ -608,7 +602,6 @@ WorkflowResult runTwoPassWorkflow(std::istream& input,
     if (!createAnalysisDirectories(analysis_directory,
                                    workflow_result.errors)) {
         workflow_result.success = false;
-        workflow_result.summary.status = "failed";
         return workflow_result;
     }
 
@@ -636,14 +629,14 @@ WorkflowResult runTwoPassWorkflow(std::istream& input,
     workflow_result.summary.timing_diagnostics.total_seconds =
         Duration(workflow_end - workflow_start).count();
 
-    workflow_result.summary.status = writer_diag.errors.empty() ? "complete" : "partial";
-
-    try {
-        writeSummaryJsonFile(summary_path.string(), workflow_result.summary);
-    } catch (const std::exception& error) {
-        workflow_result.errors.push_back(
-            "Failed to write summary JSON file " + summary_path.string() +
-            ": " + error.what());
+    if (writer_diag.errors.empty()) {
+        try {
+            writeSummaryJsonFile(summary_path.string(), workflow_result.summary);
+        } catch (const std::exception& error) {
+            workflow_result.errors.push_back(
+                "Failed to write summary JSON file " + summary_path.string() +
+                ": " + error.what());
+        }
     }
 
     workflow_result.success = writer_diag.errors.empty() &&
