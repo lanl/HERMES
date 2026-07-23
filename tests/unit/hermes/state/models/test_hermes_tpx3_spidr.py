@@ -42,60 +42,65 @@ def _analysis_state(tmp_path: Path, *raw_names: str) -> HermesTpx3AnalysisState:
 def _summary_data() -> dict[str, object]:
     return {
         "unpacking": {
+            "bytes_read": 24,
             "chunks_read": 2,
             "packets_read": 3,
-            "decoded_pixel_hits": 1,
-            "decoded_tdc_triggers": 0,
-            "decoded_global_timestamps": 0,
-            "decoded_spidr_control_packets": 0,
-            "decoded_tpx3_control_packets": 0,
-            "decoded_unknown_packets": 0,
-            "warnings": [],
+            "pixel_data_packets": 1,
+            "tdc_timestamps": 0,
+            "heartbeat_packets": 0,
+            "spidr_control_packets": 0,
+            "tpx3_control_packets": 0,
+            "unrecognized_packets": 0,
+            "tdc1_rising": 0,
+            "tdc1_falling": 0,
+            "tdc2_rising": 0,
+            "tdc2_falling": 0,
+            "unknown_tdc_edges": 0,
             "errors": [],
+            "warnings": [],
         },
         "timestamp_processing": {
-            "anchors": {
-                "total": 0,
-                "unpaired_low": 0,
-                "unpaired_high": 0,
-                "warnings": [],
+            "heartbeat_pairs": {
+                "number_of_beats": 0,
             },
-            "epoch_assignment": {
-                "pixels_assigned": 1,
-                "tdc_triggers_assigned": 0,
-                "controls_assigned": 0,
-                "ambiguous_timestamps": 0,
-                "unresolved_timestamps": 0,
-                "used_fallback": True,
-                "warnings": [],
+            "time_adjustments": {
+                "pixel_packets": 1,
+                "tdc_packets": 0,
+                "control_packets": 0,
+                "failed": 0,
             },
         },
         "sorting": {
-            "method": "in_memory",
+            "strategy": "in_memory",
             "memory_budget_bytes": 1_000_000,
             "estimated_memory_bytes": 128,
             "temporary_runs_created": 0,
         },
         "parquet": {
-            "pixel_hits": {
+            "pixel_data": {
                 "row_count": 1,
                 "files": [
                     "pixelHits/raw-chip-0-part-00000.parquet",
                 ],
             },
-            "tdc_triggers": {"row_count": 0, "files": []},
-            "global_timestamps": {"row_count": 0, "files": []},
+            "tdc_timestamps": {"row_count": 0, "files": []},
+            "heartbeat_packets": {"row_count": 0, "files": []},
             "control_packets": {"row_count": 0, "files": []},
-            "unknown_packets": {"row_count": 0, "files": []},
+            "unrecognized_packets": {"row_count": 0, "files": []},
             "errors": [],
         },
         "processing_times_seconds": {
+            "canonical_time_seconds": 2.0345e-12,
             "unpacking": 0.1,
-            "epoch_assignment": 0.2,
-            "conversion": 0.3,
+            "canonical_conversion": 0.3,
+            "time_adjustments": 0.2,
             "sorting": 0.4,
             "parquet_writing": 0.5,
             "total": 1.5,
+            "throughput": {
+                "packets_per_second": 2.0,
+                "megabytes_per_second": 3.0,
+            },
         },
     }
 
@@ -165,20 +170,25 @@ def test_empty_reconstruction_model_rejects_undefined_fields() -> None:
 def test_summary_validates_every_section() -> None:
     summary = Tpx3SpidrSummary.model_validate(_summary_data())
 
-    assert summary.unpacking.decoded_pixel_hits == 1
-    assert summary.timestamp_processing.epoch_assignment.used_fallback is True
-    assert summary.sorting.method == "in_memory"
-    assert summary.parquet.pixel_hits.row_count == 1
-    assert summary.parquet.pixel_hits.files == [
+    assert summary.unpacking.pixel_data_packets == 1
+    assert summary.timestamp_processing.time_adjustments.pixel_packets == 1
+    assert summary.sorting.strategy == "in_memory"
+    assert summary.parquet.pixel_data.row_count == 1
+    assert summary.parquet.pixel_data.files == [
         Path("pixelHits/raw-chip-0-part-00000.parquet")
     ]
+    assert summary.processing_times_seconds.canonical_time_seconds == 2.0345e-12
+    assert (
+        summary.processing_times_seconds.throughput.packets_per_second
+        == 2.0
+    )
     assert summary.processing_times_seconds.total == 1.5
 
 
 @pytest.mark.parametrize(
     ("section", "field"),
     [
-        ("unpacking", "decoded_pixel_hits"),
+        ("unpacking", "pixel_data_packets"),
         ("sorting", "estimated_memory_bytes"),
         ("processing_times_seconds", "total"),
     ],
@@ -216,11 +226,11 @@ def test_summary_rejects_invalid_pixel_parquet_paths(file_path: str) -> None:
     summary_data = _summary_data()
     parquet = summary_data["parquet"]
     assert isinstance(parquet, dict)
-    pixel_hits = parquet["pixel_hits"]
-    assert isinstance(pixel_hits, dict)
-    pixel_hits["files"] = [file_path]
+    pixel_data = parquet["pixel_data"]
+    assert isinstance(pixel_data, dict)
+    pixel_data["files"] = [file_path]
 
-    with pytest.raises(ValidationError, match="pixel_hits Parquet paths"):
+    with pytest.raises(ValidationError, match="pixel_data Parquet paths"):
         Tpx3SpidrSummary.model_validate(summary_data)
 
 
@@ -238,10 +248,10 @@ def test_summary_requires_parquet_files_to_match_saved_rows(
     summary_data = _summary_data()
     parquet = summary_data["parquet"]
     assert isinstance(parquet, dict)
-    pixel_hits = parquet["pixel_hits"]
-    assert isinstance(pixel_hits, dict)
-    pixel_hits["row_count"] = row_count
-    pixel_hits["files"] = files
+    pixel_data = parquet["pixel_data"]
+    assert isinstance(pixel_data, dict)
+    pixel_data["row_count"] = row_count
+    pixel_data["files"] = files
 
     with pytest.raises(ValidationError, match="category"):
         Tpx3SpidrSummary.model_validate(summary_data)
