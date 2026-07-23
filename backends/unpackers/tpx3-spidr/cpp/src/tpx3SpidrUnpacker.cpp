@@ -81,7 +81,6 @@ int main(const int argc, char* argv[]) {
         }
 
         std::cout << "Successfully wrote output to: " << output_dir << '\n';
-        std::cout << "Status: " << result.summary.status << '\n';
         std::cout << "\nTiming:\n";
         std::cout << "  Unpacking:         " << result.summary.timing_diagnostics.unpacking_seconds << " s\n";
         std::cout << "  Epoch assignment:  " << result.summary.timing_diagnostics.epoch_assignment_seconds << " s\n";
