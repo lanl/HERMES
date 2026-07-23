@@ -148,9 +148,9 @@ raw TPX3 files
 
 `hermes/run.py` should call the functions in `hermes/unpacker.py` for every raw
 TPX3 file listed in `HermesTpx3AnalysisState.tpx3_files`. The state contains one
-unpacker program, one shared analysis directory, and one overall unpacking
-result for the complete list. All inputs use the shared analysis directory with
-`pixelHits/`, `tdcTriggers/`,
+unpacker program, one shared analysis directory, one resource limit percentage,
+and one overall unpacking result for the complete list. All inputs use the
+shared analysis directory with `pixelHits/`, `tdcTriggers/`,
 `globalTimestamps/`, `controlPackets/`, `unknownPackets/`, and `logs/`
 directories. The unpacker carries the raw TPX3 filename stem into every
 Parquet filename and its summary JSON filename. The runner rejects duplicate
@@ -166,8 +166,48 @@ that raw TPX3 file. Packet counts, Parquet row counts and filenames, warnings,
 errors, timestamp diagnostics, sorting diagnostics, and processing times stay
 in that file. They are not copied into the HERMES YAML file.
 
-When HERMES runs the same analysis again, it handles each raw TPX3 file in list
-order:
+## Resource-Aware Parallel Unpacking
+
+HERMES runs independent unpacker processes concurrently when multiple raw TPX3
+files are present. The analysis state includes a `resource_limit_percent` field
+that controls how much of the system's physical CPU cores and available memory
+HERMES may schedule for unpacking work. This percentage accepts any integer from
+1 through 100, with a default of 90 percent.
+
+The runner calculates the worker count once before starting execution:
+
+```text
+resource_fraction = resource_limit_percent / 100
+cpu_slots = max(1, floor(physical_cpu_count * resource_fraction))
+estimated_worker_memory = max(
+    1 GiB,
+    16 * largest_pending_raw_file_size,
+)
+memory_budget = available_memory * resource_fraction
+memory_slots = max(1, floor(memory_budget / estimated_worker_memory))
+worker_count = min(pending_file_count, cpu_slots, memory_slots)
+```
+
+The runner uses `psutil` to read physical CPU count and currently available
+memory on supported macOS and Linux platforms. The selected resource percentage,
+resource inputs, per-process memory estimates, and calculated worker count are
+logged so the scheduling decision can be understood after a run.
+
+The resource limit controls scheduled concurrency rather than enforcing an
+operating-system CPU or memory cap. At least one worker is allowed even when its
+estimated memory exceeds the selected memory allowance, ensuring forward
+progress. The runner logs a warning in that case.
+
+The 1 GiB minimum per-process memory and the 16-times file-size multiplier are
+initial safety margins based on the C++ unpacker declaring a 1 GiB sorting
+memory budget. The C++ unpacker currently always uses in-memory sorting, and the
+declared budget is not enforced as a process memory limit. The 1 GiB minimum and
+16-times multiplier cover estimated process memory for decoding, Arrow, Parquet,
+and other allocations beyond the sorting budget alone.
+
+When HERMES runs the same analysis again, it validates every raw TPX3 file,
+every existing summary, and every existing Parquet file before launching any
+unpacker. Files are handled according to these rules:
 
 1. Skip the raw file when its summary is valid and every listed Parquet file
    exists.
@@ -176,6 +216,20 @@ order:
 4. Stop when the summary exists but is invalid.
 5. Mark the overall unpacking result `completed` only after every raw file
    passes validation.
+
+Skipped inputs are logged but never submitted to the worker pool. Files whose
+planned action is `run` are submitted to a `ThreadPoolExecutor` with the
+calculated worker count. Each worker waits for an independent C++ subprocess.
+
+The runner returns completed files in the original `tpx3_files` order,
+regardless of completion order. All HERMES state changes remain on the main
+thread. Worker threads may launch and validate one unpacker process but must not
+modify HERMES state directly.
+
+If one unpacker fails, the runner cancels work that has not started, allows
+already running processes to finish, marks overall unpacking `failed`, and
+raises a `HermesTpx3Error`. Valid summaries and Parquet files written by
+successful processes are retained. A later run validates and skips those files.
 
 No resume flag is needed.
 
