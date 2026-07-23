@@ -35,17 +35,18 @@ class HermesAnalysisError(Exception):
 
 def _calculate_worker_count(
     analysis: HermesTpx3AnalysisState,
-    pending_file_count: int,
+    files_to_run: list[FileReference],
 ) -> int:
     """Calculate the worker count based on resource limits and pending files."""
     resource_fraction = analysis.resource_limit_percent / 100.0
+    pending_file_count = len(files_to_run)
 
     physical_cpu_count = psutil.cpu_count(logical=False) or 1
     cpu_slots = max(1, floor(physical_cpu_count * resource_fraction))
 
     available_memory_bytes = psutil.virtual_memory().available
     largest_pending_file_size = max(
-        (f.path.stat().st_size for f in analysis.tpx3_files),
+        (f.path.stat().st_size for f in files_to_run),
         default=0,
     )
     estimated_worker_memory_bytes = max(
@@ -155,7 +156,7 @@ def run_hermes_analysis(state_manager: StateManager) -> list[FileReference]:
                 log_skipped_input(analysis, raw_file)
 
         if files_to_run:
-            worker_count = _calculate_worker_count(analysis, len(files_to_run))
+            worker_count = _calculate_worker_count(analysis, files_to_run)
             unpacked_files = _run_parallel_unpacking(
                 analysis,
                 files_to_run,
