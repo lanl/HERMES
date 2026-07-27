@@ -29,6 +29,7 @@ endif()
 
 add_library(hermes_photon_clusterer
     src/clusterer.cpp
+    src/clustering.cpp
     src/pixel_reader.cpp
 )
 
@@ -70,6 +71,10 @@ if(BUILD_TESTING)
     add_executable(clusterer_tests tests/clusterer_tests.cpp)
     target_link_libraries(clusterer_tests PRIVATE hermes_photon_clusterer)
     add_test(NAME clusterer_tests COMMAND clusterer_tests)
+
+    add_executable(clustering_tests tests/clustering_tests.cpp)
+    target_link_libraries(clustering_tests PRIVATE hermes_photon_clusterer)
+    add_test(NAME clustering_tests COMMAND clustering_tests)
 
     if(Arrow_FOUND AND Parquet_FOUND)
         add_executable(pixel_reader_tests tests/pixel_reader_tests.cpp)
