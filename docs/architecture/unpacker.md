@@ -506,14 +506,20 @@ so the model choice can be reviewed before reconstruction is implemented.
 
 `photon_time_estimator="leading_edge"` is the first implemented timing rule.
 When a calibration file is supplied, the program subtracts the selected
-normalized correction from every source-pixel timestamp, rounds to the nearest
-canonical integer tick, and takes the earliest corrected timestamp. When no
-calibration file is supplied, the correction is zero and the program records
-that it used the uncorrected leading edge. It must not use guessed correction
-parameters.
+normalized correction from every source-pixel timestamp and takes the earliest
+corrected timestamp. The correction `delta_t(tot_raw) = a/(tot_raw+b)+c` is
+fractional, so the corrected leading edge is written as a floating-point value
+in canonical ticks to preserve sub-tick precision; it is not rounded to an
+integer. When no calibration file is supplied, the correction is zero, the
+earliest source-pixel timestamp is written unchanged (an integer value in the
+float column), and the program records that it used the uncorrected leading
+edge. It must not use guessed correction parameters.
 
-`"brightest"`, `"mean"`, and `"tot_weighted"` are reserved timing values and
-must be rejected until implemented. No floating-point time column is written.
+Reconstruction timing is the one place floating-point time is allowed:
+unpacking still works only in canonical integer ticks, but the time-walk
+correction produces sub-tick offsets, so the reconstructed photon time is a
+float64 canonical-tick value. `"brightest"`, `"mean"`, and `"tot_weighted"` are
+reserved timing values and must be rejected until implemented.
 
 ### Photon Parquet Files
 
@@ -536,7 +542,7 @@ group has zero files and a zero row count in the summary.
 | `photon_id` | `uint64` | no | Zero-based photon number within the raw input and chip |
 | `x` | `float64` | no | Arithmetic mean source-pixel x coordinate |
 | `y` | `float64` | no | Arithmetic mean source-pixel y coordinate |
-| `timestamp_canonical` | `uint64` | no | Leading-edge photon time in canonical integer ticks |
+| `timestamp_canonical` | `float64` | no | Time-walk-corrected leading-edge photon time in canonical ticks (fractional; equals the earliest source-pixel timestamp when no calibration is applied) |
 | `tot` | `uint64` | no | Sum of source-pixel `tot_raw` values |
 | `quality_flags` | `uint16` | no | Accepted-photon flag bit mask |
 
