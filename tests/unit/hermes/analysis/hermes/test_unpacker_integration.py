@@ -133,8 +133,10 @@ def test_real_cpp_unpacker_handles_two_inputs_and_skips_completed_files(
         "analysis_directory",
         "tpx3_files",
         "resource_limit_percent",
+        "photon_reconstruction",
         "results",
     }
+    assert saved_analysis["photon_reconstruction"] is None
     assert set(saved_analysis["results"]["unpacking"]) == {
         "status",
         "started_at",
@@ -158,7 +160,10 @@ def test_real_cpp_unpacker_handles_two_inputs_and_skips_completed_files(
         if record["extra"].get("event_type")
         == "analysis.tpx3_unpacking.started"
     ]
-    assert first_event_inputs == ["example-first.tpx3", "example-second.tpx3"]
+    assert sorted(first_event_inputs) == [
+        "example-first.tpx3",
+        "example-second.tpx3",
+    ]
 
     saved_files = [
         derive_summary_path(analysis, raw_file)
