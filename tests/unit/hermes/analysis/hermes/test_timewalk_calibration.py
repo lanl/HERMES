@@ -11,6 +11,7 @@ from hermes.analysis.hermes.timewalk_calibration import (
     PixelHit,
     RelativeDelayAccumulator,
     Tpx3TimewalkCalibration,
+    Tpx3TimewalkCorrection,
     calibrate_timewalk,
     cluster_pixel_hits,
     fit_timewalk_models,
@@ -113,11 +114,13 @@ def test_calibration_writes_valid_json_and_comparison_plot(
     rows = _synthetic_parquet_rows()
     pq.write_table(pa.table(rows), pixel_file)
     output_file = tmp_path / "logs/timewalk-calibration.json"
+    correction_file = tmp_path / "calibrations/timewalk-calibration-correction.json"
 
     calibration = calibrate_timewalk(
         [pixel_file],
         _settings(max_time_spread_ticks=2_000),
         output_file,
+        correction_file,
     )
     loaded = Tpx3TimewalkCalibration.model_validate_json(
         output_file.read_bytes()
@@ -128,6 +131,36 @@ def test_calibration_writes_valid_json_and_comparison_plot(
     assert output_file.is_file()
     assert calibration.comparison_plot.is_file()
     assert calibration.selected_parameters
+
+    correction = Tpx3TimewalkCorrection.model_validate_json(
+        correction_file.read_bytes()
+    )
+    assert correction.model == calibration.selected_model
+    assert correction.parameters == calibration.selected_parameters
+    assert correction.high_tot_anchor == calibration.high_tot_anchor
+
+
+def test_calibration_writes_correction_to_requested_path(
+    tmp_path: Path,
+) -> None:
+    pixel_file = tmp_path / "pixelHits/raw-chip-0-part-00000.parquet"
+    pixel_file.parent.mkdir()
+    pq.write_table(pa.table(_synthetic_parquet_rows()), pixel_file)
+    output_file = tmp_path / "logs/timewalk-calibration.json"
+    correction_file = tmp_path / "corrections/time-walk.json"
+
+    calibration = calibrate_timewalk(
+        [pixel_file],
+        _settings(max_time_spread_ticks=2_000),
+        output_file,
+        correction_file,
+    )
+
+    correction = Tpx3TimewalkCorrection.model_validate_json(
+        correction_file.read_bytes()
+    )
+    assert correction.model == calibration.selected_model
+    assert correction.parameters == calibration.selected_parameters
 
 
 def _synthetic_accumulator(
