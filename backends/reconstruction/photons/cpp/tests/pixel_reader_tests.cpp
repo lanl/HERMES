@@ -17,6 +17,7 @@ namespace {
 using hermes_photon_clusterer::discoverPixelFiles;
 using hermes_photon_clusterer::PixelHit;
 using hermes_photon_clusterer::readPixelHits;
+using hermes_photon_clusterer::readPixelHitsFiltered;
 
 // Writes a pixel_data Parquet file with the unpacker's column layout.
 void writePixelFile(const std::string& path,
@@ -105,6 +106,22 @@ int main() {
                          std::uint64_t{1000}, "row 0 timestamp");
         test.expectEqual(read_hits[2].timestamp_canonical,
                          std::uint64_t{1010}, "row 2 timestamp (part 1)");
+    }
+
+    // The per-pixel min-ToT filter drops low-ToT noise rows as they are read.
+    std::vector<PixelHit> kept_hits;
+    std::uint64_t rejected = 0;
+    std::vector<std::string> filter_errors;
+    const bool filter_ok = readPixelHitsFiltered(
+        groups.files_by_chip[0], 90,
+        [&](const PixelHit& hit) { kept_hits.push_back(hit); }, rejected,
+        filter_errors);
+    test.expect(filter_ok, "filtered reading succeeds");
+    // Rows have ToT 100, 90, 80; min 90 keeps the first two, drops the last.
+    test.expectEqual(kept_hits.size(), std::size_t{2}, "two rows kept at min 90");
+    test.expectEqual(rejected, std::uint64_t{1}, "one row rejected at min 90");
+    for (const auto& hit : kept_hits) {
+        test.expect(hit.tot_raw >= 90, "kept rows meet the ToT threshold");
     }
 
     // A non-contiguous part set is rejected.
