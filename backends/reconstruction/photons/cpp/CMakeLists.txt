@@ -32,6 +32,7 @@ add_library(hermes_photon_clusterer
     src/cluster_filter.cpp
     src/clustering.cpp
     src/photon.cpp
+    src/photon_writer.cpp
     src/pixel_reader.cpp
     src/timewalk.cpp
 )
@@ -95,5 +96,9 @@ if(BUILD_TESTING)
         add_executable(pixel_reader_tests tests/pixel_reader_tests.cpp)
         target_link_libraries(pixel_reader_tests PRIVATE hermes_photon_clusterer)
         add_test(NAME pixel_reader_tests COMMAND pixel_reader_tests)
+
+        add_executable(photon_writer_tests tests/photon_writer_tests.cpp)
+        target_link_libraries(photon_writer_tests PRIVATE hermes_photon_clusterer)
+        add_test(NAME photon_writer_tests COMMAND photon_writer_tests)
     endif()
 endif()
