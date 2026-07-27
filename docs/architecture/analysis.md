@@ -36,7 +36,7 @@ src/hermes/analysis/
 │   ├── __init__.py
 │   ├── run.py                     # orders the HERMES pipeline
 │   ├── unpacker.py                # raw TPX3 files to sorted Parquet files
-│   └── reconstruction.py          # future HERMES photon and event reconstruction
+│   └── reconstruction.py          # pixel_data to HERMES photon Parquet files
 │
 └── empir/
     ├── __init__.py
@@ -142,7 +142,7 @@ raw TPX3 files
   -> sorted tdc_timestamps Parquet files
   -> sorted heartbeat_packets Parquet files
   -> sorted control_packets Parquet files
-  -> future HERMES pixel-to-photon reconstruction
+  -> optional HERMES pixel-to-photon reconstruction
   -> future HERMES photon-to-event reconstruction
 ```
 
@@ -165,6 +165,35 @@ Each input-specific summary JSON file is the sole saved detailed result for
 that raw TPX3 file. Packet counts, Parquet row counts and filenames, warnings,
 errors, timestamp diagnostics, sorting diagnostics, and processing times stay
 in that file. They are not copied into the HERMES YAML file.
+
+When photon reconstruction is configured, `hermes/run.py` calls
+`hermes/reconstruction.py` after every raw TPX3 file has valid unpacker output.
+Photon reconstruction is optional. It reads the time-sorted `pixel_data` files
+for one raw filename stem from `analysis/pixelHits/`, processes each chip
+independently, then writes `photon_events` and optional `photon_pixels` files
+under `analysis/photons/`. It does not read TDC files or perform
+photon-to-event reconstruction.
+
+The first photon reconstruction program uses connected components with a time
+gate. `clustering_algorithm="connected_components"` selects it. The reserved
+`"dbscan"` value must be rejected until the separate DBSCAN program is
+implemented. Both programs use the same input columns, settings, output
+columns, filenames, summary fields, and exit behavior.
+
+HERMES runs photon reconstruction once for each raw filename stem after
+validating its pixel-data files. Reconstruction settings are saved in the
+HERMES state and passed to the selected program in a temporary JSON file. The
+command remains positional:
+
+```text
+<executable> <analysis-directory> <raw-file-stem> <settings-json-file>
+```
+
+The settings JSON file contains the chip-independent clustering settings and
+optional time-correction calibration path. The program processes every chip
+for the named raw input, derives `pixelHits/`, `photons/`, and `logs/` from the
+analysis directory, and records the complete settings in its summary. HERMES
+removes the temporary settings file after the process exits.
 
 ## Resource-Aware Parallel Unpacking
 
@@ -233,9 +262,34 @@ successful processes are retained. A later run validates and skips those files.
 
 No resume flag is needed.
 
-Only unpacking is currently defined. `hermes/reconstruction.py` should remain
-empty until the HERMES photon and event settings, Arrow tables, saved Parquet
-files, timing rules, and result fields are defined in the architecture.
+Photon reconstruction uses the same restart rule. Before launching the
+program, HERMES validates the selected executable, the unpacker summary, every
+listed `pixel_data` file, and any existing reconstruction summary and photon
+files:
+
+1. Skip the raw file when its reconstruction summary is valid and every listed
+   `photon_events` file exists.
+2. Also require every listed `photon_pixels` file when the saved
+   `save_photon_pixels` setting is true.
+3. Do not require `photon_pixels` when `save_photon_pixels` is false; the
+   summary must then report that no membership files were requested.
+4. Run reconstruction when neither its summary nor matching photon files
+   exist.
+5. Stop when matching photon files exist without a valid summary, when a
+   summary is invalid, or when its saved settings differ from the requested
+   settings.
+
+The runner applies the overall reconstruction status `running` through
+`StateManager` before launching the first reconstruction process. If that
+trusted-workflow change is not allowed, it stops before launching the process.
+Reconstruction runs sequentially by raw filename stem in the first
+implementation. State changes remain on the main thread.
+
+If one reconstruction process fails, the runner marks the overall
+reconstruction result `failed`, raises a HERMES reconstruction error, and
+keeps valid photon files and summaries from inputs that completed. A later run
+validates and skips those inputs. After every input validates, the runner marks
+the overall reconstruction result `completed`.
 
 HERMES programs may be implemented in C++ or Rust, but they must read and write
 the HERMES files and columns defined for that analysis step. Choosing a C++ or
@@ -301,6 +355,7 @@ Examples:
 
 ```text
 domain="analysis", mode="hermes", step="tpx3_spidr_unpacking"
+domain="analysis", mode="hermes", step="photon_reconstruction"
 domain="analysis", mode="empir", step="pixel_to_photon"
 domain="analysis", mode="empir", step="photon_to_event"
 domain="analysis", mode="empir", step="event_to_image"
@@ -318,8 +373,10 @@ force both modes into one generic setting.
 
 For HERMES, the unpacker saves inspectable Parquet files in shared category
 directories and one input-specific summary JSON file under `analysis/logs/`.
-Later HERMES reconstruction work will define whether photon and event Arrow
-tables are kept only in memory or also written as Parquet files.
+Photon reconstruction saves `photon_events` Parquet files and, when
+`save_photon_pixels` is true, `photon_pixels` Parquet files under
+`analysis/photons/`. It also saves one input-specific reconstruction summary
+JSON file under `analysis/logs/`. Event reconstruction remains undefined.
 
 For EMPIR, the file-based binaries require photon and event files between
 commands. The existing `save_photon_files` and `save_event_files` fields control
