@@ -31,7 +31,9 @@ add_library(hermes_photon_clusterer
     src/clusterer.cpp
     src/cluster_filter.cpp
     src/clustering.cpp
+    src/photon.cpp
     src/pixel_reader.cpp
+    src/timewalk.cpp
 )
 
 target_compile_features(hermes_photon_clusterer PUBLIC cxx_std_17)
@@ -80,6 +82,14 @@ if(BUILD_TESTING)
     add_executable(cluster_filter_tests tests/cluster_filter_tests.cpp)
     target_link_libraries(cluster_filter_tests PRIVATE hermes_photon_clusterer)
     add_test(NAME cluster_filter_tests COMMAND cluster_filter_tests)
+
+    add_executable(photon_tests tests/photon_tests.cpp)
+    target_link_libraries(photon_tests PRIVATE hermes_photon_clusterer)
+    add_test(NAME photon_tests COMMAND photon_tests)
+
+    add_executable(timewalk_tests tests/timewalk_tests.cpp)
+    target_link_libraries(timewalk_tests PRIVATE hermes_photon_clusterer)
+    add_test(NAME timewalk_tests COMMAND timewalk_tests)
 
     if(Arrow_FOUND AND Parquet_FOUND)
         add_executable(pixel_reader_tests tests/pixel_reader_tests.cpp)
