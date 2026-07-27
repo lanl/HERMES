@@ -29,6 +29,7 @@ endif()
 
 add_library(hermes_photon_clusterer
     src/clusterer.cpp
+    src/pixel_reader.cpp
 )
 
 target_compile_features(hermes_photon_clusterer PUBLIC cxx_std_17)
@@ -69,4 +70,10 @@ if(BUILD_TESTING)
     add_executable(clusterer_tests tests/clusterer_tests.cpp)
     target_link_libraries(clusterer_tests PRIVATE hermes_photon_clusterer)
     add_test(NAME clusterer_tests COMMAND clusterer_tests)
+
+    if(Arrow_FOUND AND Parquet_FOUND)
+        add_executable(pixel_reader_tests tests/pixel_reader_tests.cpp)
+        target_link_libraries(pixel_reader_tests PRIVATE hermes_photon_clusterer)
+        add_test(NAME pixel_reader_tests COMMAND pixel_reader_tests)
+    endif()
 endif()
