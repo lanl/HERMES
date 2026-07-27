@@ -106,6 +106,9 @@ bool readPixelHits(const std::vector<std::string>& files,
     const std::vector<std::string> columns = {"local_x", "local_y", "tot_raw",
                                               "timestamp_canonical"};
 
+    // Zero-based source-row counter across the chip's ordered parts. Assigned
+    // before any filtering so it references the true input row.
+    std::uint64_t pixel_event_id = 0;
     for (const std::string& path : files) {
         auto input_result = arrow::io::ReadableFile::Open(path);
         if (!input_result.ok()) {
@@ -180,6 +183,7 @@ bool readPixelHits(const std::vector<std::string>& files,
                 hit.y = uint16At(y_array, row);
                 hit.tot_raw = uint16At(tot_array, row);
                 hit.timestamp_canonical = uint64At(time_array, row);
+                hit.pixel_event_id = pixel_event_id++;
                 on_hit(hit);
             }
         }
