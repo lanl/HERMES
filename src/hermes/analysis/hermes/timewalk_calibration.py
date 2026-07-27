@@ -5,6 +5,7 @@ import math
 import re
 from collections import defaultdict
 from dataclasses import dataclass, field
+from datetime import date
 from pathlib import Path
 from typing import Iterable, Iterator, Literal
 
@@ -23,6 +24,9 @@ matplotlib.use("Agg")
 from matplotlib import pyplot as plt  # noqa: E402
 
 _CANONICAL_TIME_SECONDS = 25e-9 / 12_288
+_CALIBRATION_DIRECTORY = (
+    Path(__file__).resolve().parents[4] / "calibrations" / "tpx3"
+)
 _TIME_BLOCK_COUNT = 5
 _PIXEL_FILENAME = re.compile(
     r"^(?P<stem>.+)-chip-(?P<chip>\d+)-part-(?P<part>\d{5})\.parquet$"
@@ -161,6 +165,17 @@ class TimewalkTotBin(StrictBaseModel):
     inverse_prediction_ticks: float
     linear_residual_ticks: float
     inverse_residual_ticks: float
+
+
+class Tpx3TimewalkCorrection(StrictBaseModel):
+    """Small correction file consumed by the reconstruction clusterer."""
+
+    model: Literal["linear", "inverse"]
+    parameters: dict[str, float]
+    high_tot_anchor: float = Field(ge=0, le=1023)
+    time_unit: Literal["canonical_ticks"] = "canonical_ticks"
+    date_created: date
+    note: str | None = None
 
 
 class Tpx3TimewalkCalibration(StrictBaseModel):
@@ -397,6 +412,7 @@ def calibrate_timewalk(
     pixel_data_files: list[Path],
     settings: Tpx3PhotonClusteringSettings,
     output_file: Path,
+    correction_file: Path | None = None,
 ) -> Tpx3TimewalkCalibration:
     grouped_files = _group_pixel_files(pixel_data_files)
     if not grouped_files:
@@ -478,10 +494,30 @@ def calibrate_timewalk(
         calibration.model_dump_json(indent=2),
         encoding="utf-8",
     )
+
+    resolved_correction_file = (
+        correction_file
+        if correction_file is not None
+        else _CALIBRATION_DIRECTORY / f"{output_file.stem}-correction.json"
+    )
+    correction = Tpx3TimewalkCorrection(
+        model=selected_model,
+        parameters=calibration.selected_parameters,
+        high_tot_anchor=high_tot_anchor,
+        date_created=date.today(),
+        note=selection_reason,
+    )
+    resolved_correction_file.parent.mkdir(parents=True, exist_ok=True)
+    resolved_correction_file.write_text(
+        correction.model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+
     _CALIBRATION_LOGGER.info(
         "analysis.timewalk_calibration.completed",
         event_type="analysis.timewalk_calibration.completed",
         output_file=str(output_file),
+        correction_file=str(resolved_correction_file),
         comparison_plot=str(comparison_plot),
         components_considered=components_considered,
         components_used=components_used,
