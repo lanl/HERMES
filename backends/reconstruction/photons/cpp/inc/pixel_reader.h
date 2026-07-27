@@ -16,6 +16,9 @@ struct PixelHit {
     std::uint16_t y = 0;
     std::uint16_t tot_raw = 0;
     std::uint64_t timestamp_canonical = 0;
+    // Zero-based row number within the chip's sorted input parts, used to
+    // reference the source pixel in photon_pixels output.
+    std::uint64_t pixel_event_id = 0;
 };
 
 // Pixel-data Parquet files for one raw stem, grouped by chip index and ordered
