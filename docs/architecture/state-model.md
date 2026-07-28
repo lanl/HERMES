@@ -107,6 +107,35 @@ Pydantic supplies `acquisition: null`, `resource_limit_percent: 90`, planned
 unpacking results, and `None` for the optional unpacker version and optional raw
 TPX3 file information.
 
+### Raw TPX3 file input
+
+`HermesTpx3AnalysisState.tpx3_files` accepts an explicit list:
+
+```yaml
+tpx3_files:
+  - path: data/raw/run_001.tpx3
+  - path: data/raw/run_002.tpx3
+```
+
+User-authored YAML may instead name a text file:
+
+```yaml
+tpx3_files:
+  file_list: data/raw/raw_tpx3_files.txt
+```
+
+The text file contains one raw TPX3 file path per line. Empty lines and lines
+whose first non-whitespace character is `#` are ignored. The `file_list` path
+follows the existing YAML path behavior and is interpreted from the process
+working directory. Relative raw TPX3 paths inside the text file are resolved
+from the text file's directory.
+
+Pydantic expands the text file into the existing `list[FileReference]` before
+the rest of `HermesTpx3AnalysisState` is validated. Missing, unreadable, and
+empty text files fail validation. Duplicate raw TPX3 filename stems remain
+rejected. Saving the HERMES record always writes the expanded explicit
+`tpx3_files` list and does not save `file_list`.
+
 ### Current required/default review
 
 - `HermesRecord.measurement_info` and `HermesRecord.environment` are required.
