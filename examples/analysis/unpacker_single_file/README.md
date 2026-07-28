@@ -46,6 +46,43 @@ include:
 - optional unpacker version
 - optional raw TPX3 file information
 
+## Multiple raw TPX3 files
+
+List the files directly:
+
+```yaml
+tpx3_files:
+  - path: data/raw/run_001.tpx3
+  - path: data/raw/run_002.tpx3
+  - path: data/raw/run_003.tpx3
+```
+
+Or name a text file:
+
+```yaml
+tpx3_files:
+  file_list: data/raw/raw_tpx3_files.txt
+```
+
+The text file contains one path per line:
+
+```text
+# Relative to this text file's directory.
+run_001.tpx3
+run_002.tpx3
+run_003.tpx3
+```
+
+Blank lines and lines beginning with `#` are ignored. A relative path inside
+the text file is resolved from the text file's directory. The text file must
+exist and contain at least one raw TPX3 file path. Raw TPX3 filename stems must
+remain unique.
+
+The final `hermes-record_final.yaml` always contains the expanded
+`tpx3_files` list so it records the exact raw TPX3 files used. The command
+prints every configured raw TPX3 path and reports how many were unpacked or
+skipped.
+
 Unknown fields, missing required fields, invalid values, malformed YAML, and a
 missing analysis mode stop the example before analysis starts. A valid
 non-HERMES analysis record is rejected by the HERMES runner with an ERROR-level
