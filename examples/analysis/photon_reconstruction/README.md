@@ -4,7 +4,9 @@ This example unpacks raw TPX3 files and then reconstructs photons from the
 resulting `pixel_data` with the connected-components + time-gate clusterer. It
 applies the checked-in time-walk calibration to the leading edge, writes
 `photon_events` and `photon_pixels` Parquet files, and a per-file
-reconstruction-summary JSON.
+reconstruction-summary JSON. The script constructs a `Workflow` from one
+`HermesRecord`, calls `workflow.run_analysis()`, and saves the completed
+`workflow.record`.
 
 ## Input Files
 
@@ -43,7 +45,8 @@ pixi run python examples/analysis/photon_reconstruction/run_reconstruction.py
 
 This will:
 
-1. Unpack the TPX3 files in `data/list_tests/` through `run_hermes_analysis()`.
+1. Construct a `Workflow` and call `workflow.run_analysis()` to unpack the TPX3
+   files in `data/list_tests/`.
 2. Reconstruct photons from the unpacked `pixel_data` with the
    connected-components + time-gate rule and the cluster-selection settings
    defined in the script.

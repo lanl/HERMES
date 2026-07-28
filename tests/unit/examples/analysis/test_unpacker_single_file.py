@@ -71,12 +71,11 @@ def test_invalid_yaml_stops_before_analysis(
     invalid_yaml_path = tmp_path / "invalid.yaml"
     invalid_yaml_path.write_text("measurement_info: [", encoding="utf-8")
 
-    def fail_if_called(state_manager: StateManager) -> list[FileReference]:
+    def fail_if_called(*args: object, **kwargs: object) -> list[FileReference]:
         raise AssertionError("analysis must not run for invalid YAML")
 
     monkeypatch.setattr(
-        run_unpacker_module,
-        "run_hermes_analysis",
+        "hermes.workflows.workflow.run_hermes_analysis",
         fail_if_called,
     )
 
@@ -119,14 +118,16 @@ analysis:
 
     def run_without_subprocess(
         state_manager: StateManager,
+        *,
+        overwrite: bool = False,
     ) -> list[FileReference]:
+        assert overwrite is False
         current_record = state_manager.get_state()
         assert isinstance(current_record.analysis, HermesTpx3AnalysisState)
         return current_record.analysis.tpx3_files
 
     monkeypatch.setattr(
-        run_unpacker_module,
-        "run_hermes_analysis",
+        "hermes.workflows.workflow.run_hermes_analysis",
         run_without_subprocess,
     )
 

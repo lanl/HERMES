@@ -1,8 +1,10 @@
 # HERMES TPX3 Unpacker: Multiple Files Example
 
-This example loads a partial user-authored YAML file as a `HermesRecord` and
-runs the state-managed HERMES C++ unpacker over several raw TPX3 files with
-resource-aware parallel execution.
+This example loads a partial user-authored YAML file as a `HermesRecord`,
+constructs a `Workflow`, and calls `workflow.run_analysis()` to run the HERMES
+C++ unpacker over several raw TPX3 files with resource-aware parallel
+execution. It saves the completed `workflow.record`; the caller does not
+construct or configure a `StateManager`.
 
 ## Input Files
 
@@ -40,8 +42,8 @@ pixi run python examples/analysis/unpacker_multiple_files/run_unpacker_mf.py
 This will:
 1. Create `data/multiFileExample/` and write the five raw TPX3 copies
 2. Load and validate `unpacker_mf_config.yaml` as a `HermesRecord`
-3. Run the unpacker for each file using the public `run_hermes_analysis()`
-   runner with `resource_limit_percent=90`
+3. Construct a `Workflow` from the loaded record and call
+   `workflow.run_analysis()`; the record supplies `resource_limit_percent=90`
 4. Write Parquet files under shared directories:
    - `pixelHits/`
    - `tdcTriggers/`
@@ -49,7 +51,7 @@ This will:
    - `controlPackets/`
    - `unknownPackets/`
 5. Write one summary JSON file per input under `analysis/logs/`
-6. Save the completed HERMES state to `hermes-record_final.yaml`
+6. Save `workflow.record` to `hermes-record_final.yaml`
 
 To use another YAML file, supply its path as the first argument:
 

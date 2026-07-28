@@ -3,7 +3,9 @@
 This example unpacks raw TPX3 files and then fits a time-walk correction from
 the resulting `pixel_data` using the in-cluster relative method. It writes a
 detailed calibration-result JSON, a comparison plot, and the small correction
-file that the photon reconstruction clusterer consumes.
+file that the photon reconstruction clusterer consumes. The script constructs a
+`Workflow` from one `HermesRecord`, calls `workflow.run_analysis()`, and saves
+the completed `workflow.record`.
 
 ## Input Files
 
@@ -40,7 +42,8 @@ pixi run python examples/analysis/timewalk_calibration/run_timewalk_calibration.
 
 This will:
 
-1. Unpack the TPX3 files in `data/list_tests/` through `run_hermes_analysis()`.
+1. Construct a `Workflow` and call `workflow.run_analysis()` to unpack the TPX3
+   files in `data/list_tests/`.
 2. Cluster the unpacked `pixel_data` with the connected-components + time-gate
    rule and the cluster-selection settings defined in the script.
 3. Take each cluster's earliest pixel as the timing reference and accumulate

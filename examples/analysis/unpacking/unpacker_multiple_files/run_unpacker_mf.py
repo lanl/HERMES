@@ -5,14 +5,12 @@ import shutil
 from pathlib import Path
 from typing import cast
 
-from hermes.analysis.hermes.run import run_hermes_analysis
 from hermes.state.models.analysis.hermes_tpx3_spidr import HermesTpx3AnalysisState
-from hermes.state_service.shared_types import StateServiceConfig
 from hermes.state_service.state_io import (
     load_hermes_record_from_yaml,
     save_hermes_record_to_yaml,
 )
-from hermes.state_service.state_manager import StateManager
+from hermes.workflows.workflow import Workflow
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 SOURCE_TPX3_FILE = REPOSITORY_ROOT / "tests/data/Example_1kHz_5frames.tpx3"
@@ -51,34 +49,31 @@ def main(
     *,
     overwrite: bool = False,
 ) -> None:
+    # Step 1: Prepare the bundled multi-file input when using the default YAML
     if input_yaml_path == DEFAULT_INPUT_YAML_PATH:
         prepare_example_input_files()
 
     # Step 2: Load the initial HERMES record from the configuration YAML file
     initial_record = load_hermes_record_from_yaml(input_yaml_path)
-    
-    # Step 3: Extract the working directory path where outputs will be stored
+
+    # Step 3: Choose a separate path for the completed HERMES record
     working_directory = cast(
         Path,
         initial_record.environment.working_dir.resolved_path,
     )
     final_record_path = working_directory / "hermes-record_final.yaml"
 
-    # Step 4: Initialize the state manager with the initial record
-    # This manages the state throughout the analysis workflow
-    state_manager = StateManager(
-        initial_record,
-        config=StateServiceConfig(allow_trusted_workflow_bypass=True),
-    )
+    # Step 4: Initialize the workflow with the initial record
+    workflow = Workflow(initial_record)
 
     # Step 5: Run the HERMES analysis on all TPX3 files
     # Returns a list of files that were actually unpacked (not skipped)
-    unpacked_raw_files = run_hermes_analysis(state_manager, overwrite=overwrite)
-    
+    unpacked_raw_files = workflow.run_analysis(overwrite=overwrite)
+
     # Step 6: Get the final state after analysis completes
-    final_record = state_manager.get_state()
+    final_record = workflow.record
     hermes_analysis = cast(HermesTpx3AnalysisState, final_record.analysis)
-    
+
     # Step 7: Save the final HERMES record to a YAML file for future reference
     save_hermes_record_to_yaml(final_record, final_record_path)
 
