@@ -22,6 +22,16 @@ class Workflow:
             overwrite=overwrite,
         )
 
+    def run_acquisition(self) -> None:
+        """Reserve the acquisition entry point until acquisition is implemented."""
+        raise NotImplementedError("HERMES acquisition is not implemented")
+
+    def run(self) -> None:
+        """Reserve the combined acquisition-to-analysis entry point."""
+        raise NotImplementedError(
+            "combined HERMES acquisition and analysis is not implemented"
+        )
+
     @property
     def record(self) -> HermesRecord:
         return self._state_manager.get_state()
