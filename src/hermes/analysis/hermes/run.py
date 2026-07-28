@@ -145,7 +145,17 @@ def run_hermes_analysis(state_manager: StateManager) -> list[FileReference]:
     state = state_manager.get_state()
     analysis = state.analysis
     if not isinstance(analysis, HermesTpx3AnalysisState):
-        raise HermesAnalysisError("the saved analysis mode is not HERMES")
+        error = "the saved analysis mode is not HERMES"
+        _ANALYSIS_LOGGER.error(
+            "Cannot run HERMES analysis: {error}",
+            event_type="analysis.hermes.invalid_mode",
+            error=error,
+            measurement_id=state.measurement_info.measurement_id,
+            run_number=state.measurement_info.run_number,
+            expected_analysis_mode="hermes",
+            actual_analysis_mode=getattr(analysis, "mode", None),
+        )
+        raise HermesAnalysisError(error)
 
     try:
         unpacking_plan = plan_unpacking(analysis)
