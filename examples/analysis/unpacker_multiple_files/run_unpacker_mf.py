@@ -51,9 +51,8 @@ def main(
     *,
     overwrite: bool = False,
 ) -> None:
-    
-    # Step 1: Prepare example input files by copying the source TPX3 file multiple times
-    prepare_example_input_files()
+    if input_yaml_path == DEFAULT_INPUT_YAML_PATH:
+        prepare_example_input_files()
 
     # Step 2: Load the initial HERMES record from the configuration YAML file
     initial_record = load_hermes_record_from_yaml(input_yaml_path)
