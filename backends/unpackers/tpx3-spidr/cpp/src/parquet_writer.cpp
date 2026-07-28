@@ -345,7 +345,7 @@ void writeRowsToParquet(
         const std::string relative_path = category.directory + "/" + filename;
         const std::string full_path = config.analysis_directory + "/" + relative_path;
 
-        if (std::filesystem::exists(full_path)) {
+        if (!config.overwrite && std::filesystem::exists(full_path)) {
             errors.push_back("Refusing to overwrite existing Parquet file " +
                              full_path);
             return;

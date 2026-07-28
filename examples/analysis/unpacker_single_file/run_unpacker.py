@@ -1,73 +1,55 @@
 from __future__ import annotations
 
+import sys
 from pathlib import Path
+from typing import cast
 
 from hermes.analysis.hermes.run import run_hermes_analysis
-from hermes.state.models.analysis.hermes_tpx3_spidr import (
-    HermesTpx3AnalysisState,
-    Tpx3SpidrUnpackerProgram,
-)
-from hermes.state.models.environment import RuntimeEnvironment
-from hermes.state.models.measurement import MeasurementInfo
-from hermes.state.models.shared_models import FileReference
-from hermes.state.state import HermesRecord
+from hermes.state.models.analysis.hermes_tpx3_spidr import HermesTpx3AnalysisState
 from hermes.state_service.shared_types import StateServiceConfig
-from hermes.state_service.state_io import save_hermes_record_to_yaml
+from hermes.state_service.state_io import (
+    load_hermes_record_from_yaml,
+    save_hermes_record_to_yaml,
+)
 from hermes.state_service.state_manager import StateManager
 
-REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
-RAW_TPX3_FILE = REPOSITORY_ROOT / "tests/data/Example_1kHz_5frames.tpx3"
-UNPACKER_EXECUTABLE = (
-    REPOSITORY_ROOT / "build/backends/tpx3-spidr/hermes-tpx3-spidr"
-)
-EXAMPLE_DIRECTORY = (
-    REPOSITORY_ROOT / "data/examples/analysis/unpacker"
-)
-ANALYSIS_DIRECTORY = EXAMPLE_DIRECTORY / "analysis"
-HERMES_STATE_FILE = EXAMPLE_DIRECTORY / "hermes-record.yaml"
+DEFAULT_INPUT_YAML_PATH = Path(__file__).with_name("unpacker_config.yaml")
 
 
-def main() -> None:
-    if not RAW_TPX3_FILE.is_file():
-        raise FileNotFoundError(f"TPX3 example file not found: {RAW_TPX3_FILE}")
-    if not UNPACKER_EXECUTABLE.is_file():
-        raise FileNotFoundError(
-            "C++ unpacker not found. Run `pixi run build-cpp-unpacker` first: "
-            f"{UNPACKER_EXECUTABLE}"
-        )
-
-    analysis = HermesTpx3AnalysisState(
-        unpacker_program=Tpx3SpidrUnpackerProgram(
-            name="tpx3-spidr-cpp",
-            executable_path=UNPACKER_EXECUTABLE,
-            version="0.1.0",
-        ),
-        analysis_directory=ANALYSIS_DIRECTORY,
-        tpx3_files=[FileReference(path=RAW_TPX3_FILE)],
+def main(input_yaml_path: Path = DEFAULT_INPUT_YAML_PATH) -> None:
+    initial_record = load_hermes_record_from_yaml(input_yaml_path)
+    working_directory = cast(
+        Path,
+        initial_record.environment.working_dir.resolved_path,
     )
+    final_record_path = working_directory / "hermes-record_final.yaml"
+
     state_manager = StateManager(
-        HermesRecord(
-            measurement_info=MeasurementInfo(
-                measurement_id="example-tpx3-unpacking",
-                run_number=1,
-            ),
-            environment=RuntimeEnvironment(working_dir=EXAMPLE_DIRECTORY),
-            acquisition=None,
-            analysis=analysis,
-        ),
+        initial_record,
         config=StateServiceConfig(allow_trusted_workflow_bypass=True),
     )
 
-    unpacked_files = run_hermes_analysis(state_manager)
-    save_hermes_record_to_yaml(state_manager.get_state(), HERMES_STATE_FILE)
+    unpacked_raw_files = run_hermes_analysis(state_manager)
+    final_record = state_manager.get_state()
+    hermes_analysis = cast(HermesTpx3AnalysisState, final_record.analysis)
+    save_hermes_record_to_yaml(final_record, final_record_path)
 
-    if unpacked_files:
-        print(f"Unpacked: {RAW_TPX3_FILE}")
-    else:
-        print(f"Skipped existing valid output for: {RAW_TPX3_FILE}")
-    print(f"Analysis directory: {ANALYSIS_DIRECTORY}")
-    print(f"HERMES state file: {HERMES_STATE_FILE}")
+    print(f"Raw TPX3 files: {len(hermes_analysis.tpx3_files)}")
+    for raw_tpx3_file in hermes_analysis.tpx3_files:
+        print(f"  - {raw_tpx3_file.path}")
+    print(f"Unpacked this run: {len(unpacked_raw_files)}")
+    print(
+        "Skipped existing valid outputs: "
+        f"{len(hermes_analysis.tpx3_files) - len(unpacked_raw_files)}"
+    )
+    print(f"Analysis directory: {hermes_analysis.analysis_directory}")
+    print(f"HERMES state file: {final_record_path}")
 
 
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) > 2:
+        raise SystemExit(f"Usage: {Path(sys.argv[0]).name} [YAML_PATH]")
+    input_yaml_path = (
+        Path(sys.argv[1]) if len(sys.argv) == 2 else DEFAULT_INPUT_YAML_PATH
+    )
+    main(input_yaml_path)

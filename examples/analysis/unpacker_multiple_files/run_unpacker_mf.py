@@ -1,81 +1,113 @@
 from __future__ import annotations
 
+import argparse
+import shutil
 from pathlib import Path
+from typing import cast
 
 from hermes.analysis.hermes.run import run_hermes_analysis
-from hermes.state.models.analysis.hermes_tpx3_spidr import (
-    HermesTpx3AnalysisState,
-    Tpx3SpidrUnpackerProgram,
-)
-from hermes.state.models.environment import RuntimeEnvironment
-from hermes.state.models.measurement import MeasurementInfo
-from hermes.state.models.shared_models import FileReference
-from hermes.state.state import HermesRecord
+from hermes.state.models.analysis.hermes_tpx3_spidr import HermesTpx3AnalysisState
 from hermes.state_service.shared_types import StateServiceConfig
-from hermes.state_service.state_io import save_hermes_record_to_yaml
+from hermes.state_service.state_io import (
+    load_hermes_record_from_yaml,
+    save_hermes_record_to_yaml,
+)
 from hermes.state_service.state_manager import StateManager
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
-RAW_TPX3_DIRECTORY = REPOSITORY_ROOT / "data/list_tests"
-UNPACKER_EXECUTABLE = (
-    REPOSITORY_ROOT / "build/backends/tpx3-spidr/hermes-tpx3-spidr"
-)
-EXAMPLE_DIRECTORY = (
-    REPOSITORY_ROOT / "data/examples/analysis/unpacker_multiple_files"
-)
-ANALYSIS_DIRECTORY = EXAMPLE_DIRECTORY / "analysis"
-HERMES_STATE_FILE = EXAMPLE_DIRECTORY / "hermes-record.yaml"
+SOURCE_TPX3_FILE = REPOSITORY_ROOT / "tests/data/Example_1kHz_5frames.tpx3"
+EXAMPLE_INPUT_DIRECTORY = REPOSITORY_ROOT / "data/multiFileExample"
+NUMBER_OF_COPIES = 5
+
+DEFAULT_INPUT_YAML_PATH = Path(__file__).with_name("unpacker_mf_config.yaml")
 
 
-def main() -> None:
-    raw_tpx3_files = sorted(RAW_TPX3_DIRECTORY.glob("*.tpx3"))
+def prepare_example_input_files() -> None:
+    """Prepare example input files by copying the source TPX3 file multiple times.
+    
+    Creates NUMBER_OF_COPIES copies of the source TPX3 file in the example
+    input directory with sequential naming.
+    
+    Raises:
+        FileNotFoundError: If the source TPX3 file does not exist.
+    """
+    # Verify that the source file exists before attempting to copy
+    if not SOURCE_TPX3_FILE.is_file():
+        raise FileNotFoundError(f"Source TPX3 file not found: {SOURCE_TPX3_FILE}")
 
-    if not raw_tpx3_files:
-        raise FileNotFoundError(
-            f"No TPX3 files found in directory: {RAW_TPX3_DIRECTORY}"
+    # Create the example input directory if it doesn't exist
+    EXAMPLE_INPUT_DIRECTORY.mkdir(parents=True, exist_ok=True)
+    
+    # Create multiple copies of the source file with sequential indices
+    for index in range(NUMBER_OF_COPIES):
+        destination = (
+            EXAMPLE_INPUT_DIRECTORY / f"Example_1kHz_5frames_{index:04d}.tpx3"
         )
+        shutil.copyfile(SOURCE_TPX3_FILE, destination)
 
-    if not UNPACKER_EXECUTABLE.is_file():
-        raise FileNotFoundError(
-            "C++ unpacker not found. Run `pixi run build-cpp-unpacker` first: "
-            f"{UNPACKER_EXECUTABLE}"
-        )
 
-    print(f"Found {len(raw_tpx3_files)} TPX3 files:")
-    for tpx3_file in raw_tpx3_files:
-        print(f"  - {tpx3_file.name}")
+def main(
+    input_yaml_path: Path = DEFAULT_INPUT_YAML_PATH,
+    *,
+    overwrite: bool = False,
+) -> None:
+    if input_yaml_path == DEFAULT_INPUT_YAML_PATH:
+        prepare_example_input_files()
 
-    analysis = HermesTpx3AnalysisState(
-        unpacker_program=Tpx3SpidrUnpackerProgram(
-            name="tpx3-spidr-cpp",
-            executable_path=UNPACKER_EXECUTABLE,
-            version="0.1.0",
-        ),
-        analysis_directory=ANALYSIS_DIRECTORY,
-        tpx3_files=[FileReference(path=f) for f in raw_tpx3_files],
-        resource_limit_percent=90,
+    # Step 2: Load the initial HERMES record from the configuration YAML file
+    initial_record = load_hermes_record_from_yaml(input_yaml_path)
+    
+    # Step 3: Extract the working directory path where outputs will be stored
+    working_directory = cast(
+        Path,
+        initial_record.environment.working_dir.resolved_path,
     )
+    final_record_path = working_directory / "hermes-record_final.yaml"
+
+    # Step 4: Initialize the state manager with the initial record
+    # This manages the state throughout the analysis workflow
     state_manager = StateManager(
-        HermesRecord(
-            measurement_info=MeasurementInfo(
-                measurement_id="example-tpx3-unpacking-multiple-files",
-                run_number=1,
-            ),
-            environment=RuntimeEnvironment(working_dir=EXAMPLE_DIRECTORY),
-            acquisition=None,
-            analysis=analysis,
-        ),
+        initial_record,
         config=StateServiceConfig(allow_trusted_workflow_bypass=True),
     )
 
-    unpacked_files = run_hermes_analysis(state_manager)
-    save_hermes_record_to_yaml(state_manager.get_state(), HERMES_STATE_FILE)
+    # Step 5: Run the HERMES analysis on all TPX3 files
+    # Returns a list of files that were actually unpacked (not skipped)
+    unpacked_raw_files = run_hermes_analysis(state_manager, overwrite=overwrite)
+    
+    # Step 6: Get the final state after analysis completes
+    final_record = state_manager.get_state()
+    hermes_analysis = cast(HermesTpx3AnalysisState, final_record.analysis)
+    
+    # Step 7: Save the final HERMES record to a YAML file for future reference
+    save_hermes_record_to_yaml(final_record, final_record_path)
 
-    print(f"\nUnpacked: {len(unpacked_files)} files")
-    print(f"Skipped: {len(raw_tpx3_files) - len(unpacked_files)} files")
-    print(f"Analysis directory: {ANALYSIS_DIRECTORY}")
-    print(f"HERMES state file: {HERMES_STATE_FILE}")
+    # Step 8: Display analysis summary and results
+    print(f"Raw TPX3 files: {len(hermes_analysis.tpx3_files)}")
+    for raw_tpx3_file in hermes_analysis.tpx3_files:
+        print(f"  - {raw_tpx3_file.path}")
+    print(f"Unpacked this run: {len(unpacked_raw_files)}")
+    print(
+        "Skipped existing valid outputs: "
+        f"{len(hermes_analysis.tpx3_files) - len(unpacked_raw_files)}"
+    )
+    print(f"Analysis directory: {hermes_analysis.analysis_directory}")
+    print(f"HERMES state file: {final_record_path}")
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "yaml_path",
+        nargs="?",
+        type=Path,
+        default=DEFAULT_INPUT_YAML_PATH,
+        help="HERMES record YAML config (defaults to unpacker_mf_config.yaml)",
+    )
+    parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="re-unpack every file, overwriting previously unpacked outputs",
+    )
+    args = parser.parse_args()
+    main(args.yaml_path, overwrite=args.overwrite)

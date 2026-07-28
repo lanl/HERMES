@@ -436,7 +436,7 @@ def test_run_marks_analysis_only_state_running_through_state_manager(
     )
     monkeypatch.setattr(
         "hermes.analysis.hermes.run.execute_unpacker",
-        lambda analysis, raw_file: _summary(raw_file.path.stem),
+        lambda analysis, raw_file, **kwargs: _summary(raw_file.path.stem),
     )
 
     files_to_run = run_hermes_analysis(manager)
@@ -476,9 +476,29 @@ def test_run_with_only_completed_files_does_not_mark_running(
 def test_run_rejects_non_hermes_analysis(tmp_path: Path) -> None:
     empir = EmpirAnalysisState.model_construct(mode="empir")
     manager = StateManager(_record(tmp_path, empir), state_logger=CapturingStateLogger())
+    records: list[dict[str, Any]] = []
+    sink_id = logger.add(
+        lambda message: records.append(message.record),
+        filter=lambda record: record["extra"].get("domain") == "analysis",
+    )
 
-    with pytest.raises(HermesAnalysisError, match="not HERMES"):
-        run_hermes_analysis(manager)
+    try:
+        with pytest.raises(HermesAnalysisError, match="not HERMES"):
+            run_hermes_analysis(manager)
+    finally:
+        logger.remove(sink_id)
+
+    invalid_mode = next(
+        record
+        for record in records
+        if record["extra"].get("event_type") == "analysis.hermes.invalid_mode"
+    )
+    assert invalid_mode["level"].name == "ERROR"
+    assert "Cannot run HERMES analysis" in invalid_mode["message"]
+    assert invalid_mode["extra"]["measurement_id"] == "stage-3"
+    assert invalid_mode["extra"]["run_number"] == 1
+    assert invalid_mode["extra"]["expected_analysis_mode"] == "hermes"
+    assert invalid_mode["extra"]["actual_analysis_mode"] == "empir"
 
 
 def test_disabled_bypass_leaves_pending_change_before_process_execution(

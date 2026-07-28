@@ -65,16 +65,25 @@ def derive_summary_path(
 def derive_unpacker_command(
     analysis: HermesTpx3AnalysisState,
     raw_file: FileReference,
+    *,
+    overwrite: bool = False,
 ) -> list[str]:
-    return [
-        str(analysis.unpacker_program.executable_path),
-        str(raw_file.path),
-        str(analysis.analysis_directory),
-    ]
+    command = [str(analysis.unpacker_program.executable_path)]
+    if overwrite:
+        command.append("--overwrite")
+    command.extend([str(raw_file.path), str(analysis.analysis_directory)])
+    return command
 
 
-def plan_unpacking(analysis: HermesTpx3AnalysisState) -> UnpackingPlan:
+def plan_unpacking(
+    analysis: HermesTpx3AnalysisState,
+    *,
+    overwrite: bool = False,
+) -> UnpackingPlan:
     _validate_program_and_inputs(analysis)
+
+    if overwrite:
+        return [(raw_file, "run") for raw_file in analysis.tpx3_files]
 
     plan: UnpackingPlan = []
     for raw_file in analysis.tpx3_files:
@@ -107,8 +116,10 @@ def plan_unpacking(analysis: HermesTpx3AnalysisState) -> UnpackingPlan:
 def execute_unpacker(
     analysis: HermesTpx3AnalysisState,
     raw_file: FileReference,
+    *,
+    overwrite: bool = False,
 ) -> Tpx3SpidrSummary:
-    command = derive_unpacker_command(analysis, raw_file)
+    command = derive_unpacker_command(analysis, raw_file, overwrite=overwrite)
     summary_path = derive_summary_path(analysis, raw_file)
     started = perf_counter()
     _ANALYSIS_LOGGER.info(

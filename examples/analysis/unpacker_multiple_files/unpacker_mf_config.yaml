@@ -1,0 +1,20 @@
+measurement_info:
+  measurement_id: example-tpx3-unpacking-multiple-files
+  run_number: 1
+
+environment:
+  working_dir: data/examples/analysis/unpacker_multiple_files
+
+analysis:
+  mode: hermes
+  unpacker_program:
+    name: tpx3-spidr-cpp
+    executable_path: build/backends/tpx3-spidr/hermes-tpx3-spidr
+  analysis_directory: data/examples/analysis/unpacker_multiple_files/analysis
+  resource_limit_percent: 90
+  tpx3_files:
+    - path: data/multiFileExample/Example_1kHz_5frames_0000.tpx3
+    - path: data/multiFileExample/Example_1kHz_5frames_0001.tpx3
+    - path: data/multiFileExample/Example_1kHz_5frames_0002.tpx3
+    - path: data/multiFileExample/Example_1kHz_5frames_0003.tpx3
+    - path: data/multiFileExample/Example_1kHz_5frames_0004.tpx3

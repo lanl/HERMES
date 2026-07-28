@@ -112,6 +112,8 @@ def _run_parallel_unpacking(
     analysis: HermesTpx3AnalysisState,
     files_to_run: list[FileReference],
     worker_count: int,
+    *,
+    overwrite: bool = False,
 ) -> list[FileReference]:
     """Run unpacker processes concurrently and return successfully unpacked files."""
     first_error: Exception | None = None
@@ -119,7 +121,9 @@ def _run_parallel_unpacking(
 
     with ThreadPoolExecutor(max_workers=worker_count) as executor:
         future_to_index = {
-            executor.submit(execute_unpacker, analysis, raw_file): i
+            executor.submit(
+                execute_unpacker, analysis, raw_file, overwrite=overwrite
+            ): i
             for i, raw_file in enumerate(files_to_run)
         }
 
@@ -141,14 +145,28 @@ def _run_parallel_unpacking(
     return [files_to_run[i] for i in sorted(completed_files)]
 
 
-def run_hermes_analysis(state_manager: StateManager) -> list[FileReference]:
+def run_hermes_analysis(
+    state_manager: StateManager,
+    *,
+    overwrite: bool = False,
+) -> list[FileReference]:
     state = state_manager.get_state()
     analysis = state.analysis
     if not isinstance(analysis, HermesTpx3AnalysisState):
-        raise HermesAnalysisError("the saved analysis mode is not HERMES")
+        error = "the saved analysis mode is not HERMES"
+        _ANALYSIS_LOGGER.error(
+            "Cannot run HERMES analysis: {error}",
+            event_type="analysis.hermes.invalid_mode",
+            error=error,
+            measurement_id=state.measurement_info.measurement_id,
+            run_number=state.measurement_info.run_number,
+            expected_analysis_mode="hermes",
+            actual_analysis_mode=getattr(analysis, "mode", None),
+        )
+        raise HermesAnalysisError(error)
 
     try:
-        unpacking_plan = plan_unpacking(analysis)
+        unpacking_plan = plan_unpacking(analysis, overwrite=overwrite)
         files_to_run = [
             raw_file
             for raw_file, action in unpacking_plan
@@ -176,6 +194,7 @@ def run_hermes_analysis(state_manager: StateManager) -> list[FileReference]:
                 analysis,
                 files_to_run,
                 worker_count,
+                overwrite=overwrite,
             )
         else:
             unpacked_files = []

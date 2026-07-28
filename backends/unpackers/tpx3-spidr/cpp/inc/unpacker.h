@@ -30,7 +30,8 @@ struct WorkflowResult {
 
 WorkflowResult runTwoPassWorkflow(std::istream& input,
                                   const std::string& source_file_path,
-                                  const std::string& analysis_directory);
+                                  const std::string& analysis_directory,
+                                  bool overwrite = false);
 
 }  // namespace hermes_tpx3_spidr
 

@@ -30,7 +30,8 @@ struct SummaryJsonContent {
 std::string generateSummaryJson(const SummaryJsonContent& content);
 
 void writeSummaryJsonFile(const std::string& output_path,
-                          const SummaryJsonContent& content);
+                          const SummaryJsonContent& content,
+                          bool overwrite = false);
 
 }  // namespace hermes_tpx3_spidr
 

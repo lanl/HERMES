@@ -115,6 +115,49 @@ class HermesTpx3AnalysisState(StrictBaseModel):
         default_factory=HermesTpx3AnalysisResults
     )
 
+    @field_validator("tpx3_files", mode="before")
+    @classmethod
+    def expand_tpx3_file_list(cls, value: object) -> object:
+        if not isinstance(value, dict) or "file_list" not in value:
+            return value
+
+        if set(value) != {"file_list"}:
+            raise ValueError(
+                "the tpx3_files file-list form must contain only file_list"
+            )
+
+        file_list_value = value["file_list"]
+        if not isinstance(file_list_value, str | Path):
+            raise ValueError("tpx3_files.file_list must be a file path")
+
+        file_list_path = Path(file_list_value).expanduser().resolve(strict=False)
+        try:
+            lines = file_list_path.read_text(encoding="utf-8").splitlines()
+        except (OSError, UnicodeError) as exc:
+            raise ValueError(
+                f"cannot read raw TPX3 file list: {file_list_path}"
+            ) from exc
+
+        raw_tpx3_files: list[dict[str, Path]] = []
+        for line in lines:
+            entry = line.strip()
+            if not entry or entry.startswith("#"):
+                continue
+
+            raw_tpx3_path = Path(entry).expanduser()
+            if not raw_tpx3_path.is_absolute():
+                raw_tpx3_path = file_list_path.parent / raw_tpx3_path
+            raw_tpx3_files.append(
+                {"path": raw_tpx3_path.resolve(strict=False)}
+            )
+
+        if not raw_tpx3_files:
+            raise ValueError(
+                f"raw TPX3 file list contains no file paths: {file_list_path}"
+            )
+
+        return raw_tpx3_files
+
     @model_validator(mode="after")
     def validate_analysis_paths_and_inputs(self) -> HermesTpx3AnalysisState:
         stems = [raw_file.path.stem for raw_file in self.tpx3_files]

@@ -1,6 +1,8 @@
 #include <fstream>
 #include <iostream>
 #include <cstring>
+#include <string>
+#include <vector>
 
 #include "diagnostics.h"
 #include "unpacker.h"
@@ -13,8 +15,9 @@ void printHelp(const char* program_name) {
     std::cout << "  <input.tpx3>        Input TPX3 raw data file\n";
     std::cout << "  [analysis_directory]  Shared directory for analysis files\n\n";
     std::cout << "Options:\n";
-    std::cout << "  -h, --help     Show this help message\n";
-    std::cout << "  -v, --version  Show version information\n\n";
+    std::cout << "  -h, --help       Show this help message\n";
+    std::cout << "  -v, --version    Show version information\n";
+    std::cout << "      --overwrite  Overwrite existing summary and Parquet files\n\n";
     std::cout << "Output Modes:\n";
     std::cout << "  Without analysis_directory:\n";
     std::cout << "    Prints summary statistics to stdout\n\n";
@@ -40,37 +43,44 @@ void printVersion() {
 }  // namespace
 
 int main(const int argc, char* argv[]) {
-    // Handle help and version flags
-    if (argc == 2) {
-        if (std::strcmp(argv[1], "-h") == 0 || std::strcmp(argv[1], "--help") == 0) {
+    // Separate options from positional arguments.
+    bool overwrite = false;
+    std::vector<std::string> positionals;
+    for (int i = 1; i < argc; ++i) {
+        if (std::strcmp(argv[i], "-h") == 0 || std::strcmp(argv[i], "--help") == 0) {
             printHelp(argv[0]);
             return 0;
         }
-        if (std::strcmp(argv[1], "-v") == 0 || std::strcmp(argv[1], "--version") == 0) {
+        if (std::strcmp(argv[i], "-v") == 0 || std::strcmp(argv[i], "--version") == 0) {
             printVersion();
             return 0;
         }
+        if (std::strcmp(argv[i], "--overwrite") == 0) {
+            overwrite = true;
+            continue;
+        }
+        positionals.emplace_back(argv[i]);
     }
 
-    if (argc < 2 || argc > 3) {
+    if (positionals.empty() || positionals.size() > 2) {
         std::cerr << "Error: Invalid number of arguments\n\n";
         std::cerr << "Usage: " << argv[0] << " [OPTIONS] <input.tpx3> [analysis_directory]\n";
         std::cerr << "Try '" << argv[0] << " --help' for more information.\n";
         return 2;
     }
 
-    const std::string input_path = argv[1];
+    const std::string input_path = positionals[0];
     std::ifstream input(input_path, std::ios::binary);
     if (!input) {
-        std::cerr << "Unable to open TPX3 input file: " << argv[1] << '\n';
+        std::cerr << "Unable to open TPX3 input file: " << input_path << '\n';
         return 2;
     }
 
-    if (argc == 3) {
+    if (positionals.size() == 2) {
         // Two-pass workflow with output
-        const std::string output_dir = argv[2];
+        const std::string output_dir = positionals[1];
         const auto result = hermes_tpx3_spidr::runTwoPassWorkflow(
-            input, input_path, output_dir);
+            input, input_path, output_dir, overwrite);
 
         if (!result.success) {
             std::cerr << "Workflow failed with errors:\n";

@@ -486,7 +486,8 @@ UnpackResult unpack(std::istream& input) {
 
 WorkflowResult runTwoPassWorkflow(std::istream& input,
                                   const std::string& source_file_path,
-                                  const std::string& analysis_directory) {
+                                  const std::string& analysis_directory,
+                                  const bool overwrite) {
     using Clock = std::chrono::high_resolution_clock;
     using Duration = std::chrono::duration<double>;
 
@@ -509,12 +510,37 @@ WorkflowResult runTwoPassWorkflow(std::istream& input,
                               summary_json_file;
 
     try {
-        findExistingOutputFiles(analysis_directory, raw_file_stem,
-                                summary_path, workflow_result.errors);
+        if (overwrite) {
+            std::filesystem::remove(summary_path);
+            const std::string parquet_prefix_with_chip = raw_file_stem + "-chip-";
+            const std::string parquet_prefix_without_chip = raw_file_stem + "-part-";
+            for (const char* directory_name : parquet_directories) {
+                const auto directory =
+                    std::filesystem::path(analysis_directory) / directory_name;
+                if (!std::filesystem::exists(directory)) {
+                    continue;
+                }
+
+                for (const auto& entry : std::filesystem::directory_iterator(directory)) {
+                    if (!entry.is_regular_file() || entry.path().extension() != ".parquet") {
+                        continue;
+                    }
+                    const auto filename = entry.path().filename().string();
+                    if (filename.rfind(parquet_prefix_with_chip, 0) == 0 ||
+                        filename.rfind(parquet_prefix_without_chip, 0) == 0) {
+                        std::filesystem::remove(entry.path());
+                    }
+                }
+            }
+        } else {
+            findExistingOutputFiles(analysis_directory, raw_file_stem, summary_path,
+                                    workflow_result.errors);
+        }
     } catch (const std::exception& error) {
         workflow_result.errors.push_back(
-            "Failed to check existing analysis files: " +
-            std::string(error.what()));
+            std::string(overwrite ? "Failed to remove existing analysis files: "
+                                  : "Failed to check existing analysis files: ") +
+            error.what());
     }
     if (!workflow_result.errors.empty()) {
         return workflow_result;
@@ -614,6 +640,7 @@ WorkflowResult runTwoPassWorkflow(std::istream& input,
     writer_config.analysis_directory = analysis_directory;
     writer_config.raw_file_stem = raw_file_stem;
     writer_config.chip_index = 0;  // Single chip for now
+    writer_config.overwrite = overwrite;
 
     writePixelHitsParquet(output_rows.pixels, writer_config, writer_diag);
     writeTdcTriggersParquet(output_rows.tdcs, writer_config, writer_diag);
@@ -633,7 +660,8 @@ WorkflowResult runTwoPassWorkflow(std::istream& input,
 
     if (writer_diag.errors.empty()) {
         try {
-            writeSummaryJsonFile(summary_path.string(), workflow_result.summary);
+            writeSummaryJsonFile(summary_path.string(), workflow_result.summary,
+                                 overwrite);
         } catch (const std::exception& error) {
             workflow_result.errors.push_back(
                 "Failed to write summary JSON file " + summary_path.string() +
