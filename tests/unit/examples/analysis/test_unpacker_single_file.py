@@ -27,37 +27,40 @@ def run_unpacker_module(monkeypatch: pytest.MonkeyPatch) -> ModuleType:
 def test_checked_in_partial_yaml_loads_with_expected_defaults(
     run_unpacker_module: ModuleType,
 ) -> None:
-    record = load_hermes_record_from_yaml(
-        run_unpacker_module.DEFAULT_CONFIG_PATH
+    initial_record = load_hermes_record_from_yaml(
+        run_unpacker_module.DEFAULT_INPUT_YAML_PATH
     )
 
-    assert record.measurement_info.measurement_id == "example-tpx3-unpacking"
-    assert record.environment.working_dir.path == Path(
+    assert (
+        initial_record.measurement_info.measurement_id
+        == "example-tpx3-unpacking"
+    )
+    assert initial_record.environment.working_dir.path == Path(
         "data/examples/analysis/unpacker"
     )
-    assert record.acquisition is None
-    assert isinstance(record.analysis, HermesTpx3AnalysisState)
-    assert record.analysis.unpacker_program.executable_path == Path(
+    assert initial_record.acquisition is None
+    assert isinstance(initial_record.analysis, HermesTpx3AnalysisState)
+    assert initial_record.analysis.unpacker_program.executable_path == Path(
         "build/backends/tpx3-spidr/hermes-tpx3-spidr"
     )
-    assert record.analysis.analysis_directory == Path(
+    assert initial_record.analysis.analysis_directory == Path(
         "data/examples/analysis/unpacker/analysis"
     )
-    assert record.analysis.tpx3_files[0].path == Path(
+    assert initial_record.analysis.tpx3_files[0].path == Path(
         "tests/data/Example_1kHz_5frames.tpx3"
     )
-    assert record.analysis.resource_limit_percent == 90
-    assert record.analysis.unpacker_program.version is None
-    assert record.analysis.photon_reconstruction is None
-    assert record.analysis.results.unpacking.status == "planned"
-    assert record.analysis.results.reconstruction is None
+    assert initial_record.analysis.resource_limit_percent == 90
+    assert initial_record.analysis.unpacker_program.version is None
+    assert initial_record.analysis.photon_reconstruction is None
+    assert initial_record.analysis.results.unpacking.status == "planned"
+    assert initial_record.analysis.results.reconstruction is None
 
-    raw_file = record.analysis.tpx3_files[0]
-    assert raw_file.media_type is None
-    assert raw_file.sha256 is None
-    assert raw_file.size_bytes is None
-    assert raw_file.created_at is None
-    assert raw_file.description is None
+    raw_tpx3_file = initial_record.analysis.tpx3_files[0]
+    assert raw_tpx3_file.media_type is None
+    assert raw_tpx3_file.sha256 is None
+    assert raw_tpx3_file.size_bytes is None
+    assert raw_tpx3_file.created_at is None
+    assert raw_tpx3_file.description is None
 
 
 def test_invalid_yaml_stops_before_analysis(
@@ -65,8 +68,8 @@ def test_invalid_yaml_stops_before_analysis(
     monkeypatch: pytest.MonkeyPatch,
     run_unpacker_module: ModuleType,
 ) -> None:
-    config_path = tmp_path / "invalid.yaml"
-    config_path.write_text("measurement_info: [", encoding="utf-8")
+    invalid_yaml_path = tmp_path / "invalid.yaml"
+    invalid_yaml_path.write_text("measurement_info: [", encoding="utf-8")
 
     def fail_if_called(state_manager: StateManager) -> list[FileReference]:
         raise AssertionError("analysis must not run for invalid YAML")
@@ -78,7 +81,7 @@ def test_invalid_yaml_stops_before_analysis(
     )
 
     with pytest.raises(StateIOError, match="parse"):
-        run_unpacker_module.main(config_path)
+        run_unpacker_module.main(invalid_yaml_path)
 
 
 def test_main_preserves_input_and_saves_final_record_separately(
@@ -87,39 +90,39 @@ def test_main_preserves_input_and_saves_final_record_separately(
     capsys: pytest.CaptureFixture[str],
     run_unpacker_module: ModuleType,
 ) -> None:
-    working_dir = tmp_path / "run"
-    analysis_directory = working_dir / "analysis"
-    raw_file = tmp_path / "input.tpx3"
-    executable = tmp_path / "hermes-tpx3-spidr"
-    config_path = tmp_path / "input.yaml"
-    raw_file.write_bytes(b"example")
-    executable.write_text("", encoding="utf-8")
-    config_path.write_text(
+    working_directory = tmp_path / "run"
+    analysis_directory = working_directory / "analysis"
+    raw_tpx3_file = tmp_path / "input.tpx3"
+    unpacker_executable = tmp_path / "hermes-tpx3-spidr"
+    input_yaml_path = tmp_path / "input.yaml"
+    raw_tpx3_file.write_bytes(b"example")
+    unpacker_executable.write_text("", encoding="utf-8")
+    input_yaml_path.write_text(
         f"""
 measurement_info:
   measurement_id: yaml-example
   run_number: 1
 environment:
-  working_dir: {working_dir}
+  working_dir: {working_directory}
 analysis:
   mode: hermes
   unpacker_program:
     name: tpx3-spidr-cpp
-    executable_path: {executable}
+    executable_path: {unpacker_executable}
   analysis_directory: {analysis_directory}
   tpx3_files:
-    - path: {raw_file}
+    - path: {raw_tpx3_file}
 """,
         encoding="utf-8",
     )
-    original_input = config_path.read_bytes()
+    original_input_yaml = input_yaml_path.read_bytes()
 
     def run_without_subprocess(
         state_manager: StateManager,
     ) -> list[FileReference]:
-        state = state_manager.get_state()
-        assert isinstance(state.analysis, HermesTpx3AnalysisState)
-        return state.analysis.tpx3_files
+        current_record = state_manager.get_state()
+        assert isinstance(current_record.analysis, HermesTpx3AnalysisState)
+        return current_record.analysis.tpx3_files
 
     monkeypatch.setattr(
         run_unpacker_module,
@@ -127,17 +130,20 @@ analysis:
         run_without_subprocess,
     )
 
-    run_unpacker_module.main(config_path)
+    run_unpacker_module.main(input_yaml_path)
 
-    state_path = working_dir / "hermes-record.yaml"
-    saved_record = load_hermes_record_from_yaml(state_path)
-    output = capsys.readouterr().out
+    final_record_path = working_directory / "hermes-record_final.yaml"
+    saved_final_record = load_hermes_record_from_yaml(final_record_path)
+    console_output = capsys.readouterr().out
 
-    assert config_path.read_bytes() == original_input
-    assert state_path != config_path
-    assert saved_record.measurement_info.measurement_id == "yaml-example"
-    assert isinstance(saved_record.analysis, HermesTpx3AnalysisState)
-    assert saved_record.analysis.resource_limit_percent == 90
-    assert str(raw_file) in output
-    assert str(analysis_directory) in output
-    assert str(state_path) in output
+    assert input_yaml_path.read_bytes() == original_input_yaml
+    assert final_record_path != input_yaml_path
+    assert (
+        saved_final_record.measurement_info.measurement_id
+        == "yaml-example"
+    )
+    assert isinstance(saved_final_record.analysis, HermesTpx3AnalysisState)
+    assert saved_final_record.analysis.resource_limit_percent == 90
+    assert str(raw_tpx3_file) in console_output
+    assert str(analysis_directory) in console_output
+    assert str(final_record_path) in console_output
