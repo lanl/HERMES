@@ -13,7 +13,8 @@ analysis:
   analysis_directory: data/examples/analysis/unpacker_multiple_files/analysis
   resource_limit_percent: 90
   tpx3_files:
-    - path: data/list_tests/Example_1kHz_5frames_0000.tpx3
-    - path: data/list_tests/Example_1kHz_5frames_0001.tpx3
-    - path: data/list_tests/Example_1kHz_5frames_0002.tpx3
-    - path: data/list_tests/Example_1kHz_5frames_0003.tpx3
+    - path: data/multiFileExample/Example_1kHz_5frames_0000.tpx3
+    - path: data/multiFileExample/Example_1kHz_5frames_0001.tpx3
+    - path: data/multiFileExample/Example_1kHz_5frames_0002.tpx3
+    - path: data/multiFileExample/Example_1kHz_5frames_0003.tpx3
+    - path: data/multiFileExample/Example_1kHz_5frames_0004.tpx3
