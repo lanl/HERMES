@@ -109,8 +109,9 @@ std::string generateSummaryJson(const SummaryJsonContent& content) {
 }
 
 void writeSummaryJsonFile(const std::string& output_path,
-                          const SummaryJsonContent& content) {
-    if (std::filesystem::exists(output_path)) {
+                          const SummaryJsonContent& content,
+                          const bool overwrite) {
+    if (!overwrite && std::filesystem::exists(output_path)) {
         throw std::runtime_error(
             "Refusing to overwrite existing summary JSON file");
     }
