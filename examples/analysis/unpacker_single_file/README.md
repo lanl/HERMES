@@ -1,8 +1,9 @@
 # TPX3 SPIDR unpacker example
 
-This example loads a partial user-authored YAML file as a `HermesRecord`, runs
-the state-managed HERMES C++ unpacker, and saves the completed record separately
-from the input YAML.
+This example loads a partial user-authored YAML file as a `HermesRecord`,
+constructs a `Workflow`, and calls `workflow.run_analysis()` to run the HERMES
+C++ unpacker. It then saves `workflow.record` separately from the input YAML.
+The caller does not construct or configure a `StateManager`.
 
 Build the C++ executable:
 
