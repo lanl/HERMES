@@ -436,7 +436,7 @@ def test_run_marks_analysis_only_state_running_through_state_manager(
     )
     monkeypatch.setattr(
         "hermes.analysis.hermes.run.execute_unpacker",
-        lambda analysis, raw_file: _summary(raw_file.path.stem),
+        lambda analysis, raw_file, **kwargs: _summary(raw_file.path.stem),
     )
 
     files_to_run = run_hermes_analysis(manager)
