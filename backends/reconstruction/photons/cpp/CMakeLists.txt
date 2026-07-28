@@ -1,0 +1,119 @@
+cmake_minimum_required(VERSION 3.20)
+
+project(hermes_photon_clusterer LANGUAGES CXX)
+
+include(CTest)
+
+# Arrow/Parquet read the pixel_data inputs and write photon output; JSON writes
+# the reconstruction summary. They are discovered the same way as the unpacker.
+find_package(Arrow QUIET)
+find_package(Parquet QUIET)
+find_package(nlohmann_json REQUIRED)
+if(Arrow_FOUND)
+    message(STATUS "Found Arrow: ${Arrow_VERSION}")
+endif()
+
+if(Parquet_FOUND)
+    message(STATUS "Found Parquet: ${Parquet_VERSION}")
+endif()
+
+if(nlohmann_json_FOUND)
+    message(STATUS "Found nlohmann_json: ${nlohmann_json_VERSION}")
+endif()
+
+if(MSVC)
+    add_compile_options(/W4)
+else()
+    add_compile_options(-Wall -Wextra -Wpedantic)
+endif()
+
+add_library(hermes_photon_clusterer
+    src/clusterer.cpp
+    src/cluster_filter.cpp
+    src/clustering.cpp
+    src/photon.cpp
+    src/photon_writer.cpp
+    src/pixel_reader.cpp
+    src/reconstruction.cpp
+    src/settings.cpp
+    src/summary_writer.cpp
+    src/timewalk.cpp
+)
+
+target_compile_features(hermes_photon_clusterer PUBLIC cxx_std_17)
+target_include_directories(hermes_photon_clusterer
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/inc
+)
+
+if(Arrow_FOUND AND Parquet_FOUND)
+    target_link_libraries(hermes_photon_clusterer
+        PUBLIC
+            Arrow::arrow_shared
+            Parquet::parquet_shared
+    )
+    target_compile_definitions(hermes_photon_clusterer
+        PUBLIC
+            HERMES_HAS_ARROW_PARQUET
+    )
+endif()
+
+if(nlohmann_json_FOUND)
+    target_link_libraries(hermes_photon_clusterer
+        PUBLIC
+            nlohmann_json::nlohmann_json
+    )
+    target_compile_definitions(hermes_photon_clusterer
+        PUBLIC
+            HERMES_HAS_JSON
+    )
+endif()
+
+add_executable(hermes-photon-clusterer
+    src/photonClusterer.cpp
+)
+target_link_libraries(hermes-photon-clusterer PRIVATE hermes_photon_clusterer)
+
+if(BUILD_TESTING)
+    add_executable(clusterer_tests tests/clusterer_tests.cpp)
+    target_link_libraries(clusterer_tests PRIVATE hermes_photon_clusterer)
+    add_test(NAME clusterer_tests COMMAND clusterer_tests)
+
+    add_executable(clustering_tests tests/clustering_tests.cpp)
+    target_link_libraries(clustering_tests PRIVATE hermes_photon_clusterer)
+    add_test(NAME clustering_tests COMMAND clustering_tests)
+
+    add_executable(cluster_filter_tests tests/cluster_filter_tests.cpp)
+    target_link_libraries(cluster_filter_tests PRIVATE hermes_photon_clusterer)
+    add_test(NAME cluster_filter_tests COMMAND cluster_filter_tests)
+
+    add_executable(photon_tests tests/photon_tests.cpp)
+    target_link_libraries(photon_tests PRIVATE hermes_photon_clusterer)
+    add_test(NAME photon_tests COMMAND photon_tests)
+
+    add_executable(timewalk_tests tests/timewalk_tests.cpp)
+    target_link_libraries(timewalk_tests PRIVATE hermes_photon_clusterer)
+    add_test(NAME timewalk_tests COMMAND timewalk_tests)
+
+    add_executable(summary_writer_tests tests/summary_writer_tests.cpp)
+    target_link_libraries(summary_writer_tests PRIVATE hermes_photon_clusterer)
+    add_test(NAME summary_writer_tests COMMAND summary_writer_tests)
+
+    add_executable(settings_tests tests/settings_tests.cpp)
+    target_link_libraries(settings_tests PRIVATE hermes_photon_clusterer)
+    add_test(NAME settings_tests COMMAND settings_tests)
+
+    add_executable(reconstruction_tests tests/reconstruction_tests.cpp)
+    target_link_libraries(reconstruction_tests PRIVATE hermes_photon_clusterer)
+    add_test(NAME reconstruction_tests COMMAND reconstruction_tests)
+
+    if(Arrow_FOUND AND Parquet_FOUND)
+        add_executable(pixel_reader_tests tests/pixel_reader_tests.cpp)
+        target_link_libraries(pixel_reader_tests PRIVATE hermes_photon_clusterer)
+        add_test(NAME pixel_reader_tests COMMAND pixel_reader_tests)
+
+        add_executable(photon_writer_tests tests/photon_writer_tests.cpp)
+        target_link_libraries(photon_writer_tests PRIVATE hermes_photon_clusterer)
+        add_test(NAME photon_writer_tests COMMAND photon_writer_tests)
+    endif()
+endif()

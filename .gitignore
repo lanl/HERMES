@@ -353,3 +353,7 @@ data/*
 
 # Checked-in TPX3 fixture used by unpacker integration tests
 !tests/data/Example_1kHz_5frames.tpx3
+
+# Keep only the example TPX3 time-walk calibration
+/calibrations/tpx3/*
+!/calibrations/tpx3/time-walk_example.json

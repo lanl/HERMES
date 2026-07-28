@@ -1,0 +1,11 @@
+{
+  "model": "inverse",
+  "parameters": {
+    "a": 1254855.5798924663,
+    "b": 10.69863711765447
+  },
+  "high_tot_anchor": 23.0,
+  "time_unit": "canonical_ticks",
+  "date_created": "2026-07-27",
+  "note": "Example inverse time-walk calibration"
+}

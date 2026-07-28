@@ -26,7 +26,9 @@ hermes = { path = ".", editable = true }
 [tool.pixi.tasks]
 build-cpp-unpacker = "cmake -S backends/unpackers/tpx3-spidr/cpp -B build/backends/tpx3-spidr -DCMAKE_BUILD_TYPE=Release && cmake --build build/backends/tpx3-spidr"
 test-cpp-unpacker = { cmd = "ctest --test-dir build/backends/tpx3-spidr --output-on-failure", depends-on = ["build-cpp-unpacker"] }
-install-backends = { cmd = "bash -c 'mkdir -p .pixi/bin && cp build/backends/tpx3-spidr/hermes-tpx3-spidr .pixi/bin/ && echo \"Installed to .pixi/bin/hermes-tpx3-spidr\"'", depends-on = ["build-cpp-unpacker"] }
+build-cpp-photon-clusterer = "cmake -S backends/reconstruction/photons/cpp -B build/backends/photon-clusterer -DCMAKE_BUILD_TYPE=Release && cmake --build build/backends/photon-clusterer"
+test-cpp-photon-clusterer = { cmd = "ctest --test-dir build/backends/photon-clusterer --output-on-failure", depends-on = ["build-cpp-photon-clusterer"] }
+install-backends = { cmd = "bash -c 'mkdir -p .pixi/bin && cp build/backends/tpx3-spidr/hermes-tpx3-spidr .pixi/bin/ && cp build/backends/photon-clusterer/hermes-photon-clusterer .pixi/bin/ && echo \"Installed to .pixi/bin/hermes-tpx3-spidr and .pixi/bin/hermes-photon-clusterer\"'", depends-on = ["build-cpp-unpacker", "build-cpp-photon-clusterer"] }
 
 [tool.pixi.dependencies]
 python = ">=3.14.4,<3.15"
@@ -37,3 +39,5 @@ pyYAML = "*"
 pyarrow = ">=18.0.0"
 nlohmann_json = ">=3.11.0"
 psutil = ">=6.0.0"
+matplotlib = ">=3.11.1,<4"
+numpy = ">=2.5.1,<3"

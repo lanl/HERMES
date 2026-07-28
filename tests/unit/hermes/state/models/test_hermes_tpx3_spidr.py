@@ -11,6 +11,10 @@ from hermes.state.models.analysis.hermes_tpx3_spidr import (
     HermesTpx3AnalysisState,
     HermesTpx3ReconstructionResult,
     HermesTpx3UnpackingResult,
+    PhotonReconstructorProgram,
+    Tpx3PhotonClusteringSettings,
+    Tpx3PhotonReconstructionConfiguration,
+    Tpx3PhotonReconstructionSummary,
     Tpx3SpidrSummary,
     Tpx3SpidrUnpackerProgram,
 )
@@ -105,6 +109,83 @@ def _summary_data() -> dict[str, object]:
     }
 
 
+def _clustering_settings_data() -> dict[str, object]:
+    return {
+        "max_time_spread_ticks": 491_520,
+        "min_cluster_size": 2,
+        "max_cluster_size": 64,
+        "min_pixel_tot_raw": 1,
+        "min_cluster_tot_raw": 2,
+        "max_cluster_tot_raw": 65_472,
+        "max_aspect_ratio": 3.0,
+        "min_filled_fraction": 0.5,
+    }
+
+
+def _photon_summary_data() -> dict[str, object]:
+    return {
+        "schema_version": 1,
+        "reconstruction": {
+            "pixel_rows_read": 12,
+            "pixel_rows_below_min_tot": 1,
+            "components_formed": 3,
+            "photon_count": 2,
+            "rejected_component_count": 1,
+            "rejection_counts": {
+                "below_min_cluster_size": 1,
+                "above_max_cluster_size": 0,
+                "below_min_cluster_tot": 1,
+                "above_max_cluster_tot": 0,
+                "above_max_aspect_ratio": 0,
+                "below_min_filled_fraction": 0,
+            },
+            "quality_flag_counts": {
+                "saturated_pixel": 1,
+                "bridged_components": 0,
+            },
+            "warnings": [],
+            "errors": [],
+        },
+        "clustering": {
+            "algorithm": "connected_components",
+            "settings": _clustering_settings_data(),
+        },
+        "photon_timing": {
+            "estimator": "leading_edge",
+            "correction_model": "none",
+            "calibration_file": None,
+            "parameters": {},
+            "high_tot_anchor": None,
+        },
+        "parquet": {
+            "input_pixel_data_files": [
+                "pixelHits/raw-chip-0-part-00000.parquet",
+            ],
+            "photon_events": {
+                "row_count": 2,
+                "files": [
+                    "photons/raw-chip-0-photon-events-part-00000.parquet",
+                ],
+            },
+            "photon_pixels": {
+                "requested": False,
+                "row_count": 0,
+                "files": [],
+            },
+        },
+        "processing_times_seconds": {
+            "parquet_reading": 0.1,
+            "clustering_and_filtering": 0.2,
+            "parquet_writing": 0.1,
+            "total": 0.4,
+            "throughput": {
+                "pixels_per_second": 30.0,
+                "photons_per_second": 5.0,
+            },
+        },
+    }
+
+
 @pytest.mark.parametrize(
     "raw_names",
     [
@@ -162,9 +243,155 @@ def test_hermes_analysis_state_rejects_duplicate_raw_filename_stems(
         )
 
 
-def test_empty_reconstruction_model_rejects_undefined_fields() -> None:
+def test_reconstruction_result_defaults_and_rejects_undefined_fields() -> None:
+    result = HermesTpx3ReconstructionResult()
+
+    assert result.status == "planned"
+    assert result.started_at is None
+    assert result.finished_at is None
+    assert result.photon_count == 0
+    assert result.rejected_count == 0
+    assert result.warnings == []
+    assert result.errors == []
+
     with pytest.raises(ValidationError, match="extra_forbidden"):
         HermesTpx3ReconstructionResult(settings={})
+
+
+def test_photon_clustering_settings_use_structural_defaults() -> None:
+    settings = Tpx3PhotonClusteringSettings.model_validate(
+        _clustering_settings_data()
+    )
+
+    assert settings.adjacency == 8
+    assert settings.position_averaging == "arithmetic"
+    assert settings.photon_time_estimator == "leading_edge"
+    assert settings.timewalk_calibration_file is None
+    assert settings.save_photon_pixels is False
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "error"),
+    [
+        ("max_time_spread_ticks", 0, "greater than 0"),
+        ("min_cluster_size", 0, "greater than 0"),
+        ("min_pixel_tot_raw", 1024, "less than or equal to 1023"),
+        ("max_aspect_ratio", 0.99, "greater than or equal to 1"),
+        ("min_filled_fraction", 0, "greater than 0"),
+        ("min_filled_fraction", 1.01, "less than or equal to 1"),
+        ("adjacency", 6, "Input should be 4 or 8"),
+    ],
+)
+def test_photon_clustering_settings_reject_invalid_ranges(
+    field: str,
+    value: object,
+    error: str,
+) -> None:
+    data = _clustering_settings_data()
+    data[field] = value
+
+    with pytest.raises(ValidationError, match=error):
+        Tpx3PhotonClusteringSettings.model_validate(data)
+
+
+@pytest.mark.parametrize(
+    ("minimum_field", "maximum_field"),
+    [
+        ("min_cluster_size", "max_cluster_size"),
+        ("min_cluster_tot_raw", "max_cluster_tot_raw"),
+    ],
+)
+def test_photon_clustering_settings_reject_inverted_bounds(
+    minimum_field: str,
+    maximum_field: str,
+) -> None:
+    data = _clustering_settings_data()
+    data[minimum_field] = 10
+    data[maximum_field] = 9
+
+    with pytest.raises(ValidationError, match="less than or equal"):
+        Tpx3PhotonClusteringSettings.model_validate(data)
+
+
+@pytest.mark.parametrize(
+    "reserved_estimator",
+    ["brightest", "mean", "tot_weighted"],
+)
+def test_photon_clustering_settings_reject_reserved_time_estimators(
+    reserved_estimator: str,
+) -> None:
+    data = _clustering_settings_data()
+    data["photon_time_estimator"] = reserved_estimator
+
+    with pytest.raises(ValidationError, match="reserved and not implemented"):
+        Tpx3PhotonClusteringSettings.model_validate(data)
+
+
+def test_hermes_analysis_state_accepts_photon_reconstruction(
+    tmp_path: Path,
+) -> None:
+    analysis_directory = tmp_path / "analysis"
+    state = HermesTpx3AnalysisState(
+        unpacker_program=Tpx3SpidrUnpackerProgram(
+            name="tpx3-spidr-cpp",
+            executable_path=tmp_path / "bin/hermes-tpx3-spidr",
+        ),
+        analysis_directory=analysis_directory,
+        tpx3_files=[FileReference(path=tmp_path / "rawTpx3/raw.tpx3")],
+        photon_reconstruction=Tpx3PhotonReconstructionConfiguration(
+            program=PhotonReconstructorProgram(
+                name="connected-components-cpp",
+                executable_path=tmp_path / "bin/hermes-photon-clusterer",
+            ),
+            pixel_data_directory=analysis_directory / "pixelHits",
+            photon_output_directory=analysis_directory / "photons",
+            settings=Tpx3PhotonClusteringSettings.model_validate(
+                _clustering_settings_data()
+            ),
+        ),
+    )
+
+    assert state.photon_reconstruction is not None
+    assert state.photon_reconstruction.clustering_algorithm == (
+        "connected_components"
+    )
+    assert state.photon_reconstruction.settings.adjacency == 8
+
+
+@pytest.mark.parametrize(
+    ("directory_field", "directory_name"),
+    [
+        ("pixel_data_directory", "wrong-pixel-data"),
+        ("photon_output_directory", "wrong-photons"),
+    ],
+)
+def test_hermes_analysis_state_rejects_reconstruction_directory_mismatch(
+    tmp_path: Path,
+    directory_field: str,
+    directory_name: str,
+) -> None:
+    analysis_directory = tmp_path / "analysis"
+    reconstruction_data: dict[str, object] = {
+        "program": {
+            "name": "connected-components-cpp",
+            "executable_path": tmp_path / "bin/hermes-photon-clusterer",
+        },
+        "pixel_data_directory": analysis_directory / "pixelHits",
+        "photon_output_directory": analysis_directory / "photons",
+        "settings": _clustering_settings_data(),
+    }
+    reconstruction_data[directory_field] = analysis_directory / directory_name
+
+    with pytest.raises(ValidationError, match=directory_field):
+        HermesTpx3AnalysisState(
+            unpacker_program=Tpx3SpidrUnpackerProgram(
+                name="tpx3-spidr-cpp",
+                executable_path=tmp_path / "bin/hermes-tpx3-spidr",
+            ),
+            analysis_directory=analysis_directory,
+            tpx3_files=[FileReference(path=tmp_path / "rawTpx3/raw.tpx3")],
+            photon_reconstruction=reconstruction_data,
+        )
 
 
 def test_summary_validates_every_section() -> None:
@@ -255,3 +482,103 @@ def test_summary_requires_parquet_files_to_match_saved_rows(
 
     with pytest.raises(ValidationError, match="category"):
         Tpx3SpidrSummary.model_validate(summary_data)
+
+
+def test_photon_reconstruction_summary_validates_every_section() -> None:
+    summary = Tpx3PhotonReconstructionSummary.model_validate(
+        _photon_summary_data()
+    )
+
+    assert summary.schema_version == 1
+    assert summary.reconstruction.photon_count == 2
+    assert summary.clustering.algorithm == "connected_components"
+    assert summary.clustering.settings.adjacency == 8
+    assert summary.photon_timing.correction_model == "none"
+    assert summary.parquet.photon_events.row_count == 2
+    assert summary.parquet.photon_pixels.requested is False
+    assert summary.processing_times_seconds.total == 0.4
+
+
+@pytest.mark.parametrize(
+    ("section", "field", "value", "error"),
+    [
+        ("reconstruction", "components_formed", 4, "components_formed"),
+        ("reconstruction", "pixel_rows_below_min_tot", 13, "cannot exceed"),
+        ("photon_timing", "high_tot_anchor", 1024, "less than or equal"),
+    ],
+)
+def test_photon_reconstruction_summary_rejects_inconsistent_values(
+    section: str,
+    field: str,
+    value: object,
+    error: str,
+) -> None:
+    summary_data = _photon_summary_data()
+    section_data = summary_data[section]
+    assert isinstance(section_data, dict)
+    section_data[field] = value
+
+    with pytest.raises(ValidationError, match=error):
+        Tpx3PhotonReconstructionSummary.model_validate(summary_data)
+
+
+def test_photon_reconstruction_summary_requires_fitted_correction_details() -> None:
+    summary_data = _photon_summary_data()
+    photon_timing = summary_data["photon_timing"]
+    assert isinstance(photon_timing, dict)
+    photon_timing["correction_model"] = "linear"
+
+    with pytest.raises(ValidationError, match="fitted correction requires"):
+        Tpx3PhotonReconstructionSummary.model_validate(summary_data)
+
+
+def test_photon_reconstruction_summary_accepts_fitted_correction() -> None:
+    summary_data = _photon_summary_data()
+    clustering = summary_data["clustering"]
+    assert isinstance(clustering, dict)
+    settings = clustering["settings"]
+    assert isinstance(settings, dict)
+    settings["timewalk_calibration_file"] = "logs/timewalk-calibration.json"
+
+    photon_timing = summary_data["photon_timing"]
+    assert isinstance(photon_timing, dict)
+    photon_timing.update(
+        {
+            "correction_model": "linear",
+            "calibration_file": "logs/timewalk-calibration.json",
+            "parameters": {"m": -2.5},
+            "high_tot_anchor": 900.0,
+        }
+    )
+
+    summary = Tpx3PhotonReconstructionSummary.model_validate(summary_data)
+
+    assert summary.photon_timing.correction_model == "linear"
+    assert summary.photon_timing.parameters == {"m": -2.5}
+    assert summary.photon_timing.high_tot_anchor == 900.0
+
+
+def test_photon_reconstruction_summary_matches_saved_pixel_setting() -> None:
+    summary_data = _photon_summary_data()
+    parquet = summary_data["parquet"]
+    assert isinstance(parquet, dict)
+    photon_pixels = parquet["photon_pixels"]
+    assert isinstance(photon_pixels, dict)
+    photon_pixels["requested"] = True
+
+    with pytest.raises(ValidationError, match="save_photon_pixels"):
+        Tpx3PhotonReconstructionSummary.model_validate(summary_data)
+
+
+def test_photon_reconstruction_summary_rejects_wrong_output_group() -> None:
+    summary_data = _photon_summary_data()
+    parquet = summary_data["parquet"]
+    assert isinstance(parquet, dict)
+    photon_events = parquet["photon_events"]
+    assert isinstance(photon_events, dict)
+    photon_events["files"] = [
+        "photons/raw-chip-0-photon-pixels-part-00000.parquet"
+    ]
+
+    with pytest.raises(ValidationError, match="photon-events paths"):
+        Tpx3PhotonReconstructionSummary.model_validate(summary_data)

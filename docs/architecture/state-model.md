@@ -481,9 +481,9 @@ AnalysisState
 ```
 
 For `hermes`, record one unpacker program, one shared analysis directory, the
-raw TPX3 files, and one overall result section. Detailed results for each raw
-file remain in its input-specific summary JSON file. Reconstruction remains an
-optional empty model until its settings and output columns are defined.
+raw TPX3 files, optional photon-reconstruction configuration, and one overall
+result section. Detailed unpacking and reconstruction results for each raw file
+remain in their input-specific summary JSON files.
 
 ##### HermesTpx3AnalysisState ####
 ```python
@@ -493,12 +493,40 @@ HermesTpx3AnalysisState
   analysis_directory: Path
   tpx3_files: list[FileReference]
   resource_limit_percent: int = 90  # integer from 1 through 100
+  photon_reconstruction: Tpx3PhotonReconstructionConfiguration | None
   results: HermesTpx3AnalysisResults
 
 Tpx3SpidrUnpackerProgram
   name: str
   executable_path: Path
   version: str | None
+
+Tpx3PhotonReconstructionConfiguration
+  clustering_algorithm: connected_components | dbscan
+  program: PhotonReconstructorProgram
+  pixel_data_directory: Path
+  photon_output_directory: Path
+  settings: Tpx3PhotonClusteringSettings
+
+PhotonReconstructorProgram
+  name: str
+  executable_path: Path
+  version: str | None
+
+Tpx3PhotonClusteringSettings
+  adjacency: 4 | 8
+  max_time_spread_ticks: int
+  min_cluster_size: int
+  max_cluster_size: int
+  min_pixel_tot_raw: int
+  min_cluster_tot_raw: int
+  max_cluster_tot_raw: int
+  max_aspect_ratio: float
+  min_filled_fraction: float
+  position_averaging: arithmetic
+  photon_time_estimator: leading_edge
+  timewalk_calibration_file: Path | None
+  save_photon_pixels: bool = false
 
 HermesTpx3AnalysisResults
   unpacking: HermesTpx3UnpackingResult
@@ -510,6 +538,13 @@ HermesTpx3UnpackingResult
   finished_at: datetime | None
 
 HermesTpx3ReconstructionResult
+  status: planned | running | completed | failed
+  started_at: datetime | None
+  finished_at: datetime | None
+  photon_count: int
+  rejected_count: int
+  warnings: list[str]
+  errors: list[str]
 ```
 
 `tpx3_files` must contain at least one raw TPX3 file. The analysis runner must
@@ -523,17 +558,51 @@ concurrency based on physical CPU count and available memory. The selected
 percentage is saved in the HERMES YAML file, making the resource limit explicit
 and repeatable.
 
+Photon reconstruction is omitted when only unpacking is requested. When it is
+present, `pixel_data_directory` must equal
+`<analysis_directory>/pixelHits` and `photon_output_directory` must equal
+`<analysis_directory>/photons`. Keeping the paths explicit makes an
+analysis-only HERMES state readable, while validation prevents two directory
+settings from disagreeing.
+
+The first implementation accepts only
+`clustering_algorithm="connected_components"`. The `"dbscan"` value is
+reserved and produces a clear error until its program exists. Adjacency accepts
+only 4 or 8 and defaults to 8-connected immediate-neighbor growth. Connectivity
+is transitive but never jumps across a missing pixel. Time spread is a positive
+number of canonical integer ticks.
+Cluster-size bounds are positive and ordered. Pixel ToT is within the native
+10-bit range. Integrated cluster-ToT bounds are nonnegative and ordered.
+`max_aspect_ratio` is at least 1, and `min_filled_fraction` is greater than 0
+and at most 1.
+
+`position_averaging="arithmetic"` and
+`photon_time_estimator="leading_edge"` are the only implemented values. When
+`timewalk_calibration_file` is present, the leading-edge estimator applies the
+selected normalized correction saved in that file. When it is absent, the
+estimator applies zero correction and the reconstruction summary records
+`correction_model="none"`. HERMES must not insert guessed timing parameters.
+The clustering thresholds remain explicit saved settings because their useful
+values depend on the image intensifier, phosphor, detector threshold, and
+measurement.
+
 The shared directory contains `pixelHits/`, `tdcTriggers/`,
-`globalTimestamps/`, `controlPackets/`, `unknownPackets/`, and `logs/`.
-Parquet filenames begin with the corresponding raw TPX3 filename stem. The
-input-specific summary path is derived as
-`<analysis_directory>/logs/<raw-file-stem>-unpacker-summary.json`.
+`globalTimestamps/`, `controlPackets/`, `unknownPackets/`, `logs/`,
+`photons/`, and later `events/`. Parquet filenames begin with the corresponding
+raw TPX3 filename stem. Input-specific summary paths are derived as:
+
+```text
+<analysis_directory>/logs/<raw-file-stem>-unpacker-summary.json
+<analysis_directory>/logs/<raw-file-stem>-reconstruction-summary.json
+```
 
 The HERMES state does not save one result per raw file, generated command
 arguments, summary JSON paths, Parquet filenames, file counts, packet or row
-counts, warnings, errors, timestamp diagnostics, sorting diagnostics,
-processing times, or per-file exit codes. Each summary JSON file is the sole
-saved detailed result for its raw TPX3 file.
+counts, timestamp diagnostics, sorting diagnostics, detailed rejection counts,
+quality-flag counts, processing times, or per-file exit codes. Each summary JSON
+file is the sole saved detailed result for its raw TPX3 file. The overall
+reconstruction result keeps only status and times, total accepted and rejected
+component counts, and combined warnings and errors.
 
 The unpacking status applies to the complete `tpx3_files` list:
 
@@ -547,6 +616,20 @@ Parquet file exists. It runs an input only when neither its summary nor matching
 Parquet files exist. Matching Parquet files without a valid summary, or an
 invalid existing summary, cause the overall run to fail. No resume flag is
 saved.
+
+The reconstruction status applies to the complete `tpx3_files` list:
+
+- `planned`: photon reconstruction has not started
+- `running`: HERMES has applied the state change and may launch the selected
+  program
+- `completed`: every raw filename stem has a valid reconstruction summary and
+  every required photon file
+- `failed`: at least one input could not be reconstructed or validated
+
+A repeated reconstruction run also verifies that the saved summary settings
+match the requested settings. It requires `photon_pixels` files only when the
+saved `save_photon_pixels` value is true. Valid completed files remain after a
+later input fails and are skipped on the next run.
 
 The EMPIR fields remain undecided. When an EMPIR workflow is defined, name its
 input files, output directories, configuration files, and result files directly:
