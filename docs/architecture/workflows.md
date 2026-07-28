@@ -23,6 +23,34 @@ run. Acquisition-only and analysis-only workflows are valid subsets of this full
 flow; the `HermesRecord` may have only acquisition state, only analysis state, or
 both.
 
+## Workflow Class
+
+`hermes.workflows.workflow.Workflow` is the user-facing entry point for running
+these steps. It is constructed from one `HermesRecord` and owns the
+`StateManager` for that record. Callers load the initial record before creating
+the workflow and save `workflow.record` after the requested work finishes.
+
+The current concrete operation is:
+
+```python
+from hermes.workflows.workflow import Workflow
+
+workflow = Workflow(initial_record)
+unpacked_raw_files = workflow.run_analysis(overwrite=False)
+final_record = workflow.record
+```
+
+`run_analysis()` delegates to the analysis implementation. The workflow keeps
+the trusted-workflow state-service setting internal, so user code does not
+construct or configure `StateManager`. The lower-level
+`run_hermes_analysis(state_manager, ...)` function remains available inside the
+analysis module for focused tests and code that intentionally manages its own
+state service.
+
+The same `Workflow` class will gain acquisition operations when acquisition
+execution exists. One workflow will continue to own the record for
+acquisition-only, analysis-only, and combined acquisition-to-analysis runs.
+
 ## First Concrete Workflow
 
 The first workflow should be intentionally narrow:
