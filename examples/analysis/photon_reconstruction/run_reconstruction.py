@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from hermes.analysis.hermes.run import run_hermes_analysis
 from hermes.state.models.analysis.hermes_tpx3_spidr import (
     HermesTpx3AnalysisState,
     PhotonReconstructorProgram,
@@ -14,9 +13,8 @@ from hermes.state.models.environment import RuntimeEnvironment
 from hermes.state.models.measurement import MeasurementInfo
 from hermes.state.models.shared_models import FileReference
 from hermes.state.state import HermesRecord
-from hermes.state_service.shared_types import StateServiceConfig
 from hermes.state_service.state_io import save_hermes_record_to_yaml
-from hermes.state_service.state_manager import StateManager
+from hermes.workflows.workflow import Workflow
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 RAW_TPX3_DIRECTORY = REPOSITORY_ROOT / "data/list_tests"
@@ -95,7 +93,7 @@ def main() -> None:
             settings=CLUSTERING_SETTINGS,
         ),
     )
-    state_manager = StateManager(
+    workflow = Workflow(
         HermesRecord(
             measurement_info=MeasurementInfo(
                 measurement_id="example-tpx3-photon-reconstruction",
@@ -104,14 +102,17 @@ def main() -> None:
             environment=RuntimeEnvironment(working_dir=EXAMPLE_DIRECTORY),
             acquisition=None,
             analysis=analysis,
-        ),
-        config=StateServiceConfig(allow_trusted_workflow_bypass=True),
+        )
     )
 
-    run_hermes_analysis(state_manager)
-    save_hermes_record_to_yaml(state_manager.get_state(), HERMES_STATE_FILE)
+    workflow.run_analysis()
+    final_record = workflow.record
+    save_hermes_record_to_yaml(final_record, HERMES_STATE_FILE)
 
-    reconstruction = state_manager.get_state().analysis.results.reconstruction
+    final_analysis = final_record.analysis
+    assert isinstance(final_analysis, HermesTpx3AnalysisState)
+    reconstruction = final_analysis.results.reconstruction
+    assert reconstruction is not None
     print("\nReconstruction result:")
     print(f"  Status:            {reconstruction.status}")
     print(f"  Photons:           {reconstruction.photon_count:,}")
