@@ -20,7 +20,7 @@ def run_unpacker_module(monkeypatch: pytest.MonkeyPatch) -> ModuleType:
     repository_root = Path(__file__).resolve().parents[4]
     monkeypatch.syspath_prepend(str(repository_root))
     return importlib.import_module(
-        "examples.analysis.unpacker_single_file.run_unpacker"
+        "examples.analysis.unpacking.unpacker_single_file.run_unpacker"
     )
 
 
