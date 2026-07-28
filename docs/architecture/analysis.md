@@ -183,11 +183,9 @@ columns, filenames, summary fields, and exit behavior.
 HERMES runs photon reconstruction once for each raw filename stem after
 validating its pixel-data files. Reconstruction settings are saved in the
 HERMES state and passed to the selected program in a temporary JSON file. The
-command remains positional:
+command remains positional with an explicit settings flag:
 
-```text
-<executable> <analysis-directory> <raw-file-stem> <settings-json-file>
-```
+    <executable> <analysis-directory> <raw-file-stem> --settings <settings-json-file>
 
 The settings JSON file contains the chip-independent clustering settings and
 optional time-correction calibration path. The program processes every chip
