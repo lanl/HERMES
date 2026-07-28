@@ -45,6 +45,7 @@ CLUSTERING_SETTINGS = Tpx3PhotonClusteringSettings.model_validate(
 
 
 def main() -> None:
+    # Step 1: Find the raw TPX3 files and validate the required unpacker
     raw_tpx3_files = sorted(RAW_TPX3_DIRECTORY.glob("*.tpx3"))
     if not raw_tpx3_files:
         raise FileNotFoundError(
@@ -56,10 +57,12 @@ def main() -> None:
             f"{UNPACKER_EXECUTABLE}"
         )
 
+    # Step 2: Display the raw TPX3 files selected for analysis
     print(f"Found {len(raw_tpx3_files)} TPX3 files:")
     for tpx3_file in raw_tpx3_files:
         print(f"  - {tpx3_file.name}")
 
+    # Step 3: Configure the unpacking analysis
     analysis = HermesTpx3AnalysisState(
         unpacker_program=Tpx3SpidrUnpackerProgram(
             name="tpx3-spidr-cpp",
@@ -70,6 +73,7 @@ def main() -> None:
         tpx3_files=[FileReference(path=f) for f in raw_tpx3_files],
         resource_limit_percent=90,
     )
+    # Step 4: Create one HERMES record and workflow for the analysis
     workflow = Workflow(
         HermesRecord(
             measurement_info=MeasurementInfo(
@@ -82,15 +86,18 @@ def main() -> None:
         )
     )
 
+    # Step 5: Unpack the raw files and save the completed HERMES record
     workflow.run_analysis()
     save_hermes_record_to_yaml(workflow.record, HERMES_STATE_FILE)
 
+    # Step 6: Find the unpacked pixel-data Parquet files
     pixel_files = sorted((ANALYSIS_DIRECTORY / "pixelHits").glob("*.parquet"))
     if not pixel_files:
         raise FileNotFoundError(
             f"No pixel_data Parquet files found in: {ANALYSIS_DIRECTORY / 'pixelHits'}"
         )
 
+    # Step 7: Fit and save the time-walk calibration
     print(f"\nCalibrating time-walk from {len(pixel_files)} pixel_data files...")
     try:
         calibration = calibrate_timewalk(
@@ -109,6 +116,7 @@ def main() -> None:
         )
         return
 
+    # Step 8: Display the calibration results and saved file locations
     print(f"\nComponents considered: {calibration.components_considered:,}")
     print(f"Components used:       {calibration.components_used:,}")
     print(f"Pixel pairs:           {calibration.pixel_pairs:,}")

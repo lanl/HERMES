@@ -52,6 +52,7 @@ CLUSTERING_SETTINGS = Tpx3PhotonClusteringSettings.model_validate(
 
 
 def main() -> None:
+    # Step 1: Find the raw TPX3 files and validate the required programs
     raw_tpx3_files = sorted(RAW_TPX3_DIRECTORY.glob("*.tpx3"))
     if not raw_tpx3_files:
         raise FileNotFoundError(
@@ -69,10 +70,12 @@ def main() -> None:
             f"{CLUSTERER_EXECUTABLE}"
         )
 
+    # Step 2: Display the raw TPX3 files selected for analysis
     print(f"Found {len(raw_tpx3_files)} TPX3 files:")
     for tpx3_file in raw_tpx3_files:
         print(f"  - {tpx3_file.name}")
 
+    # Step 3: Configure unpacking and photon reconstruction
     analysis = HermesTpx3AnalysisState(
         unpacker_program=Tpx3SpidrUnpackerProgram(
             name="tpx3-spidr-cpp",
@@ -93,6 +96,7 @@ def main() -> None:
             settings=CLUSTERING_SETTINGS,
         ),
     )
+    # Step 4: Create one HERMES record and workflow for the analysis
     workflow = Workflow(
         HermesRecord(
             measurement_info=MeasurementInfo(
@@ -105,10 +109,12 @@ def main() -> None:
         )
     )
 
+    # Step 5: Run the analysis and save the completed HERMES record
     workflow.run_analysis()
     final_record = workflow.record
     save_hermes_record_to_yaml(final_record, HERMES_STATE_FILE)
 
+    # Step 6: Display the overall photon reconstruction result
     final_analysis = final_record.analysis
     assert isinstance(final_analysis, HermesTpx3AnalysisState)
     reconstruction = final_analysis.results.reconstruction
@@ -125,7 +131,7 @@ def main() -> None:
         ).total_seconds()
         print(f"  Wall time:         {wall_seconds:.3f} s")
 
-    # Per-reason rejection counts and throughput come from each stem's summary.
+    # Step 7: Display per-file counts and throughput from each summary
     logs_dir = ANALYSIS_DIRECTORY / "logs"
     print("\nPer-file reconstruction summaries:")
     for summary_file in sorted(
@@ -133,6 +139,7 @@ def main() -> None:
     ):
         _print_summary(summary_file)
 
+    # Step 8: Display the saved photon files and HERMES state location
     photon_files = sorted((ANALYSIS_DIRECTORY / "photons").glob("*.parquet"))
     print(f"\nPhoton output directory: {ANALYSIS_DIRECTORY / 'photons'}")
     print(f"  {len(photon_files)} photon Parquet file(s)")

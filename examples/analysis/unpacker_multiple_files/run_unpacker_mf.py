@@ -49,13 +49,14 @@ def main(
     *,
     overwrite: bool = False,
 ) -> None:
+    # Step 1: Prepare the bundled multi-file input when using the default YAML
     if input_yaml_path == DEFAULT_INPUT_YAML_PATH:
         prepare_example_input_files()
 
     # Step 2: Load the initial HERMES record from the configuration YAML file
     initial_record = load_hermes_record_from_yaml(input_yaml_path)
-    
-    # Step 3: Extract the working directory path where outputs will be stored
+
+    # Step 3: Choose a separate path for the completed HERMES record
     working_directory = cast(
         Path,
         initial_record.environment.working_dir.resolved_path,
@@ -68,11 +69,11 @@ def main(
     # Step 5: Run the HERMES analysis on all TPX3 files
     # Returns a list of files that were actually unpacked (not skipped)
     unpacked_raw_files = workflow.run_analysis(overwrite=overwrite)
-    
+
     # Step 6: Get the final state after analysis completes
     final_record = workflow.record
     hermes_analysis = cast(HermesTpx3AnalysisState, final_record.analysis)
-    
+
     # Step 7: Save the final HERMES record to a YAML file for future reference
     save_hermes_record_to_yaml(final_record, final_record_path)
 
