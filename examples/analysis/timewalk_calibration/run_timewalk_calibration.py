@@ -28,12 +28,7 @@ def main(input_yaml_path: Path = DEFAULT_INPUT_YAML_PATH) -> None:
     # Step 2: Choose paths for the completed record and calibration outputs
     working_directory = initial_record.environment.working_dir.resolved_path
     final_record_path = working_directory / "hermes-record_final.yaml"
-    analysis = initial_record.analysis
-    if analysis is None or getattr(analysis, "mode", None) != "hermes":
-        raise SystemExit(
-            "time-walk calibration requires a HERMES HermesRecord (analysis.mode: hermes)"
-        )
-    analysis_directory = analysis.analysis_directory
+    analysis_directory = initial_record.analysis.analysis_directory
     calibration_file = analysis_directory / "logs/timewalk-calibration.json"
     correction_file = analysis_directory / "logs/timewalk-calibration-correction.json"
 
