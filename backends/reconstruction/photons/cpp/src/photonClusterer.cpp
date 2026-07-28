@@ -1,23 +1,49 @@
-#include <cstring>
+#include <chrono>
+#include <cstddef>
+#include <cstdint>
+#include <filesystem>
 #include <iostream>
-#include <stdexcept>
 #include <string>
 #include <vector>
 
+#include <nlohmann/json.hpp>
+
 #include "clusterer.h"
+#include "photon_writer.h"
+#include "pixel_reader.h"
+#include "reconstruction.h"
 #include "settings.h"
+#include "summary_writer.h"
+#include "timewalk.h"
 
 namespace {
+
+namespace fs = std::filesystem;
+using json = nlohmann::ordered_json;
+using Clock = std::chrono::steady_clock;
+
+// One canonical tick in seconds: the 25 ns SPIDR coarse period split into the
+// 12,288 fine steps the unpacker uses. Written into the photon file metadata.
+constexpr double kCanonicalTickSeconds = 25.0e-9 / 12288.0;
+
+// Photon rows per Parquet part file.
+constexpr std::uint64_t kRowsPerPart = 1'000'000;
+
+double secondsSince(const Clock::time_point start) {
+    return std::chrono::duration<double>(Clock::now() - start).count();
+}
+
 void printHelp(const char* program_name) {
     std::cout << "HERMES Photon Clusterer v" << hermes_photon_clusterer::kVersion
               << "\n\n";
     std::cout << "Usage: " << program_name
-              << " [OPTIONS] <pixel_data_directory> <analysis_directory>\n\n";
+              << " [OPTIONS] <analysis_directory> <raw_file_stem>\n\n";
     std::cout << "Arguments:\n";
-    std::cout << "  <pixel_data_directory>  Directory of sorted pixel_data "
-                 "Parquet files for one raw stem\n";
-    std::cout << "  <analysis_directory>    Shared analysis directory for "
-                 "photon output and logs\n\n";
+    std::cout << "  <analysis_directory>  Shared analysis directory; pixelHits/, "
+                 "photons/, and logs/\n";
+    std::cout << "                        are derived from it\n";
+    std::cout << "  <raw_file_stem>       Raw TPX3 filename stem selecting the "
+                 "pixel_data files\n\n";
     std::cout << "Options:\n";
     std::cout << "  -s, --settings <file>  JSON file overriding individual "
                  "clustering settings\n";
@@ -32,6 +58,68 @@ void printVersion() {
               << "\n";
     std::cout << "C++17 connected-components photon reconstruction\n";
 }
+
+// Serializes the clustering settings to the JSON object stored verbatim in the
+// photon file metadata.
+json settingsToJson(const hermes_photon_clusterer::ClusteringSettings& s) {
+    json j;
+    j["max_time_spread_ticks"] = s.max_time_spread_ticks;
+    j["min_cluster_size"] = s.min_cluster_size;
+    j["max_cluster_size"] = s.max_cluster_size;
+    j["min_pixel_tot_raw"] = s.min_pixel_tot_raw;
+    j["min_cluster_tot_raw"] = s.min_cluster_tot_raw;
+    j["max_cluster_tot_raw"] = s.max_cluster_tot_raw;
+    j["max_aspect_ratio"] = s.max_aspect_ratio;
+    j["min_filled_fraction"] = s.min_filled_fraction;
+    j["adjacency"] = s.adjacency;
+    j["position_averaging"] = s.position_averaging;
+    j["photon_time_estimator"] = s.photon_time_estimator;
+    j["timewalk_calibration_file"] =
+        s.timewalk_calibration_file.empty()
+            ? json(nullptr)
+            : json(s.timewalk_calibration_file);
+    j["save_photon_pixels"] = s.save_photon_pixels;
+    return j;
+}
+
+// Copies the clustering settings into the summary's settings block.
+hermes_photon_clusterer::SummaryClusteringSettings summarySettings(
+    const hermes_photon_clusterer::ClusteringSettings& s) {
+    hermes_photon_clusterer::SummaryClusteringSettings out;
+    out.max_time_spread_ticks = s.max_time_spread_ticks;
+    out.min_cluster_size = s.min_cluster_size;
+    out.max_cluster_size = s.max_cluster_size;
+    out.min_pixel_tot_raw = s.min_pixel_tot_raw;
+    out.min_cluster_tot_raw = s.min_cluster_tot_raw;
+    out.max_cluster_tot_raw = s.max_cluster_tot_raw;
+    out.max_aspect_ratio = s.max_aspect_ratio;
+    out.min_filled_fraction = s.min_filled_fraction;
+    out.adjacency = s.adjacency;
+    out.position_averaging = s.position_averaging;
+    out.photon_time_estimator = s.photon_time_estimator;
+    out.timewalk_calibration_file = s.timewalk_calibration_file;
+    out.save_photon_pixels = s.save_photon_pixels;
+    return out;
+}
+
+// Model name written into metadata and the summary.
+std::string correctionModelName(
+    const hermes_photon_clusterer::TimewalkCorrection& c) {
+    return c.model == hermes_photon_clusterer::TimewalkCorrection::Model::kInverse
+               ? "inverse"
+               : "linear";
+}
+
+// Fitted parameters as (name, value) pairs for the correction model.
+std::vector<std::pair<std::string, double>> correctionParameters(
+    const hermes_photon_clusterer::TimewalkCorrection& c) {
+    if (c.model ==
+        hermes_photon_clusterer::TimewalkCorrection::Model::kInverse) {
+        return {{"a", c.a}, {"b", c.b}};
+    }
+    return {{"m", c.m}};
+}
+
 }  // namespace
 
 int main(const int argc, char* argv[]) {
@@ -65,13 +153,13 @@ int main(const int argc, char* argv[]) {
     }
 
     if (positionals.size() != 2) {
-        std::cerr << "Error: expected <pixel_data_directory> and "
-                     "<analysis_directory>\n";
+        std::cerr << "Error: expected <analysis_directory> and "
+                     "<raw_file_stem>\n";
         std::cerr << "Try '" << argv[0] << " --help' for more information.\n";
         return 2;
     }
-    const std::string pixel_data_directory = positionals[0];
-    const std::string analysis_directory = positionals[1];
+    const std::string analysis_directory = positionals[0];
+    const std::string raw_file_stem = positionals[1];
 
     // Start from built-in defaults; a settings file overrides only named fields.
     hermes_photon_clusterer::ClusteringSettings settings;
@@ -87,13 +175,209 @@ int main(const int argc, char* argv[]) {
         return 2;
     }
 
-    (void)pixel_data_directory;
-    (void)analysis_directory;
-    (void)settings;
+    // Load the time-walk correction now so a malformed calibration fails before
+    // any output is written. An empty path means the uncorrected leading edge.
+    bool has_correction = false;
+    hermes_photon_clusterer::TimewalkCorrection correction;
+    if (!settings.timewalk_calibration_file.empty()) {
+        try {
+            correction = hermes_photon_clusterer::loadTimewalkCorrection(
+                settings.timewalk_calibration_file);
+            has_correction = true;
+        } catch (const std::exception& error) {
+            std::cerr << "Error: " << error.what() << "\n";
+            return 2;
+        }
+    }
 
-    // The read -> cluster -> filter -> correct -> write -> summary pipeline is
-    // wired up in the following Stage 4 step.
-    std::cerr << "Error: photon clustering is not implemented yet\n";
-    std::cerr << "Try '" << argv[0] << " --help' for more information.\n";
-    return 2;
+    const fs::path analysis_path(analysis_directory);
+    const std::string pixel_hits_dir = (analysis_path / "pixelHits").string();
+    const std::string photons_dir = (analysis_path / "photons").string();
+    const std::string logs_dir = (analysis_path / "logs").string();
+    const std::string summary_path =
+        (fs::path(logs_dir) /
+         (raw_file_stem + "-reconstruction-summary.json"))
+            .string();
+
+    const auto total_start = Clock::now();
+
+    // Discover the pixel_data files for this stem, grouped and ordered per chip.
+    auto groups = hermes_photon_clusterer::discoverPixelFiles(pixel_hits_dir,
+                                                              raw_file_stem);
+    if (!groups.errors.empty()) {
+        for (const auto& error : groups.errors) {
+            std::cerr << "Error: " << error << "\n";
+        }
+        return 1;
+    }
+
+    // Shared photon-file metadata; chip_index is filled in per chip.
+    hermes_photon_clusterer::PhotonFileMetadata metadata;
+    metadata.raw_file_stem = raw_file_stem;
+    metadata.canonical_tick_seconds = kCanonicalTickSeconds;
+    metadata.clustering_algorithm = "connected_components";
+    metadata.clustering_settings_json = settingsToJson(settings).dump();
+    metadata.position_averaging = settings.position_averaging;
+    metadata.photon_time_estimator = settings.photon_time_estimator;
+    metadata.correction_model =
+        has_correction ? correctionModelName(correction) : "none";
+    if (has_correction) {
+        json params;
+        for (const auto& [name, value] : correctionParameters(correction)) {
+            params[name] = value;
+        }
+        metadata.correction_parameters_json = params.dump();
+        metadata.high_tot_anchor = correction.high_tot_anchor;
+    }
+    metadata.save_photon_pixels = settings.save_photon_pixels;
+
+    // Accumulate the whole-stem summary across all chips.
+    hermes_photon_clusterer::ReconstructionSummaryContent summary;
+    summary.algorithm = "connected_components";
+    summary.settings = summarySettings(settings);
+    summary.photon_timing.estimator = settings.photon_time_estimator;
+    summary.photon_timing.correction_model =
+        has_correction ? correctionModelName(correction) : "none";
+    if (has_correction) {
+        summary.photon_timing.calibration_file =
+            settings.timewalk_calibration_file;
+        summary.photon_timing.parameters = correctionParameters(correction);
+        summary.photon_timing.has_high_tot_anchor = true;
+        summary.photon_timing.high_tot_anchor = correction.high_tot_anchor;
+    }
+    summary.photon_pixels_requested = settings.save_photon_pixels;
+
+    double reading_seconds = 0.0;
+    double clustering_seconds = 0.0;
+    double writing_seconds = 0.0;
+
+    const hermes_photon_clusterer::TimewalkCorrection* correction_ptr =
+        has_correction ? &correction : nullptr;
+
+    // Reconstruct each chip independently and accumulate counts and output.
+    for (const auto& [chip, files] : groups.files_by_chip) {
+        // Record the input files relative to the analysis directory.
+        for (const auto& file : files) {
+            summary.input_pixel_data_files.push_back(
+                fs::relative(file, analysis_path).string());
+        }
+
+        // Read the chip's ordered pixel_data into memory in timestamp order.
+        std::vector<hermes_photon_clusterer::PixelHit> hits;
+        const auto read_start = Clock::now();
+        std::vector<std::string> read_errors;
+        const bool read_ok = hermes_photon_clusterer::readPixelHits(
+            files,
+            [&](const hermes_photon_clusterer::PixelHit& hit) {
+                hits.push_back(hit);
+            },
+            read_errors);
+        reading_seconds += secondsSince(read_start);
+        if (!read_ok) {
+            for (const auto& error : read_errors) {
+                std::cerr << "Error: " << error << "\n";
+            }
+            return 1;
+        }
+
+        // Cluster, filter, and build photons for this chip.
+        std::size_t cursor = 0;
+        auto next_hit = [&](hermes_photon_clusterer::PixelHit& out) {
+            if (cursor >= hits.size()) {
+                return false;
+            }
+            out = hits[cursor++];
+            return true;
+        };
+        const auto cluster_start = Clock::now();
+        auto result = hermes_photon_clusterer::reconstructPhotons(
+            next_hit, settings, correction_ptr, settings.save_photon_pixels);
+        clustering_seconds += secondsSince(cluster_start);
+
+        // Accumulate counts.
+        summary.pixel_rows_read += result.counts.pixel_rows_read;
+        summary.pixel_rows_below_min_tot +=
+            result.counts.pixel_rows_below_min_tot;
+        summary.components_formed += result.counts.components_formed;
+        summary.photon_count += result.counts.photon_count;
+        summary.rejected_component_count +=
+            result.counts.rejected_component_count;
+        summary.rejection_counts.below_min_cluster_size +=
+            result.counts.rejection_counts.below_min_cluster_size;
+        summary.rejection_counts.above_max_cluster_size +=
+            result.counts.rejection_counts.above_max_cluster_size;
+        summary.rejection_counts.below_min_cluster_tot +=
+            result.counts.rejection_counts.below_min_cluster_tot;
+        summary.rejection_counts.above_max_cluster_tot +=
+            result.counts.rejection_counts.above_max_cluster_tot;
+        summary.rejection_counts.above_max_aspect_ratio +=
+            result.counts.rejection_counts.above_max_aspect_ratio;
+        summary.rejection_counts.below_min_filled_fraction +=
+            result.counts.rejection_counts.below_min_filled_fraction;
+        summary.saturated_pixel_count += result.counts.saturated_pixel_count;
+        summary.bridged_components_count +=
+            result.counts.bridged_components_count;
+
+        // Write this chip's photon output.
+        metadata.chip_index = chip;
+        const auto write_start = Clock::now();
+        std::vector<std::string> write_errors;
+        auto events_result = hermes_photon_clusterer::writePhotonEventsParquet(
+            result.photons, photons_dir, metadata, kRowsPerPart, write_errors);
+        if (!write_errors.empty()) {
+            for (const auto& error : write_errors) {
+                std::cerr << "Error: " << error << "\n";
+            }
+            return 1;
+        }
+        summary.photon_events_row_count += events_result.row_count;
+        for (const auto& file : events_result.files) {
+            summary.photon_events_files.push_back("photons/" + file);
+        }
+
+        if (settings.save_photon_pixels) {
+            auto pixels_result =
+                hermes_photon_clusterer::writePhotonPixelsParquet(
+                    result.photon_pixels, photons_dir, metadata, kRowsPerPart,
+                    write_errors);
+            if (!write_errors.empty()) {
+                for (const auto& error : write_errors) {
+                    std::cerr << "Error: " << error << "\n";
+                }
+                return 1;
+            }
+            summary.photon_pixels_row_count += pixels_result.row_count;
+            for (const auto& file : pixels_result.files) {
+                summary.photon_pixels_files.push_back("photons/" + file);
+            }
+        }
+        writing_seconds += secondsSince(write_start);
+    }
+
+    summary.parquet_reading_seconds = reading_seconds;
+    summary.clustering_and_filtering_seconds = clustering_seconds;
+    summary.parquet_writing_seconds = writing_seconds;
+    summary.total_seconds = secondsSince(total_start);
+
+    // Write the whole-stem reconstruction summary under logs/.
+    std::error_code ec;
+    fs::create_directories(logs_dir, ec);
+    if (ec) {
+        std::cerr << "Error: failed to create logs directory " << logs_dir
+                  << ": " << ec.message() << "\n";
+        return 1;
+    }
+    try {
+        hermes_photon_clusterer::writeReconstructionSummaryJson(summary_path,
+                                                                summary);
+    } catch (const std::exception& error) {
+        std::cerr << "Error: " << error.what() << "\n";
+        return 1;
+    }
+
+    std::cout << "Reconstructed " << summary.photon_count << " photons from "
+              << summary.pixel_rows_read << " pixel rows across "
+              << groups.files_by_chip.size() << " chip(s).\n";
+    std::cout << "Summary: " << summary_path << "\n";
+    return 0;
 }
