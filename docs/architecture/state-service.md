@@ -99,6 +99,14 @@ The `src/hermes/state_service/` module is organized into several key components:
     - parses YAML safely, validates loaded data through the Pydantic
       `HermesRecord` model, and writes predictable YAML without relying on
       advanced YAML features such as anchors.
+    - accepts partial user-authored YAML: fields with declared Pydantic defaults
+      may be omitted, while fields without defaults remain required.
+    - rejects unknown fields through the strict HERMES state models.
+    - only loads or saves a record; it does not start acquisition, analysis, or
+      any other workflow.
+    - writes the complete validated record when saving, including values supplied
+      by Pydantic defaults. A workflow should save this final record separately
+      from the user-authored input YAML.
     - may support JSON import/export as a secondary machine-readable format, but
       YAML is the primary persisted run-record format.
     - functions include:
