@@ -14,6 +14,7 @@ struct ParquetWriterConfig {
     std::string raw_file_stem;
     std::uint64_t rows_per_part = 1000000;
     std::uint8_t chip_index = 0;
+    bool overwrite = false;
 };
 
 struct ParquetCategoryFiles {
