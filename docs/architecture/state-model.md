@@ -43,6 +43,94 @@ practical for user-authored run inputs. JSON may still be supported as an
 optional export format for tools that need strict machine-readable records, but
 the Pydantic `HermesRecord` schema remains the authoritative field definition.
 
+## Loading a Partial HermesRecord from YAML
+
+`HermesRecord` is the top-level Pydantic model for a user-authored HERMES YAML
+file. `load_hermes_record_from_yaml()` safely parses the file and validates the
+result directly with `HermesRecord.model_validate()`.
+
+The YAML may omit a field only when its Pydantic model declares a default or a
+`default_factory`. Pydantic applies these defaults recursively in supplied
+nested models. A field without a declared default remains required; the YAML
+loader must not guess a value for it.
+
+All HERMES state models reject unknown fields. When an `analysis` or
+`acquisition` section is supplied, users should include its `mode`. The mode
+selects the program-specific Pydantic model. In particular, `analysis.mode` is
+required for Pydantic to choose between HERMES and EMPIR analysis.
+
+Loading only validates and returns a `HermesRecord`. It must not start
+acquisition, analysis, or any other workflow. Later changes to the loaded record
+must go through `StateManager`.
+
+Saving a loaded record writes the complete Pydantic model, including values
+that came from defaults. The user-authored input YAML and the final saved HERMES
+record should be separate files.
+
+The smallest current YAML record supplies the required measurement fields and
+the required top-level environment. The empty environment receives its nested
+defaults:
+
+```yaml
+measurement_info:
+  measurement_id: example-run
+  run_number: 1
+
+environment: {}
+```
+
+This loads with a default `RuntimeEnvironment` and with both `acquisition` and
+`analysis` set to `None`.
+
+A partial HERMES analysis record supplies only required analysis information
+and values that intentionally differ from defaults:
+
+```yaml
+measurement_info:
+  measurement_id: example-tpx3-unpacking
+  run_number: 1
+
+environment:
+  working_dir: data/examples/analysis/unpacker
+
+analysis:
+  mode: hermes
+  unpacker_program:
+    name: tpx3-spidr-cpp
+    executable_path: build/backends/tpx3-spidr/hermes-tpx3-spidr
+  analysis_directory: data/examples/analysis/unpacker/analysis
+  tpx3_files:
+    - path: tests/data/Example_1kHz_5frames.tpx3
+```
+
+Pydantic supplies `acquisition: null`, `resource_limit_percent: 90`, planned
+unpacking results, and `None` for the optional unpacker version and optional raw
+TPX3 file information.
+
+### Current required/default review
+
+- `HermesRecord.measurement_info` and `HermesRecord.environment` are required.
+- `MeasurementInfo.measurement_id` and `MeasurementInfo.run_number` are
+  required. Its other fields have defaults.
+- Every `RuntimeEnvironment` field has a default. Its `working_dir` defaults to
+  the current directory and is marked required and resolved.
+- `HermesTpx3AnalysisState.unpacker_program`, `analysis_directory`, and
+  `tpx3_files` are required. `tpx3_files` must contain at least one entry.
+- `HermesTpx3AnalysisState.resource_limit_percent`, `photon_reconstruction`,
+  and `results` have defaults. Nested unpacking results default to `planned`.
+- `Tpx3SpidrUnpackerProgram.name` and `executable_path` are required; `version`
+  defaults to `None`.
+- `FileReference.path` is required; its file information fields default to
+  `None`.
+
+There is one current difference between the intended mode rule and the source
+models. `analysis` is a discriminated union, so a supplied analysis section
+fails validation without `mode`. `acquisition` currently names only
+`ServalAcquisitionState`, whose `mode` field defaults to `serval`; Pydantic
+therefore currently accepts an acquisition section without `mode`. Supporting
+multiple acquisition programs will require making acquisition mode selection
+explicit. No model change is part of this documentation stage.
+
 ## Expected model groups ###
 Expected model groups and their responsibilities include:
 - MeasurementInfo: metadata about the measurement, including measurement ID, run number, beamline, proposal ID, image intensifier serial number, scintillator serial number, sample name, operator name, log notes, and any other relevant metadata fields that are important for provenance and record-keeping.
