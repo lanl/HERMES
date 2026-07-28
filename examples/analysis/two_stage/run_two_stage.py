@@ -27,8 +27,14 @@ def main(input_yaml_path: Path = DEFAULT_INPUT_YAML_PATH) -> None:
     # Step 4: Read and save the final HERMES record
     final_record = workflow.record
     final_analysis = final_record.analysis
+    if final_analysis.photon_reconstruction is None:
+        raise SystemExit(
+            "two-stage example requires analysis.photon_reconstruction to be configured"
+        )
     final_reconstruction = final_analysis.photon_reconstruction
     reconstruction = final_analysis.results.reconstruction
+    if reconstruction is None:
+        raise SystemExit("photon reconstruction did not produce a summary result")
     save_hermes_record_to_yaml(final_record, final_record_path)
 
     # Step 5: Display the unpacking and photon reconstruction results
