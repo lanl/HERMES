@@ -509,18 +509,41 @@ WorkflowResult runTwoPassWorkflow(std::istream& input,
     const auto summary_path = std::filesystem::path(analysis_directory) /
                               summary_json_file;
 
-    if (!overwrite) {
-        try {
-            findExistingOutputFiles(analysis_directory, raw_file_stem,
-                                    summary_path, workflow_result.errors);
-        } catch (const std::exception& error) {
-            workflow_result.errors.push_back(
-                "Failed to check existing analysis files: " +
-                std::string(error.what()));
+    try {
+        if (overwrite) {
+            std::filesystem::remove(summary_path);
+            const std::string parquet_prefix_with_chip = raw_file_stem + "-chip-";
+            const std::string parquet_prefix_without_chip = raw_file_stem + "-part-";
+            for (const char* directory_name : parquet_directories) {
+                const auto directory =
+                    std::filesystem::path(analysis_directory) / directory_name;
+                if (!std::filesystem::exists(directory)) {
+                    continue;
+                }
+
+                for (const auto& entry : std::filesystem::directory_iterator(directory)) {
+                    if (!entry.is_regular_file() || entry.path().extension() != ".parquet") {
+                        continue;
+                    }
+                    const auto filename = entry.path().filename().string();
+                    if (filename.rfind(parquet_prefix_with_chip, 0) == 0 ||
+                        filename.rfind(parquet_prefix_without_chip, 0) == 0) {
+                        std::filesystem::remove(entry.path());
+                    }
+                }
+            }
+        } else {
+            findExistingOutputFiles(analysis_directory, raw_file_stem, summary_path,
+                                    workflow_result.errors);
         }
-        if (!workflow_result.errors.empty()) {
-            return workflow_result;
-        }
+    } catch (const std::exception& error) {
+        workflow_result.errors.push_back(
+            std::string(overwrite ? "Failed to remove existing analysis files: "
+                                  : "Failed to check existing analysis files: ") +
+            error.what());
+    }
+    if (!workflow_result.errors.empty()) {
+        return workflow_result;
     }
 
     // Pass 1: Unpack and decode all packets
