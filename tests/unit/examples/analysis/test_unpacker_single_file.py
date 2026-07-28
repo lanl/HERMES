@@ -145,5 +145,8 @@ analysis:
     assert isinstance(saved_final_record.analysis, HermesTpx3AnalysisState)
     assert saved_final_record.analysis.resource_limit_percent == 90
     assert str(raw_tpx3_file) in console_output
+    assert "Raw TPX3 files: 1" in console_output
+    assert "Unpacked this run: 1" in console_output
+    assert "Skipped existing valid outputs: 0" in console_output
     assert str(analysis_directory) in console_output
     assert str(final_record_path) in console_output

@@ -243,6 +243,92 @@ def test_hermes_analysis_state_rejects_duplicate_raw_filename_stems(
         )
 
 
+def test_hermes_analysis_state_expands_raw_tpx3_file_list(
+    tmp_path: Path,
+) -> None:
+    file_list_path = tmp_path / "lists/raw_tpx3_files.txt"
+    file_list_path.parent.mkdir(parents=True)
+    absolute_raw_tpx3_path = tmp_path / "absolute/second.tpx3"
+    file_list_path.write_text(
+        f"""
+# One raw TPX3 file path per line.
+../raw/first.tpx3
+
+{absolute_raw_tpx3_path}
+""",
+        encoding="utf-8",
+    )
+
+    analysis = HermesTpx3AnalysisState.model_validate(
+        {
+            "unpacker_program": {
+                "name": "tpx3-spidr-cpp",
+                "executable_path": tmp_path / "hermes-tpx3-spidr",
+            },
+            "analysis_directory": tmp_path / "analysis",
+            "tpx3_files": {"file_list": file_list_path},
+        }
+    )
+
+    assert [raw_file.path for raw_file in analysis.tpx3_files] == [
+        (file_list_path.parent / "../raw/first.tpx3").resolve(),
+        absolute_raw_tpx3_path.resolve(),
+    ]
+    assert isinstance(analysis.tpx3_files[0], FileReference)
+
+
+@pytest.mark.parametrize(
+    ("file_contents", "error"),
+    [
+        (None, "cannot read raw TPX3 file list"),
+        ("", "contains no file paths"),
+        ("\n# no paths\n\n", "contains no file paths"),
+    ],
+)
+def test_hermes_analysis_state_rejects_invalid_raw_tpx3_file_list(
+    tmp_path: Path,
+    file_contents: str | None,
+    error: str,
+) -> None:
+    file_list_path = tmp_path / "raw_tpx3_files.txt"
+    if file_contents is not None:
+        file_list_path.write_text(file_contents, encoding="utf-8")
+
+    with pytest.raises(ValidationError, match=error):
+        HermesTpx3AnalysisState.model_validate(
+            {
+                "unpacker_program": {
+                    "name": "tpx3-spidr-cpp",
+                    "executable_path": tmp_path / "hermes-tpx3-spidr",
+                },
+                "analysis_directory": tmp_path / "analysis",
+                "tpx3_files": {"file_list": file_list_path},
+            }
+        )
+
+
+def test_hermes_analysis_state_checks_duplicate_stems_from_file_list(
+    tmp_path: Path,
+) -> None:
+    file_list_path = tmp_path / "duplicate-stems.txt"
+    file_list_path.write_text(
+        "first/raw.tpx3\nsecond/raw.tpx3\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValidationError, match="filename stems must be unique"):
+        HermesTpx3AnalysisState.model_validate(
+            {
+                "unpacker_program": {
+                    "name": "tpx3-spidr-cpp",
+                    "executable_path": tmp_path / "hermes-tpx3-spidr",
+                },
+                "analysis_directory": tmp_path / "analysis",
+                "tpx3_files": {"file_list": file_list_path},
+            }
+        )
+
+
 def test_reconstruction_result_defaults_and_rejects_undefined_fields() -> None:
     result = HermesTpx3ReconstructionResult()
 

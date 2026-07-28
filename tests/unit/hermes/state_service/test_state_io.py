@@ -187,6 +187,54 @@ def test_save_partial_loaded_record_writes_defaults_and_round_trips(
     assert reloaded == loaded
 
 
+def test_load_file_list_and_save_expanded_raw_tpx3_files(
+    tmp_path: Path,
+) -> None:
+    file_list_path = tmp_path / "inputs/raw_tpx3_files.txt"
+    file_list_path.parent.mkdir()
+    file_list_path.write_text(
+        "first.tpx3\n# ignored comment\n\nsecond.tpx3\n",
+        encoding="utf-8",
+    )
+    input_yaml_path = tmp_path / "file-list-record.yaml"
+    final_record_path = tmp_path / "final-record.yaml"
+    input_yaml_path.write_text(
+        f"""
+measurement_info:
+  measurement_id: file-list-run
+  run_number: 1
+environment: {{}}
+analysis:
+  mode: hermes
+  unpacker_program:
+    name: tpx3-spidr-cpp
+    executable_path: hermes-tpx3-spidr
+  analysis_directory: analysis
+  tpx3_files:
+    file_list: {file_list_path}
+""",
+        encoding="utf-8",
+    )
+
+    loaded = load_hermes_record_from_yaml(input_yaml_path)
+    save_hermes_record_to_yaml(loaded, final_record_path)
+    saved_yaml = yaml.safe_load(final_record_path.read_text(encoding="utf-8"))
+    reloaded = load_hermes_record_from_yaml(final_record_path)
+
+    assert isinstance(loaded.analysis, HermesTpx3AnalysisState)
+    assert [raw_file.path for raw_file in loaded.analysis.tpx3_files] == [
+        (file_list_path.parent / "first.tpx3").resolve(),
+        (file_list_path.parent / "second.tpx3").resolve(),
+    ]
+    saved_raw_tpx3_files = saved_yaml["analysis"]["tpx3_files"]
+    assert isinstance(saved_raw_tpx3_files, list)
+    assert [Path(raw_file["path"]) for raw_file in saved_raw_tpx3_files] == [
+        (file_list_path.parent / "first.tpx3").resolve(),
+        (file_list_path.parent / "second.tpx3").resolve(),
+    ]
+    assert reloaded == loaded
+
+
 def test_load_hermes_record_from_yaml_rejects_invalid_yaml(tmp_path: Path) -> None:
     record_path = tmp_path / "bad.yaml"
     record_path.write_text("measurement_info: [", encoding="utf-8")
