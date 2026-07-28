@@ -14,13 +14,13 @@ pixi run build-cpp-unpacker
 Run the checked-in `unpacker_config.yaml`:
 
 ```bash
-pixi run python examples/analysis/unpacker_single_file/run_unpacker.py
+pixi run python examples/analysis/unpacking/unpacker_single_file/run_unpacker.py
 ```
 
 To use another YAML file, supply its path as the only argument:
 
 ```bash
-pixi run python examples/analysis/unpacker_single_file/run_unpacker.py \
+pixi run python examples/analysis/unpacking/unpacker_single_file/run_unpacker.py \
   /path/to/unpacker_config.yaml
 ```
 
