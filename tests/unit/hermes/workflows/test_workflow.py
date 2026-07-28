@@ -73,3 +73,17 @@ def test_run_analysis_returns_files_and_updates_record(
     assert unpacked_files == initial_record.analysis.tpx3_files
     assert workflow.record.analysis.results.unpacking.status == "completed"
     assert initial_record.analysis.results.unpacking.status == "planned"
+
+
+@pytest.mark.parametrize("method_name", ["run_acquisition", "run"])
+def test_unimplemented_workflow_operations_leave_record_unchanged(
+    tmp_path: Path,
+    method_name: str,
+) -> None:
+    initial_record = _record(tmp_path)
+    workflow = Workflow(initial_record)
+
+    with pytest.raises(NotImplementedError, match="not implemented"):
+        getattr(workflow, method_name)()
+
+    assert workflow.record == initial_record
