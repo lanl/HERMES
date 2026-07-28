@@ -194,6 +194,14 @@ def execute_reconstruction(
         summary: Tpx3PhotonReconstructionSummary | None = None
         try:
             summary = _load_summary(summary_path)
+            if (
+                summary.clustering.algorithm != reconstruction.clustering_algorithm
+                or summary.clustering.settings != reconstruction.settings
+            ):
+                raise HermesReconstructionOutputError(
+                    "reconstruction summary settings do not match the requested settings: "
+                    f"{summary_path}"
+                )
             _validate_completed_files(
                 summary,
                 summary_path,
