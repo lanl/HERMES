@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from hermes.analysis.hermes.run import run_hermes_analysis
 from hermes.analysis.hermes.timewalk_calibration import calibrate_timewalk
 from hermes.state.models.analysis.hermes_tpx3_spidr import (
     HermesTpx3AnalysisState,
@@ -13,9 +12,8 @@ from hermes.state.models.environment import RuntimeEnvironment
 from hermes.state.models.measurement import MeasurementInfo
 from hermes.state.models.shared_models import FileReference
 from hermes.state.state import HermesRecord
-from hermes.state_service.shared_types import StateServiceConfig
 from hermes.state_service.state_io import save_hermes_record_to_yaml
-from hermes.state_service.state_manager import StateManager
+from hermes.workflows.workflow import Workflow
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 RAW_TPX3_DIRECTORY = REPOSITORY_ROOT / "data/list_tests"
@@ -72,7 +70,7 @@ def main() -> None:
         tpx3_files=[FileReference(path=f) for f in raw_tpx3_files],
         resource_limit_percent=90,
     )
-    state_manager = StateManager(
+    workflow = Workflow(
         HermesRecord(
             measurement_info=MeasurementInfo(
                 measurement_id="example-tpx3-timewalk-calibration",
@@ -81,12 +79,11 @@ def main() -> None:
             environment=RuntimeEnvironment(working_dir=EXAMPLE_DIRECTORY),
             acquisition=None,
             analysis=analysis,
-        ),
-        config=StateServiceConfig(allow_trusted_workflow_bypass=True),
+        )
     )
 
-    run_hermes_analysis(state_manager)
-    save_hermes_record_to_yaml(state_manager.get_state(), HERMES_STATE_FILE)
+    workflow.run_analysis()
+    save_hermes_record_to_yaml(workflow.record, HERMES_STATE_FILE)
 
     pixel_files = sorted((ANALYSIS_DIRECTORY / "pixelHits").glob("*.parquet"))
     if not pixel_files:
