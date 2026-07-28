@@ -310,6 +310,19 @@ def test_plan_skips_when_valid_summary_exists(tmp_path: Path) -> None:
     assert [action for _, action in plan] == ["skip"]
 
 
+def test_plan_rejects_summary_with_mismatched_settings(tmp_path: Path) -> None:
+    analysis = _analysis(tmp_path, "run_000000.tpx3")
+    _save_completed_files(analysis, analysis.tpx3_files[0])
+
+    requested = _analysis(
+        tmp_path,
+        "run_000000.tpx3",
+        settings=_settings(save_photon_pixels=True),
+    )
+
+    with pytest.raises(HermesReconstructionPreflightError, match="settings"):
+        plan_reconstruction(requested)
+
 def test_plan_rejects_orphan_photon_files(tmp_path: Path) -> None:
     analysis = _analysis(tmp_path, "run_000000.tpx3")
     photons_dir = analysis.analysis_directory / "photons"
