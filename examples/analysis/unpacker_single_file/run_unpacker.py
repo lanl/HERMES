@@ -34,13 +34,14 @@ def main(input_yaml_path: Path = DEFAULT_INPUT_YAML_PATH) -> None:
     hermes_analysis = cast(HermesTpx3AnalysisState, final_record.analysis)
     save_hermes_record_to_yaml(final_record, final_record_path)
 
-    if unpacked_raw_files:
-        print(f"Unpacked: {hermes_analysis.tpx3_files[0].path}")
-    else:
-        print(
-            "Skipped existing valid output for: "
-            f"{hermes_analysis.tpx3_files[0].path}"
-        )
+    print(f"Raw TPX3 files: {len(hermes_analysis.tpx3_files)}")
+    for raw_tpx3_file in hermes_analysis.tpx3_files:
+        print(f"  - {raw_tpx3_file.path}")
+    print(f"Unpacked this run: {len(unpacked_raw_files)}")
+    print(
+        "Skipped existing valid outputs: "
+        f"{len(hermes_analysis.tpx3_files) - len(unpacked_raw_files)}"
+    )
     print(f"Analysis directory: {hermes_analysis.analysis_directory}")
     print(f"HERMES state file: {final_record_path}")
 
