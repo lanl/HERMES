@@ -36,7 +36,7 @@ This creates the executable at `build/backends/tpx3-spidr/hermes-tpx3-spidr`.
 Run the checked-in `unpacker_mf_config.yaml`:
 
 ```bash
-pixi run python examples/analysis/unpacker_multiple_files/run_unpacker_mf.py
+pixi run python examples/analysis/unpacking/unpacker_multiple_files/run_unpacker_mf.py
 ```
 
 This will:
@@ -56,7 +56,7 @@ This will:
 To use another YAML file, supply its path as the first argument:
 
 ```bash
-pixi run python examples/analysis/unpacker_multiple_files/run_unpacker_mf.py \
+pixi run python examples/analysis/unpacking/unpacker_multiple_files/run_unpacker_mf.py \
   /path/to/unpacker_config.yaml
 ```
 
@@ -66,18 +66,7 @@ Running the example again validates every summary and listed Parquet file and
 skips all five inputs without launching any unpacker process:
 
 ```bash
-pixi run python examples/analysis/unpacker_multiple_files/run_unpacker_mf.py
-```
-
-### Overwriting Existing Output
-
-By default, files that have already been unpacked are skipped. To re-unpack
-every file and overwrite the previously written summary and Parquet files in
-place, pass `--overwrite`:
-
-```bash
-pixi run python examples/analysis/unpacker_multiple_files/run_unpacker_mf.py \
-  --overwrite
+pixi run python examples/analysis/unpacking/unpacker_multiple_files/run_unpacker_mf.py
 ```
 
 ## YAML fields
