@@ -4,14 +4,12 @@ import sys
 from pathlib import Path
 from typing import cast
 
-from hermes.analysis.hermes.run import run_hermes_analysis
 from hermes.state.models.analysis.hermes_tpx3_spidr import HermesTpx3AnalysisState
-from hermes.state_service.shared_types import StateServiceConfig
 from hermes.state_service.state_io import (
     load_hermes_record_from_yaml,
     save_hermes_record_to_yaml,
 )
-from hermes.state_service.state_manager import StateManager
+from hermes.workflows.workflow import Workflow
 
 DEFAULT_INPUT_YAML_PATH = Path(__file__).with_name("unpacker_config.yaml")
 
@@ -24,13 +22,9 @@ def main(input_yaml_path: Path = DEFAULT_INPUT_YAML_PATH) -> None:
     )
     final_record_path = working_directory / "hermes-record_final.yaml"
 
-    state_manager = StateManager(
-        initial_record,
-        config=StateServiceConfig(allow_trusted_workflow_bypass=True),
-    )
-
-    unpacked_raw_files = run_hermes_analysis(state_manager)
-    final_record = state_manager.get_state()
+    workflow = Workflow(initial_record)
+    unpacked_raw_files = workflow.run_analysis()
+    final_record = workflow.record
     hermes_analysis = cast(HermesTpx3AnalysisState, final_record.analysis)
     save_hermes_record_to_yaml(final_record, final_record_path)
 
