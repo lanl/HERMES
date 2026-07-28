@@ -34,6 +34,7 @@ add_library(hermes_photon_clusterer
     src/photon.cpp
     src/photon_writer.cpp
     src/pixel_reader.cpp
+    src/reconstruction.cpp
     src/settings.cpp
     src/summary_writer.cpp
     src/timewalk.cpp
@@ -101,6 +102,10 @@ if(BUILD_TESTING)
     add_executable(settings_tests tests/settings_tests.cpp)
     target_link_libraries(settings_tests PRIVATE hermes_photon_clusterer)
     add_test(NAME settings_tests COMMAND settings_tests)
+
+    add_executable(reconstruction_tests tests/reconstruction_tests.cpp)
+    target_link_libraries(reconstruction_tests PRIVATE hermes_photon_clusterer)
+    add_test(NAME reconstruction_tests COMMAND reconstruction_tests)
 
     if(Arrow_FOUND AND Parquet_FOUND)
         add_executable(pixel_reader_tests tests/pixel_reader_tests.cpp)
