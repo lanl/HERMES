@@ -6,6 +6,20 @@ from math import floor
 import psutil
 from loguru import logger
 
+from hermes.analysis.hermes.reconstruction import (
+    HermesReconstructionError,
+    execute_reconstruction,
+    plan_reconstruction,
+)
+from hermes.analysis.hermes.reconstruction import (
+    log_overall_completion as log_reconstruction_completion,
+)
+from hermes.analysis.hermes.reconstruction import (
+    log_overall_failure as log_reconstruction_failure,
+)
+from hermes.analysis.hermes.reconstruction import (
+    log_skipped_input as log_reconstruction_skipped,
+)
 from hermes.analysis.hermes.unpacker import (
     HermesTpx3Error,
     execute_unpacker,
@@ -17,6 +31,7 @@ from hermes.analysis.hermes.unpacker import (
 from hermes.state.models.analysis.hermes_tpx3_spidr import (
     HermesTpx3AnalysisResults,
     HermesTpx3AnalysisState,
+    HermesTpx3ReconstructionResult,
     HermesTpx3UnpackingResult,
 )
 from hermes.state.models.shared_models import FileReference, utc_now
@@ -182,6 +197,10 @@ def run_hermes_analysis(state_manager: StateManager) -> list[FileReference]:
             raw_file_count=len(unpacking_plan),
             unpacked_file_count=len(files_to_run),
         )
+
+        if current_analysis.photon_reconstruction is not None:
+            _run_photon_reconstruction(state_manager, current_analysis)
+
         return unpacked_files
     except HermesTpx3Error as exc:
         current_analysis = state_manager.get_state().analysis
@@ -216,6 +235,103 @@ def _apply_unpacking_result(
         results,
         origin="trusted_workflow",
         proposer="tpx3_spidr_unpacking",
+        justification=justification,
+    )
+    state_manager.apply_change(change.change_id)
+
+
+def _run_photon_reconstruction(
+    state_manager: StateManager,
+    analysis: HermesTpx3AnalysisState,
+) -> None:
+    """Reconstruct photons for every raw stem, applying status on the main thread."""
+    try:
+        reconstruction_plan = plan_reconstruction(analysis)
+        files_to_run = [
+            raw_file
+            for raw_file, action in reconstruction_plan
+            if action == "run"
+        ]
+
+        started_at = None
+        if files_to_run:
+            started_at = utc_now()
+            _apply_reconstruction_result(
+                state_manager,
+                HermesTpx3ReconstructionResult(
+                    status="running",
+                    started_at=started_at,
+                ),
+                justification="photon reconstruction is ready to start",
+            )
+
+        photon_count = 0
+        rejected_count = 0
+        for raw_file, action in reconstruction_plan:
+            if action == "skip":
+                log_reconstruction_skipped(analysis, raw_file)
+                continue
+            summary = execute_reconstruction(analysis, raw_file)
+            photon_count += summary.reconstruction.photon_count
+            rejected_count += summary.reconstruction.rejected_component_count
+
+        _apply_reconstruction_result(
+            state_manager,
+            HermesTpx3ReconstructionResult(
+                status="completed",
+                started_at=started_at,
+                finished_at=utc_now(),
+                photon_count=photon_count,
+                rejected_count=rejected_count,
+            ),
+            justification="every raw TPX3 file passed photon reconstruction",
+        )
+        log_reconstruction_completion(
+            raw_file_count=len(reconstruction_plan),
+            reconstructed_file_count=len(files_to_run),
+        )
+    except HermesReconstructionError as exc:
+        current_analysis = state_manager.get_state().analysis
+        started_at = None
+        if (
+            isinstance(current_analysis, HermesTpx3AnalysisState)
+            and current_analysis.results.reconstruction is not None
+        ):
+            started_at = current_analysis.results.reconstruction.started_at
+        _apply_reconstruction_result(
+            state_manager,
+            HermesTpx3ReconstructionResult(
+                status="failed",
+                started_at=started_at,
+                finished_at=utc_now(),
+                errors=[str(exc)],
+            ),
+            justification=f"photon reconstruction failed: {exc}",
+        )
+        log_reconstruction_failure(exc)
+        raise
+
+
+def _apply_reconstruction_result(
+    state_manager: StateManager,
+    reconstruction_result: HermesTpx3ReconstructionResult,
+    *,
+    justification: str,
+) -> None:
+    current_analysis = state_manager.get_state().analysis
+    if not isinstance(current_analysis, HermesTpx3AnalysisState):
+        raise HermesAnalysisError(
+            "the saved analysis mode changed during reconstruction"
+        )
+    results = HermesTpx3AnalysisResults(
+        unpacking=current_analysis.results.unpacking,
+        reconstruction=reconstruction_result,
+    )
+    change = state_manager.propose_change(
+        "analysis.results",
+        results,
+        origin="trusted_workflow",
+        proposer="tpx3_spidr_reconstruction",
         justification=justification,
     )
     state_manager.apply_change(change.change_id)
