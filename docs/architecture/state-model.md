@@ -19,6 +19,21 @@ The model should contain metadata, configuration, provenance, and summary
 results. It should not contain raw packet bytes, full pixel-hit or TDC-hit
 tables, image stacks, generated plots, detector data files, or build products.
 
+## Optionality follows selection
+Whether a field is optional or required depends on what the user has selected:
+
+- At the top level, `HermesRecord.acquisition` and `HermesRecord.analysis` are
+  optional. A run may be analysis-only, acquisition-only, or both.
+- The shared `RuntimeEnvironment` stays minimal. It holds install-level
+  provenance (such as `hermes_version`, `python_version`, `platform`), not
+  mode-specific tool paths. A binary path belongs on the mode model that needs
+  it (for example `Tpx3SpidrUnpackerProgram.executable_path`), not on the
+  environment.
+- Once a mode model is created (such as `HermesTpx3AnalysisState` or
+  `ServalAcquisitionState`), the fields that mode needs to run are required on
+  that model. Fields filled in progressively during a run — applied
+  configuration, detector snapshots, and results — stay optional.
+
 ## How model is used to keep a record of acquisition and analysis
 The initial `HermesRecord` is recorded by the state logger. Every later durable
 state change is also logged with the changed state path, previous value, new
@@ -286,8 +301,6 @@ RuntimeEnvironment
   log_dir: Path
   preview_dir: Path
   config_dir: Path | None
-  empir_path: Path | None
-  hermes_tpx3_spidr_binary: Path
   ...
 ```
 
@@ -652,12 +665,12 @@ HermesTpx3AnalysisResults
 HermesTpx3UnpackingResult
   status: planned | running | completed | failed
   started_at: datetime | None
-  finished_at: datetime | None
+  completed_at: datetime | None
 
 HermesTpx3ReconstructionResult
   status: planned | running | completed | failed
   started_at: datetime | None
-  finished_at: datetime | None
+  completed_at: datetime | None
   photon_count: int
   rejected_count: int
   warnings: list[str]

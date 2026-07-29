@@ -26,12 +26,30 @@ The Python runner should call the unpacker with the raw TPX3 file and the
 shared analysis directory:
 
 ```text
-<executable> <input.tpx3> <analysis_directory>
+<executable> --input <input.tpx3> [--output <analysis_directory>] [--overwrite] [--time-sort]
 ```
 
-The unpacker derives all category directories and output filenames from those
-two inputs. Do not add separate command options for category directories, a
-filename prefix, or a summary filename.
+The unpacker accepts exactly these options and no others:
+
+- `--input <input.tpx3>` — the raw TPX3 file to unpack. Required; the unpacker
+  raises an error if it is missing. Implemented.
+- `--output <analysis_directory>` — the shared analysis directory. The unpacker
+  creates all category directories and output filenames from it. Optional; when
+  omitted, the unpacker prints summary statistics only and writes no files. The
+  HERMES analysis workflow always supplies it. Implemented.
+- `--overwrite` — redo the unpacking or reconstruction and replace existing
+  output files instead of stopping. Optional, defaults to false. Without it the
+  unpacker preserves existing files (see below). Implemented.
+- `--time-sort` — sort output by canonical timestamp. Optional, defaults to
+  false. Not implemented yet.
+
+Do not add any option outside this list. In particular, do not add separate
+command options for category directories, a filename prefix, or a summary
+filename; the unpacker creates those from `--output`.
+
+The Python runner should keep this simple and clean: confirm the input file is
+set, then call the binary with the flags. Do not add helper functions or a
+builder abstraction for assembling the command.
 
 The HERMES state should save the raw TPX3 input files, shared analysis
 directory, unpacker program, and overall unpacking status and times. Each
@@ -82,8 +100,8 @@ The directory names and the corresponding Parquet data category names are:
 
 ## Parquet Filenames
 
-Every Parquet filename carries the raw TPX3 filename stem, chip index, and part
-index:
+Pixel data can come from more than one chip, so its filenames carry the raw TPX3
+filename stem, chip index, and part index:
 
 ```text
 <raw-file-stem>-chip-<chip-index>-part-<five-digit-part-index>.parquet
@@ -96,17 +114,32 @@ For example, the first pixel-data part for chip 0 from
 analysis/pixelHits/DT_2p0V_000000-chip-0-part-00000.parquet
 ```
 
-Part numbers start at zero independently for each raw file, chip, and data
-category. The category name does not need to be repeated in the filename
-because it is already stated by the parent directory. The chip index belongs in
-the filename and should not be repeated in its rows. When a schema includes
+The other categories (`tdcTriggers`, `globalTimestamps`, `controlPackets`, and
+`unknownPackets`) are not associated with a chip, so their filenames omit the
+chip index and carry only the raw TPX3 filename stem and part index:
+
+```text
+<raw-file-stem>-part-<five-digit-part-index>.parquet
+```
+
+For example, the first TDC-timestamps part from `DT_2p0V_000000.tpx3` is:
+
+```text
+analysis/tdcTriggers/DT_2p0V_000000-part-00000.parquet
+```
+
+Part numbers start at zero independently for each raw file, data category, and
+(for pixel data) chip. The category name does not need to be repeated in the
+filename because it is already stated by the parent directory. When a chip index
+is present it should not be repeated in the rows. When a schema includes
 `packet_index`, it is the packet index within its chunk.
 
 Raw TPX3 filename stems must be unique within one measurement. The HERMES
 runner must reject duplicate stems before launching any unpacker so one input
-cannot overwrite another input's files. Existing files with the same expected
-names must also cause the run to stop; the unpacker must not silently overwrite
-them.
+cannot overwrite another input's files. Without `--overwrite`, existing files
+with the same expected names must cause the run to stop; the unpacker must not
+silently overwrite them. With `--overwrite`, the unpacker redoes the run and
+replaces those files.
 
 Integrated-ToT packets should be unpacked and counted, but the first output
 format does not write them. A later acquisition-mode-specific version may add
