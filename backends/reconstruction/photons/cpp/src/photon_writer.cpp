@@ -125,6 +125,28 @@ bool writeTablePart(const std::shared_ptr<arrow::Table>& table,
     return true;
 }
 
+// Refuses the whole write up front if any expected part file already exists, so
+// a refused overwrite never leaves some parts written and others not. Only used
+// when overwrite is false. Returns false and appends an error on the first
+// existing part.
+bool ensureNoExistingParts(const std::string& directory,
+                           const std::string& stem,
+                           int chip_index,
+                           const std::string& group,
+                           std::uint64_t parts,
+                           std::vector<std::string>& errors) {
+    for (std::uint64_t part = 0; part < parts; ++part) {
+        const std::string full_path =
+            directory + "/" + makePhotonFileName(stem, chip_index, group, part);
+        if (std::filesystem::exists(full_path)) {
+            errors.push_back("Refusing to overwrite existing photon file " +
+                             full_path);
+            return false;
+        }
+    }
+    return true;
+}
+
 std::shared_ptr<arrow::Table> buildEventsTable(
     const std::vector<Photon>& photons,
     std::uint64_t start,
@@ -235,6 +257,12 @@ PhotonWriteResult writePhotonEventsParquet(
     const auto kv = buildFileMetadata(metadata, kPhotonEventsSchemaName);
     const std::uint64_t total = photons.size();
     const std::uint64_t parts = (total + rows_per_part - 1) / rows_per_part;
+    if (!overwrite &&
+        !ensureNoExistingParts(photon_output_directory, metadata.raw_file_stem,
+                               metadata.chip_index, "photon-events", parts,
+                               errors)) {
+        return {};
+    }
     for (std::uint64_t part = 0; part < parts; ++part) {
         const std::uint64_t start = part * rows_per_part;
         const std::uint64_t count = std::min(rows_per_part, total - start);
@@ -269,6 +297,12 @@ PhotonWriteResult writePhotonPixelsParquet(
     const auto kv = buildFileMetadata(metadata, kPhotonPixelsSchemaName);
     const std::uint64_t total = rows.size();
     const std::uint64_t parts = (total + rows_per_part - 1) / rows_per_part;
+    if (!overwrite &&
+        !ensureNoExistingParts(photon_output_directory, metadata.raw_file_stem,
+                               metadata.chip_index, "photon-pixels", parts,
+                               errors)) {
+        return {};
+    }
     for (std::uint64_t part = 0; part < parts; ++part) {
         const std::uint64_t start = part * rows_per_part;
         const std::uint64_t count = std::min(rows_per_part, total - start);
