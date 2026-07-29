@@ -91,14 +91,14 @@ measurement_info:
   run_number: 1
 
 environment:
-  working_dir: data/examples/analysis/unpacker
+  working_dir: data/examples/analysis/unpacking/single_file
 
 analysis:
   mode: hermes
   unpacker_program:
     name: tpx3-spidr-cpp
     executable_path: build/backends/tpx3-spidr/hermes-tpx3-spidr
-  analysis_directory: data/examples/analysis/unpacker/analysis
+  analysis_directory: data/examples/analysis/unpacking/single_file/analysis
   tpx3_files:
     - path: tests/data/Example_1kHz_5frames.tpx3
 ```

@@ -19,9 +19,7 @@ from hermes.state_service.state_manager import StateManager
 def run_unpacker_module(monkeypatch: pytest.MonkeyPatch) -> ModuleType:
     repository_root = Path(__file__).resolve().parents[4]
     monkeypatch.syspath_prepend(str(repository_root))
-    return importlib.import_module(
-        "examples.analysis.unpacker_single_file.run_unpacker"
-    )
+    return importlib.import_module("examples.analysis.unpacking.run_unpacking")
 
 
 def test_checked_in_partial_yaml_loads_with_expected_defaults(
@@ -33,10 +31,10 @@ def test_checked_in_partial_yaml_loads_with_expected_defaults(
 
     assert (
         initial_record.measurement_info.measurement_id
-        == "example-tpx3-unpacking"
+        == "example-tpx3-unpacking-single-file"
     )
     assert initial_record.environment.working_dir.path == Path(
-        "data/examples/analysis/unpacker"
+        "data/examples/analysis/unpacking/single_file"
     )
     assert initial_record.acquisition is None
     assert isinstance(initial_record.analysis, HermesTpx3AnalysisState)
@@ -44,7 +42,7 @@ def test_checked_in_partial_yaml_loads_with_expected_defaults(
         "build/backends/tpx3-spidr/hermes-tpx3-spidr"
     )
     assert initial_record.analysis.analysis_directory == Path(
-        "data/examples/analysis/unpacker/analysis"
+        "data/examples/analysis/unpacking/single_file/analysis"
     )
     assert initial_record.analysis.tpx3_files[0].path == Path(
         "tests/data/Example_1kHz_5frames.tpx3"
