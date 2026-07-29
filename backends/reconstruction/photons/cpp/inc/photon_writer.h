@@ -55,22 +55,27 @@ struct PhotonWriteResult {
 // "<stem>-chip-<chip>-photon-events-part-<00000>.parquet". Photons carry an
 // implicit zero-based photon_id equal to their index in the vector. Appends to
 // errors and returns an empty result on failure. Writes nothing when photons is
-// empty.
+// empty. When overwrite is false, refuses to replace an existing file; when
+// true, replaces it.
 PhotonWriteResult writePhotonEventsParquet(
     const std::vector<Photon>& photons,
     const std::string& photon_output_directory,
     const PhotonFileMetadata& metadata,
     std::uint64_t rows_per_part,
+    bool overwrite,
     std::vector<std::string>& errors);
 
 // Writes photon_pixels for one raw stem and chip. Files are named
 // "<stem>-chip-<chip>-photon-pixels-part-<00000>.parquet". Rows are written in
 // the given order. Appends to errors on failure. Writes nothing when rows empty.
+// When overwrite is false, refuses to replace an existing file; when true,
+// replaces it.
 PhotonWriteResult writePhotonPixelsParquet(
     const std::vector<PhotonPixelRow>& rows,
     const std::string& photon_output_directory,
     const PhotonFileMetadata& metadata,
     std::uint64_t rows_per_part,
+    bool overwrite,
     std::vector<std::string>& errors);
 
 }  // namespace hermes_photon_clusterer
