@@ -8,6 +8,7 @@ import pytest
 from hermes.state.models.acquisition.serval import (
     ServalAcquisitionResult,
     ServalAcquisitionState,
+    ServalEnvironment,
 )
 from hermes.state.models.environment import RuntimeEnvironment
 from hermes.state.models.measurement import MeasurementInfo
@@ -58,6 +59,9 @@ def _record(tmp_path: Path, *, acquisition: bool = True) -> HermesRecord:
         environment=RuntimeEnvironment(working_dir=tmp_path / "run-001"),
         acquisition=(
             ServalAcquisitionState(
+                serval_environment=ServalEnvironment(
+                    serval_url="http://localhost:8080"
+                ),
                 result=ServalAcquisitionResult(status="planned", frames=0)
             )
             if acquisition
@@ -209,7 +213,11 @@ def test_state_manager_can_initialize_optional_top_level_acquisition(
     )
     change = manager.propose_change(
         "acquisition",
-        {"mode": "serval", "result": {"status": "planned"}},
+        {
+            "mode": "serval",
+            "serval_environment": {"serval_url": "http://localhost:8080"},
+            "result": {"status": "planned"},
+        },
         origin="trusted_workflow",
         proposer="serval_workflow",
     )

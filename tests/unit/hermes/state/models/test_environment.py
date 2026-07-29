@@ -43,7 +43,6 @@ def test_runtime_environment_resolves_explicit_relative_paths(tmp_path: Path) ->
         working_dir=run_dir,
         preview_dir="fast-preview",
         raw_data_dir={"path": "data/tpx3", "required": True},
-        hermes_tpx3_spidr_binary="bin/hermes-tpx3-spidr",
     )
 
     assert environment.preview_dir.path == Path("fast-preview")
@@ -51,7 +50,6 @@ def test_runtime_environment_resolves_explicit_relative_paths(tmp_path: Path) ->
     assert environment.raw_data_dir.required
     assert environment.raw_data_dir.path == Path("data/tpx3")
     assert environment.raw_data_dir.resolved_path == (run_dir / "data" / "tpx3").resolve()
-    assert environment.hermes_tpx3_spidr_binary == (run_dir / "bin/hermes-tpx3-spidr").resolve()
 
 
 def test_runtime_environment_keeps_explicit_absolute_paths(tmp_path: Path) -> None:

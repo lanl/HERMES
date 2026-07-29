@@ -196,8 +196,9 @@ def _write_fake_unpacker(executable: Path) -> None:
         import pyarrow as pa
         import pyarrow.parquet as pq
 
-        raw_file = Path(sys.argv[1])
-        analysis_directory = Path(sys.argv[2])
+        args = sys.argv[1:]
+        raw_file = Path(args[args.index("--input") + 1])
+        analysis_directory = Path(args[args.index("--output") + 1])
         raw_stem = raw_file.stem
         mode = raw_file.read_text(encoding="utf-8").strip() or "success"
 
@@ -325,7 +326,9 @@ def test_derives_command_and_input_specific_summary_path(tmp_path: Path) -> None
 
     assert derive_unpacker_command(analysis, raw_file) == [
         str(analysis.unpacker_program.executable_path),
+        "--input",
         str(raw_file.path),
+        "--output",
         str(analysis.analysis_directory),
     ]
     assert derive_summary_path(analysis, raw_file) == (
@@ -448,7 +451,7 @@ def test_run_marks_analysis_only_state_running_through_state_manager(
     result = manager.get_state().analysis.results.unpacking
     assert result.status == "completed"
     assert result.started_at is not None
-    assert result.finished_at is not None
+    assert result.completed_at is not None
     assert state_logger.changes[-1].path == "analysis.results"
     assert state_logger.changes[-1].origin == "trusted_workflow"
     assert state_logger.changes[-1].proposer == "tpx3_spidr_unpacking"
@@ -470,10 +473,10 @@ def test_run_with_only_completed_files_does_not_mark_running(
     result = manager.get_state().analysis.results.unpacking
     assert result.status == "completed"
     assert result.started_at is None
-    assert result.finished_at is not None
+    assert result.completed_at is not None
 
 
-def test_run_rejects_non_hermes_analysis(tmp_path: Path) -> None:
+def test_run_rejects_empir_analysis(tmp_path: Path) -> None:
     empir = EmpirAnalysisState.model_construct(mode="empir")
     manager = StateManager(_record(tmp_path, empir), state_logger=CapturingStateLogger())
     records: list[dict[str, Any]] = []
@@ -483,7 +486,7 @@ def test_run_rejects_non_hermes_analysis(tmp_path: Path) -> None:
     )
 
     try:
-        with pytest.raises(HermesAnalysisError, match="not HERMES"):
+        with pytest.raises(HermesAnalysisError, match="EMPIR analysis is not implemented"):
             run_hermes_analysis(manager)
     finally:
         logger.remove(sink_id)
@@ -499,6 +502,29 @@ def test_run_rejects_non_hermes_analysis(tmp_path: Path) -> None:
     assert invalid_mode["extra"]["run_number"] == 1
     assert invalid_mode["extra"]["expected_analysis_mode"] == "hermes"
     assert invalid_mode["extra"]["actual_analysis_mode"] == "empir"
+
+
+def test_run_rejects_missing_analysis(tmp_path: Path) -> None:
+    manager = StateManager(_record(tmp_path, None), state_logger=CapturingStateLogger())
+    records: list[dict[str, Any]] = []
+    sink_id = logger.add(
+        lambda message: records.append(message.record),
+        filter=lambda record: record["extra"].get("domain") == "analysis",
+    )
+
+    try:
+        with pytest.raises(HermesAnalysisError, match="no valid HERMES analysis"):
+            run_hermes_analysis(manager)
+    finally:
+        logger.remove(sink_id)
+
+    invalid_mode = next(
+        record
+        for record in records
+        if record["extra"].get("event_type") == "analysis.hermes.invalid_mode"
+    )
+    assert invalid_mode["level"].name == "ERROR"
+    assert invalid_mode["extra"]["actual_analysis_mode"] is None
 
 
 def test_disabled_bypass_leaves_pending_change_before_process_execution(
@@ -556,7 +582,7 @@ def test_run_executes_fake_unpacker_logs_details_and_round_trips_yaml(
     result = manager.get_state().analysis.results.unpacking
     assert result.status == "completed"
     assert result.started_at is not None
-    assert result.finished_at is not None
+    assert result.completed_at is not None
 
     started = next(
         record
@@ -674,7 +700,7 @@ def test_run_saves_failed_state_before_raising_for_output_failures(
     result = manager.get_state().analysis.results.unpacking
     assert result.status == "failed"
     assert result.started_at is not None
-    assert result.finished_at is not None
+    assert result.completed_at is not None
     failures = [
         record
         for record in records
@@ -714,7 +740,7 @@ def test_run_saves_failed_state_for_preflight_failure(tmp_path: Path) -> None:
     result = manager.get_state().analysis.results.unpacking
     assert result.status == "failed"
     assert result.started_at is None
-    assert result.finished_at is not None
+    assert result.completed_at is not None
 
 
 def test_resource_limit_percent_field_defaults_to_90(tmp_path: Path) -> None:

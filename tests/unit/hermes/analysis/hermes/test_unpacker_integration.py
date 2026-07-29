@@ -87,7 +87,7 @@ def test_real_cpp_unpacker_handles_two_inputs_and_skips_completed_files(
     assert completed_state.acquisition is None
     assert completed_state.analysis.results.unpacking.status == "completed"
     assert completed_state.analysis.results.unpacking.started_at is not None
-    assert completed_state.analysis.results.unpacking.finished_at is not None
+    assert completed_state.analysis.results.unpacking.completed_at is not None
 
     summaries: list[Tpx3SpidrSummary] = []
     generated_paths: set[Path] = set()
@@ -140,7 +140,7 @@ def test_real_cpp_unpacker_handles_two_inputs_and_skips_completed_files(
     assert set(saved_analysis["results"]["unpacking"]) == {
         "status",
         "started_at",
-        "finished_at",
+        "completed_at",
     }
     assert not _contains_key(
         saved_analysis,
