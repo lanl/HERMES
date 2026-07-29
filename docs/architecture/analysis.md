@@ -103,33 +103,38 @@ analysis may select a C++ or Rust HERMES implementation for a defined HERMES
 step, but every step remains part of `mode="hermes"`. An EMPIR analysis uses the
 EMPIR binaries and remains `mode="empir"`.
 
-## Program-Agnostic Entry Point
+## Analysis Entry Point
 
-`src/hermes/analysis/run.py` should provide one small entry point. It reads the
-selected Pydantic model from `StateManager` and calls exactly one mode-specific
-pipeline:
+`Workflow.run_analysis` is the entry point for analysis. It calls
+`run_hermes_analysis(state_manager)` directly. There is no separate
+`src/hermes/analysis/run.py` dispatcher, because HERMES is the only analysis
+mode with a runner today.
+
+`run_hermes_analysis` reads the selected Pydantic model from `StateManager` and
+guards on its type before doing any work:
 
 ```python
-def run_analysis(state_manager: StateManager) -> HermesRecord:
+def run_hermes_analysis(state_manager: StateManager) -> HermesRecord:
     analysis = state_manager.get_state().analysis
 
-    if isinstance(analysis, HermesTpx3AnalysisState):
-        run_hermes_analysis(state_manager)
-    elif isinstance(analysis, EmpirAnalysisState):
-        run_empir_analysis(state_manager)
-    else:
-        raise AnalysisError("analysis configuration is missing")
+    if isinstance(analysis, EmpirAnalysisState):
+        message = "EMPIR analysis is not implemented yet"
+        logger.error(message)
+        raise HermesAnalysisError(message)
+    if not isinstance(analysis, HermesTpx3AnalysisState):
+        message = "no valid HERMES analysis is configured"
+        logger.error(message)
+        raise HermesAnalysisError(message)
+
+    ...
 
     return state_manager.get_state()
 ```
 
-The entry point should not accept a second mode argument. This prevents a
-function argument or CLI option from disagreeing with `analysis.mode` in the
-HERMES state file.
-
-The entry point only selects the pipeline. Each mode-specific `run.py` owns the
-order of its commands, checks its files, logs its progress, and applies its
-results through `StateManager`.
+The entry point does not accept a mode argument. This prevents a function
+argument or CLI option from disagreeing with `analysis.mode` in the HERMES state
+file. When an EMPIR runner exists, its guard can dispatch to it instead of
+raising.
 
 ## HERMES Analysis
 

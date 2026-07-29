@@ -471,8 +471,9 @@ def _write_fake_unpacker(executable: Path) -> None:
         import pyarrow as pa
         import pyarrow.parquet as pq
 
-        raw_file = Path(sys.argv[1])
-        analysis_dir = Path(sys.argv[2])
+        args = sys.argv[1:]
+        raw_file = Path(args[args.index("--input") + 1])
+        analysis_dir = Path(args[args.index("--output") + 1])
         stem = raw_file.stem
 
         pixel_hits = analysis_dir / "pixelHits"
@@ -568,7 +569,7 @@ def test_run_hermes_analysis_completes_reconstruction(tmp_path: Path) -> None:
     assert results.reconstruction is not None
     assert results.reconstruction.status == "completed"
     assert results.reconstruction.started_at is not None
-    assert results.reconstruction.finished_at is not None
+    assert results.reconstruction.completed_at is not None
     assert results.reconstruction.photon_count == 4
 
 

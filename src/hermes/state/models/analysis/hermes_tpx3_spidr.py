@@ -8,7 +8,7 @@ from pydantic import Field, field_validator, model_validator
 
 from hermes.state.models.shared_models import FileReference, StrictBaseModel
 
-AnalysisRunStatus = Literal["planned", "running", "completed", "failed"]
+HermesTpx3RunStatus = Literal["planned", "running", "completed", "failed"]
 SortingStrategy = Literal["in_memory", "external_merge"]
 ClusteringAlgorithm = Literal["connected_components", "dbscan"]
 PhotonTimeEstimator = Literal[
@@ -27,9 +27,9 @@ class Tpx3SpidrUnpackerProgram(StrictBaseModel):
 
 
 class HermesTpx3UnpackingResult(StrictBaseModel):
-    status: AnalysisRunStatus = "planned"
+    status: HermesTpx3RunStatus = "planned"
     started_at: datetime | None = None
-    finished_at: datetime | None = None
+    completed_at: datetime | None = None
 
 
 class PhotonReconstructorProgram(StrictBaseModel):
@@ -88,9 +88,9 @@ class Tpx3PhotonReconstructionConfiguration(StrictBaseModel):
 
 
 class HermesTpx3ReconstructionResult(StrictBaseModel):
-    status: AnalysisRunStatus = "planned"
+    status: HermesTpx3RunStatus = "planned"
     started_at: datetime | None = None
-    finished_at: datetime | None = None
+    completed_at: datetime | None = None
     photon_count: int = Field(default=0, ge=0)
     rejected_count: int = Field(default=0, ge=0)
     warnings: list[str] = Field(default_factory=list)

@@ -316,6 +316,7 @@ def test_serval_config_load_validates_http_status_code(
 def test_serval_acquisition_state_separates_requested_and_applied_config() -> None:
     state = ServalAcquisitionState.model_validate(
         {
+            "serval_environment": {"serval_url": "http://localhost:8080"},
             "requested_detector_config": {
                 "TriggerMode": "AUTOTRIGSTART_TIMERSTOP",
                 "ExposureTime": 0.0002,

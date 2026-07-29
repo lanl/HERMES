@@ -28,6 +28,7 @@ from hermes.analysis.hermes.unpacker import (
     log_skipped_input,
     plan_unpacking,
 )
+from hermes.state.models.analysis.empir import EmpirAnalysisState
 from hermes.state.models.analysis.hermes_tpx3_spidr import (
     HermesTpx3AnalysisResults,
     HermesTpx3AnalysisState,
@@ -152,8 +153,20 @@ def run_hermes_analysis(
 ) -> list[FileReference]:
     state = state_manager.get_state()
     analysis = state.analysis
+    if isinstance(analysis, EmpirAnalysisState):
+        error = "EMPIR analysis is not implemented yet"
+        _ANALYSIS_LOGGER.error(
+            "Cannot run HERMES analysis: {error}",
+            event_type="analysis.hermes.invalid_mode",
+            error=error,
+            measurement_id=state.measurement_info.measurement_id,
+            run_number=state.measurement_info.run_number,
+            expected_analysis_mode="hermes",
+            actual_analysis_mode=getattr(analysis, "mode", None),
+        )
+        raise HermesAnalysisError(error)
     if not isinstance(analysis, HermesTpx3AnalysisState):
-        error = "the saved analysis mode is not HERMES"
+        error = "no valid HERMES analysis is configured"
         _ANALYSIS_LOGGER.error(
             "Cannot run HERMES analysis: {error}",
             event_type="analysis.hermes.invalid_mode",
@@ -208,7 +221,7 @@ def run_hermes_analysis(
             HermesTpx3UnpackingResult(
                 status="completed",
                 started_at=current_analysis.results.unpacking.started_at,
-                finished_at=utc_now(),
+                completed_at=utc_now(),
             ),
             justification="every raw TPX3 file passed unpacking validation",
         )
@@ -230,7 +243,7 @@ def run_hermes_analysis(
                 HermesTpx3UnpackingResult(
                     status="failed",
                     started_at=current_analysis.results.unpacking.started_at,
-                    finished_at=utc_now(),
+                    completed_at=utc_now(),
                 ),
                 justification=f"TPX3 SPIDR unpacking failed: {exc}",
             )
@@ -299,7 +312,7 @@ def _run_photon_reconstruction(
             HermesTpx3ReconstructionResult(
                 status="completed",
                 started_at=started_at,
-                finished_at=utc_now(),
+                completed_at=utc_now(),
                 photon_count=photon_count,
                 rejected_count=rejected_count,
             ),
@@ -322,7 +335,7 @@ def _run_photon_reconstruction(
             HermesTpx3ReconstructionResult(
                 status="failed",
                 started_at=started_at,
-                finished_at=utc_now(),
+                completed_at=utc_now(),
                 errors=[str(exc)],
             ),
             justification=f"photon reconstruction failed: {exc}",

@@ -122,10 +122,6 @@ class RuntimeEnvironment(StrictBaseModel):
     log_dir: DirectoryState = Field(default_factory=_directory_state)
     preview_dir: DirectoryState = Field(default_factory=_directory_state)
     config_dir: DirectoryState = Field(default_factory=_directory_state)
-    empir_path: Path | None = None
-    empir_version: str | None = None
-    hermes_tpx3_spidr_binary: Path | None = None
-    hermes_tpx3_spidr_version: str | None = None
     hermes_version: str | None = None
     python_version: str | None = None
     platform: str | None = None
@@ -153,10 +149,6 @@ class RuntimeEnvironment(StrictBaseModel):
                     base=working_dir_base,
                     required_default=False,
                 )
-
-        for key in ("config_dir", "empir_path", "hermes_tpx3_spidr_binary"):
-            if key not in DIRECTORY_FIELDS and resolved.get(key) is not None:
-                resolved[key] = _resolve_path(resolved[key], working_dir_base)
 
         return resolved
 

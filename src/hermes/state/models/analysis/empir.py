@@ -8,14 +8,7 @@ from pydantic import Field, model_validator
 
 from hermes.state.models.shared_models import FileReference, StrictBaseModel
 
-AnalysisRunStatus = Literal[
-    "planned",
-    "running",
-    "completed",
-    "failed",
-    "skipped",
-    "unknown",
-]
+EmpirRunStatus = Literal["planned", "running", "completed", "failed"]
 EmpirExternalTriggerMode = Literal["ignore", "reference", "frameSync"]
 EmpirTiffFormat = Literal["tiff_w4", "tiff_w8"]
 
@@ -28,7 +21,7 @@ class EmpirPixelToPhotonSettings(StrictBaseModel):
 
 
 class EmpirPixelToPhotonResult(StrictBaseModel):
-    status: AnalysisRunStatus = "planned"
+    status: EmpirRunStatus = "planned"
     started_at: datetime | None = None
     completed_at: datetime | None = None
     exit_code: int | None = None
@@ -59,7 +52,7 @@ class EmpirPhotonToEventSettings(StrictBaseModel):
 
 
 class EmpirPhotonToEventResult(StrictBaseModel):
-    status: AnalysisRunStatus = "planned"
+    status: EmpirRunStatus = "planned"
     started_at: datetime | None = None
     completed_at: datetime | None = None
     exit_code: int | None = None
@@ -122,7 +115,7 @@ class EmpirEventToImageSettings(StrictBaseModel):
 
 
 class EmpirEventToImageResult(StrictBaseModel):
-    status: AnalysisRunStatus = "planned"
+    status: EmpirRunStatus = "planned"
     started_at: datetime | None = None
     completed_at: datetime | None = None
     exit_code: int | None = None

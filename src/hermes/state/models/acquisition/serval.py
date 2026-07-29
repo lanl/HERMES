@@ -264,7 +264,7 @@ class ServalAcquisitionResult(StrictBaseModel):
 
 class ServalAcquisitionState(StrictBaseModel):
     mode: Literal["serval"] = "serval"
-    serval_environment: ServalEnvironment | None = None
+    serval_environment: ServalEnvironment
     requested_plan: ServalAcquisitionPlan | None = None
     requested_detector_config: DetectorConfiguration | None = None
     requested_destination_configuration: DestinationConfiguration | None = None

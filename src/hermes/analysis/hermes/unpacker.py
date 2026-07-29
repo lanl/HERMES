@@ -68,10 +68,15 @@ def derive_unpacker_command(
     *,
     overwrite: bool = False,
 ) -> list[str]:
-    command = [str(analysis.unpacker_program.executable_path)]
+    command = [
+        str(analysis.unpacker_program.executable_path),
+        "--input",
+        str(raw_file.path),
+        "--output",
+        str(analysis.analysis_directory),
+    ]
     if overwrite:
         command.append("--overwrite")
-    command.extend([str(raw_file.path), str(analysis.analysis_directory)])
     return command
 
 
@@ -121,6 +126,9 @@ def execute_unpacker(
 ) -> Tpx3SpidrSummary:
     command = derive_unpacker_command(analysis, raw_file, overwrite=overwrite)
     summary_path = derive_summary_path(analysis, raw_file)
+    resolved_executable_path = (
+        analysis.unpacker_program.executable_path.resolve()
+    )
     started = perf_counter()
     _ANALYSIS_LOGGER.info(
         "analysis.tpx3_unpacking.started",
@@ -130,6 +138,7 @@ def execute_unpacker(
         analysis_directory=str(analysis.analysis_directory),
         summary_json_file=str(summary_path),
         executable_path=str(analysis.unpacker_program.executable_path),
+        resolved_executable_path=str(resolved_executable_path),
         executable_version=analysis.unpacker_program.version,
         command=command,
     )
@@ -255,7 +264,8 @@ def _validate_program_and_inputs(analysis: HermesTpx3AnalysisState) -> None:
     executable = analysis.unpacker_program.executable_path
     if not executable.is_file():
         raise HermesTpx3PreflightError(
-            f"unpacker executable does not exist: {executable}"
+            f"unpacker executable does not exist: {executable}; build the "
+            "binary (e.g. via pixi) and set unpacker_program.executable_path"
         )
 
     for raw_file in analysis.tpx3_files:

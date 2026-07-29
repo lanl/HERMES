@@ -8,6 +8,7 @@ from hermes.state.models.acquisition.serval import (
     PixelConfigFile,
     ServalAcquisitionResult,
     ServalAcquisitionState,
+    ServalEnvironment,
 )
 from hermes.state.models.analysis.hermes_tpx3_spidr import (
     HermesTpx3AnalysisResults,
@@ -39,6 +40,7 @@ def test_hermes_record_serializes_paths_datetimes_and_mode_tags(tmp_path: Path) 
         ),
         environment=RuntimeEnvironment(working_dir=tmp_path / "run-001"),
         acquisition=ServalAcquisitionState(
+            serval_environment=ServalEnvironment(serval_url="http://localhost:8080"),
             result=ServalAcquisitionResult(status="completed", output_files=[raw_file])
         ),
         analysis=HermesTpx3AnalysisState(
@@ -88,6 +90,7 @@ def test_hermes_record_serializes_serval_requested_applied_and_calibration(
         measurement_info=MeasurementInfo(measurement_id="LC-20231024", run_number=2),
         environment=RuntimeEnvironment(working_dir=tmp_path / "run-002"),
         acquisition=ServalAcquisitionState(
+            serval_environment=ServalEnvironment(serval_url="http://localhost:8080"),
             requested_detector_config={
                 "TriggerMode": "AUTOTRIGSTART_TIMERSTOP",
                 "ExposureTime": 0.0002,

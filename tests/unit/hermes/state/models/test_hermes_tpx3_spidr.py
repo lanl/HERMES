@@ -37,7 +37,7 @@ def _analysis_state(tmp_path: Path, *raw_names: str) -> HermesTpx3AnalysisState:
             unpacking=HermesTpx3UnpackingResult(
                 status="completed",
                 started_at=datetime(2026, 7, 23, 12, 0, tzinfo=timezone.utc),
-                finished_at=datetime(2026, 7, 23, 12, 1, tzinfo=timezone.utc),
+                completed_at=datetime(2026, 7, 23, 12, 1, tzinfo=timezone.utc),
             )
         ),
     )
@@ -334,7 +334,7 @@ def test_reconstruction_result_defaults_and_rejects_undefined_fields() -> None:
 
     assert result.status == "planned"
     assert result.started_at is None
-    assert result.finished_at is None
+    assert result.completed_at is None
     assert result.photon_count == 0
     assert result.rejected_count == 0
     assert result.warnings == []
