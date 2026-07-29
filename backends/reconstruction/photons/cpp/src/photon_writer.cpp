@@ -90,14 +90,16 @@ bool ensureDirectory(const std::string& path, std::vector<std::string>& errors) 
     return true;
 }
 
-// Writes one Arrow table to a Parquet part file, refusing to overwrite.
+// Writes one Arrow table to a Parquet part file. When overwrite is false,
+// refuses to replace an existing file; when true, replaces it.
 bool writeTablePart(const std::shared_ptr<arrow::Table>& table,
                     const std::string& directory,
                     const std::string& filename,
                     std::uint64_t rows_per_part,
+                    bool overwrite,
                     std::vector<std::string>& errors) {
     const std::string full_path = directory + "/" + filename;
-    if (std::filesystem::exists(full_path)) {
+    if (!overwrite && std::filesystem::exists(full_path)) {
         errors.push_back("Refusing to overwrite existing photon file " +
                          full_path);
         return false;
@@ -220,6 +222,7 @@ PhotonWriteResult writePhotonEventsParquet(
     const std::string& photon_output_directory,
     const PhotonFileMetadata& metadata,
     std::uint64_t rows_per_part,
+    bool overwrite,
     std::vector<std::string>& errors) {
     PhotonWriteResult result;
     if (photons.empty()) {
@@ -239,7 +242,7 @@ PhotonWriteResult writePhotonEventsParquet(
         const std::string filename = makePhotonFileName(
             metadata.raw_file_stem, metadata.chip_index, "photon-events", part);
         if (!writeTablePart(table, photon_output_directory, filename,
-                            rows_per_part, errors)) {
+                            rows_per_part, overwrite, errors)) {
             return {};
         }
         result.files.push_back(filename);
@@ -253,6 +256,7 @@ PhotonWriteResult writePhotonPixelsParquet(
     const std::string& photon_output_directory,
     const PhotonFileMetadata& metadata,
     std::uint64_t rows_per_part,
+    bool overwrite,
     std::vector<std::string>& errors) {
     PhotonWriteResult result;
     if (rows.empty()) {
@@ -272,7 +276,7 @@ PhotonWriteResult writePhotonPixelsParquet(
         const std::string filename = makePhotonFileName(
             metadata.raw_file_stem, metadata.chip_index, "photon-pixels", part);
         if (!writeTablePart(table, photon_output_directory, filename,
-                            rows_per_part, errors)) {
+                            rows_per_part, overwrite, errors)) {
             return {};
         }
         result.files.push_back(filename);
@@ -288,6 +292,7 @@ PhotonWriteResult writePhotonEventsParquet(
     const std::string& /*photon_output_directory*/,
     const PhotonFileMetadata& /*metadata*/,
     std::uint64_t /*rows_per_part*/,
+    bool /*overwrite*/,
     std::vector<std::string>& errors) {
     errors.push_back("photon_events writing requires Arrow/Parquet support");
     return {};
@@ -298,6 +303,7 @@ PhotonWriteResult writePhotonPixelsParquet(
     const std::string& /*photon_output_directory*/,
     const PhotonFileMetadata& /*metadata*/,
     std::uint64_t /*rows_per_part*/,
+    bool /*overwrite*/,
     std::vector<std::string>& errors) {
     errors.push_back("photon_pixels writing requires Arrow/Parquet support");
     return {};
