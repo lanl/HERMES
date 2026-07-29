@@ -231,7 +231,9 @@ def run_hermes_analysis(
         )
 
         if current_analysis.photon_reconstruction is not None:
-            _run_photon_reconstruction(state_manager, current_analysis)
+            _run_photon_reconstruction(
+                state_manager, current_analysis, overwrite=overwrite
+            )
 
         return unpacked_files
     except HermesTpx3Error as exc:
@@ -275,10 +277,12 @@ def _apply_unpacking_result(
 def _run_photon_reconstruction(
     state_manager: StateManager,
     analysis: HermesTpx3AnalysisState,
+    *,
+    overwrite: bool = False,
 ) -> None:
     """Reconstruct photons for every raw stem, applying status on the main thread."""
     try:
-        reconstruction_plan = plan_reconstruction(analysis)
+        reconstruction_plan = plan_reconstruction(analysis, overwrite=overwrite)
         files_to_run = [
             raw_file
             for raw_file, action in reconstruction_plan
@@ -303,7 +307,9 @@ def _run_photon_reconstruction(
             if action == "skip":
                 log_reconstruction_skipped(analysis, raw_file)
                 continue
-            summary = execute_reconstruction(analysis, raw_file)
+            summary = execute_reconstruction(
+                analysis, raw_file, overwrite=overwrite
+            )
             photon_count += summary.reconstruction.photon_count
             rejected_count += summary.reconstruction.rejected_component_count
 
