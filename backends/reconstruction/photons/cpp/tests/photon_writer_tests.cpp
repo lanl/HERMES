@@ -83,7 +83,8 @@ int main() {
         std::vector<std::string> errors;
         const auto dir = (base / "events").string();
         auto result = writePhotonEventsParquet(photons, dir,
-                                               sampleMetadata(), 1000, errors);
+                                               sampleMetadata(), 1000, false,
+                                               errors);
         test.expect(errors.empty(), "events write reports no errors");
         test.expectEqual(result.row_count, std::uint64_t{2}, "two events written");
         test.expectEqual(result.files.size(), std::size_t{1}, "one events part");
@@ -132,7 +133,8 @@ int main() {
         std::vector<std::string> errors;
         const auto dir = (base / "pixels").string();
         auto result = writePhotonPixelsParquet(rows, dir,
-                                               sampleMetadata(), 1000, errors);
+                                               sampleMetadata(), 1000, false,
+                                               errors);
         test.expect(errors.empty(), "pixels write reports no errors");
         test.expectEqual(result.row_count, std::uint64_t{3}, "three pixels");
         if (result.files.size() == 1) {
@@ -154,7 +156,8 @@ int main() {
     {
         std::vector<std::string> errors;
         auto result = writePhotonEventsParquet({}, (base / "empty").string(),
-                                               sampleMetadata(), 1000, errors);
+                                               sampleMetadata(), 1000, false,
+                                               errors);
         test.expect(errors.empty(), "empty events write has no errors");
         test.expectEqual(result.row_count, std::uint64_t{0}, "no rows");
         test.expect(result.files.empty(), "no files for empty events");
@@ -165,11 +168,47 @@ int main() {
         std::vector<Photon> photons(5, Photon{1.0, 1.0, 1.0, 1, 0});
         std::vector<std::string> errors;
         auto result = writePhotonEventsParquet(photons, (base / "multi").string(),
-                                               sampleMetadata(), 2, errors);
+                                               sampleMetadata(), 2, false,
+                                               errors);
         test.expect(errors.empty(), "multi-part write has no errors");
         test.expectEqual(result.files.size(), std::size_t{3},
                          "five rows at two per part yields three files");
         test.expectEqual(result.row_count, std::uint64_t{5}, "row count is five");
+    }
+
+    // overwrite == false refuses an existing part; overwrite == true replaces it.
+    {
+        const auto dir = (base / "overwrite").string();
+        std::vector<Photon> first = {Photon{1.0, 1.0, 1.0, 1, 0}};
+        std::vector<std::string> errors;
+        auto initial = writePhotonEventsParquet(first, dir, sampleMetadata(),
+                                                1000, false, errors);
+        test.expect(errors.empty() && initial.row_count == 1,
+                    "initial events write succeeds");
+
+        // A second write to the same file with overwrite == false must refuse.
+        std::vector<std::string> refuse_errors;
+        auto refused = writePhotonEventsParquet(first, dir, sampleMetadata(),
+                                                1000, false, refuse_errors);
+        test.expect(!refuse_errors.empty() && refused.row_count == 0,
+                    "overwrite == false refuses existing photon file");
+
+        // With overwrite == true the file is replaced with new contents.
+        std::vector<Photon> second = {
+            Photon{2.0, 2.0, 2.0, 2, 0},
+            Photon{3.0, 3.0, 3.0, 3, 0},
+        };
+        std::vector<std::string> replace_errors;
+        auto replaced = writePhotonEventsParquet(second, dir, sampleMetadata(),
+                                                 1000, true, replace_errors);
+        test.expect(replace_errors.empty() && replaced.row_count == 2,
+                    "overwrite == true replaces existing photon file");
+        if (replaced.files.size() == 1) {
+            auto table = readTable(
+                (std::filesystem::path(dir) / replaced.files[0]).string());
+            test.expectEqual(table->num_rows(), std::int64_t{2},
+                             "replaced file holds the new rows");
+        }
     }
 
     std::filesystem::remove_all(base);
