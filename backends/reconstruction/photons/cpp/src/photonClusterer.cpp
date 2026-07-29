@@ -37,20 +37,31 @@ void printHelp(const char* program_name) {
     std::cout << "HERMES Photon Clusterer v" << hermes_photon_clusterer::kVersion
               << "\n\n";
     std::cout << "Usage: " << program_name
-              << " [OPTIONS] <analysis_directory> <raw_file_stem>\n\n";
-    std::cout << "Arguments:\n";
-    std::cout << "  <analysis_directory>  Shared analysis directory; pixelHits/, "
-                 "photons/, and logs/\n";
-    std::cout << "                        are derived from it\n";
-    std::cout << "  <raw_file_stem>       Raw TPX3 filename stem selecting the "
-                 "pixel_data files\n\n";
+              << " --input <analysis_directory> --base-file-name <name>"
+                 " [--settings <file>] [--output <analysis_directory>]"
+                 " [--overwrite]\n\n";
     std::cout << "Options:\n";
-    std::cout << "  -s, --settings <file>  JSON file overriding individual "
-                 "clustering settings\n";
-    std::cout << "                         (any field omitted keeps its "
-                 "built-in default)\n";
-    std::cout << "  -h, --help             Show this help message\n";
-    std::cout << "  -v, --version          Show version information\n";
+    std::cout << "  --input <analysis_directory>   Directory holding pixelHits/ "
+                 "to read (required)\n";
+    std::cout << "  --base-file-name <name>        Base name of the raw file "
+                 "selecting the\n";
+    std::cout << "                                 pixel_data files to read "
+                 "(required)\n";
+    std::cout << "  --settings <file>              JSON file overriding "
+                 "individual clustering\n";
+    std::cout << "                                 settings (any field omitted "
+                 "keeps its default)\n";
+    std::cout << "  --output <analysis_directory>  Directory to write photons/ "
+                 "and logs/ (optional)\n";
+    std::cout << "  --overwrite                    Overwrite existing photon and "
+                 "summary files\n";
+    std::cout << "  -h, --help                     Show this help message\n";
+    std::cout << "  -v, --version                  Show version information\n\n";
+    std::cout << "Output Modes:\n";
+    std::cout << "  Without --output:\n";
+    std::cout << "    Prints summary counts only; writes no files.\n\n";
+    std::cout << "  With --output:\n";
+    std::cout << "    Writes photons/ and logs/ under the output directory.\n";
 }
 
 void printVersion() {
@@ -123,8 +134,14 @@ std::vector<std::pair<std::string, double>> correctionParameters(
 }  // namespace
 
 int main(const int argc, char* argv[]) {
+    std::string input_dir;
+    std::string base_file_name;
     std::string settings_file;
-    std::vector<std::string> positionals;
+    std::string output_dir;
+    bool overwrite = false;
+    bool have_input = false;
+    bool have_base_name = false;
+    bool have_output = false;
 
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
@@ -136,30 +153,58 @@ int main(const int argc, char* argv[]) {
             printVersion();
             return 0;
         }
-        if (arg == "-s" || arg == "--settings") {
+        if (arg == "--overwrite") {
+            overwrite = true;
+            continue;
+        }
+        if (arg == "--input") {
             if (i + 1 >= argc) {
-                std::cerr << "Error: " << arg << " requires a file path\n";
+                std::cerr << "Error: --input requires a directory path\n";
+                return 2;
+            }
+            input_dir = argv[++i];
+            have_input = true;
+            continue;
+        }
+        if (arg == "--base-file-name") {
+            if (i + 1 >= argc) {
+                std::cerr << "Error: --base-file-name requires a name\n";
+                return 2;
+            }
+            base_file_name = argv[++i];
+            have_base_name = true;
+            continue;
+        }
+        if (arg == "--settings") {
+            if (i + 1 >= argc) {
+                std::cerr << "Error: --settings requires a file path\n";
                 return 2;
             }
             settings_file = argv[++i];
             continue;
         }
-        if (!arg.empty() && arg[0] == '-') {
-            std::cerr << "Error: unknown option '" << arg << "'\n";
-            std::cerr << "Try '" << argv[0] << " --help' for more information.\n";
-            return 2;
+        if (arg == "--output") {
+            if (i + 1 >= argc) {
+                std::cerr << "Error: --output requires a directory path\n";
+                return 2;
+            }
+            output_dir = argv[++i];
+            have_output = true;
+            continue;
         }
-        positionals.push_back(arg);
-    }
-
-    if (positionals.size() != 2) {
-        std::cerr << "Error: expected <analysis_directory> and "
-                     "<raw_file_stem>\n";
+        std::cerr << "Error: unrecognized argument: " << arg << "\n\n";
         std::cerr << "Try '" << argv[0] << " --help' for more information.\n";
         return 2;
     }
-    const std::string analysis_directory = positionals[0];
-    const std::string raw_file_stem = positionals[1];
+
+    if (!have_input) {
+        std::cerr << "Error: --input <analysis_directory> is required\n";
+        return 2;
+    }
+    if (!have_base_name) {
+        std::cerr << "Error: --base-file-name <name> is required\n";
+        return 2;
+    }
 
     // Start from built-in defaults; a settings file overrides only named fields.
     hermes_photon_clusterer::ClusteringSettings settings;
@@ -190,20 +235,30 @@ int main(const int argc, char* argv[]) {
         }
     }
 
-    const fs::path analysis_path(analysis_directory);
-    const std::string pixel_hits_dir = (analysis_path / "pixelHits").string();
-    const std::string photons_dir = (analysis_path / "photons").string();
-    const std::string logs_dir = (analysis_path / "logs").string();
-    const std::string summary_path =
-        (fs::path(logs_dir) /
-         (raw_file_stem + "-reconstruction-summary.json"))
-            .string();
+    const fs::path input_path(input_dir);
+    const std::string pixel_hits_dir = (input_path / "pixelHits").string();
+
+    // Output paths are only used when --output is supplied; otherwise the run
+    // prints summary counts and writes nothing.
+    std::string photons_dir;
+    std::string logs_dir;
+    std::string summary_path;
+    if (have_output) {
+        const fs::path output_path(output_dir);
+        photons_dir = (output_path / "photons").string();
+        logs_dir = (output_path / "logs").string();
+        summary_path =
+            (fs::path(logs_dir) /
+             (base_file_name + "-reconstruction-summary.json"))
+                .string();
+    }
 
     const auto total_start = Clock::now();
 
-    // Discover the pixel_data files for this stem, grouped and ordered per chip.
+    // Discover the pixel_data files for this base name, grouped and ordered per
+    // chip.
     auto groups = hermes_photon_clusterer::discoverPixelFiles(pixel_hits_dir,
-                                                              raw_file_stem);
+                                                              base_file_name);
     if (!groups.errors.empty()) {
         for (const auto& error : groups.errors) {
             std::cerr << "Error: " << error << "\n";
@@ -213,7 +268,7 @@ int main(const int argc, char* argv[]) {
 
     // Shared photon-file metadata; chip_index is filled in per chip.
     hermes_photon_clusterer::PhotonFileMetadata metadata;
-    metadata.raw_file_stem = raw_file_stem;
+    metadata.raw_file_stem = base_file_name;
     metadata.canonical_tick_seconds = kCanonicalTickSeconds;
     metadata.clustering_algorithm = "connected_components";
     metadata.clustering_settings_json = settingsToJson(settings).dump();
@@ -256,10 +311,10 @@ int main(const int argc, char* argv[]) {
 
     // Reconstruct each chip independently and accumulate counts and output.
     for (const auto& [chip, files] : groups.files_by_chip) {
-        // Record the input files relative to the analysis directory.
+        // Record the input files relative to the input directory.
         for (const auto& file : files) {
             summary.input_pixel_data_files.push_back(
-                fs::relative(file, analysis_path).string());
+                fs::relative(file, input_path).string());
         }
 
         // Read the chip's ordered pixel_data into memory in timestamp order.
@@ -318,12 +373,16 @@ int main(const int argc, char* argv[]) {
         summary.bridged_components_count +=
             result.counts.bridged_components_count;
 
-        // Write this chip's photon output.
+        // Write this chip's photon output only when --output was supplied.
+        if (!have_output) {
+            continue;
+        }
         metadata.chip_index = chip;
         const auto write_start = Clock::now();
         std::vector<std::string> write_errors;
         auto events_result = hermes_photon_clusterer::writePhotonEventsParquet(
-            result.photons, photons_dir, metadata, kRowsPerPart, write_errors);
+            result.photons, photons_dir, metadata, kRowsPerPart, overwrite,
+            write_errors);
         if (!write_errors.empty()) {
             for (const auto& error : write_errors) {
                 std::cerr << "Error: " << error << "\n";
@@ -339,7 +398,7 @@ int main(const int argc, char* argv[]) {
             auto pixels_result =
                 hermes_photon_clusterer::writePhotonPixelsParquet(
                     result.photon_pixels, photons_dir, metadata, kRowsPerPart,
-                    write_errors);
+                    overwrite, write_errors);
             if (!write_errors.empty()) {
                 for (const auto& error : write_errors) {
                     std::cerr << "Error: " << error << "\n";
@@ -359,7 +418,18 @@ int main(const int argc, char* argv[]) {
     summary.parquet_writing_seconds = writing_seconds;
     summary.total_seconds = secondsSince(total_start);
 
-    // Write the whole-stem reconstruction summary under logs/.
+    std::cout << "Reconstructed " << summary.photon_count << " photons from "
+              << summary.pixel_rows_read << " pixel rows across "
+              << groups.files_by_chip.size() << " chip(s).\n";
+
+    // Without --output, print the summary counts and write no files.
+    if (!have_output) {
+        std::cout << "Rejected " << summary.rejected_component_count
+                  << " component(s); no files written (no --output).\n";
+        return 0;
+    }
+
+    // Write the whole-base-name reconstruction summary under logs/.
     std::error_code ec;
     fs::create_directories(logs_dir, ec);
     if (ec) {
@@ -368,16 +438,13 @@ int main(const int argc, char* argv[]) {
         return 1;
     }
     try {
-        hermes_photon_clusterer::writeReconstructionSummaryJson(summary_path,
-                                                                summary);
+        hermes_photon_clusterer::writeReconstructionSummaryJson(
+            summary_path, summary, overwrite);
     } catch (const std::exception& error) {
         std::cerr << "Error: " << error.what() << "\n";
         return 1;
     }
 
-    std::cout << "Reconstructed " << summary.photon_count << " photons from "
-              << summary.pixel_rows_read << " pixel rows across "
-              << groups.files_by_chip.size() << " chip(s).\n";
     std::cout << "Summary: " << summary_path << "\n";
     return 0;
 }
