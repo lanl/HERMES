@@ -257,11 +257,23 @@ def _write_fake_clusterer(
         import pyarrow as pa
         import pyarrow.parquet as pq
 
-        analysis_dir = Path(sys.argv[1])
-        stem = sys.argv[2]
+        args = sys.argv[1:]
+        values = {{}}
+        i = 0
+        while i < len(args):
+            flag = args[i]
+            if flag == "--overwrite":
+                values[flag] = True
+                i += 1
+                continue
+            values[flag] = args[i + 1]
+            i += 2
+
+        # --output is where files go; --input holds pixelHits/ (same dir here).
+        analysis_dir = Path(values["--output"])
+        stem = values["--base-file-name"]
         # settings arrive via --settings <file>; read to prove it is passed.
-        assert sys.argv[3] == "--settings"
-        settings = json.loads(Path(sys.argv[4]).read_text())
+        settings = json.loads(Path(values["--settings"]).read_text())
 
         exit_code = {exit_code}
         write_summary = {write_summary}
@@ -398,7 +410,7 @@ def test_plan_rejects_summary_requesting_missing_pixels(tmp_path: Path) -> None:
 # ---- derive_reconstruction_command --------------------------------------
 
 
-def test_command_passes_analysis_stem_and_settings(tmp_path: Path) -> None:
+def test_command_passes_named_flags_and_settings(tmp_path: Path) -> None:
     analysis = _analysis(tmp_path, "run_000000.tpx3")
     reconstruction = analysis.photon_reconstruction
     command = derive_reconstruction_command(
@@ -407,9 +419,29 @@ def test_command_passes_analysis_stem_and_settings(tmp_path: Path) -> None:
         "run_000000",
         tmp_path / "settings.json",
     )
-    assert command[1] == str(analysis.analysis_directory)
-    assert command[2] == "run_000000"
-    assert command[3] == "--settings"
+    assert command[1:] == [
+        "--input",
+        str(analysis.analysis_directory),
+        "--base-file-name",
+        "run_000000",
+        "--output",
+        str(analysis.analysis_directory),
+        "--settings",
+        str(tmp_path / "settings.json"),
+    ]
+    assert "--overwrite" not in command
+
+
+def test_command_appends_overwrite_when_requested(tmp_path: Path) -> None:
+    analysis = _analysis(tmp_path, "run_000000.tpx3")
+    command = derive_reconstruction_command(
+        analysis.photon_reconstruction,
+        analysis.analysis_directory,
+        "run_000000",
+        tmp_path / "settings.json",
+        overwrite=True,
+    )
+    assert command[-1] == "--overwrite"
 
 
 # ---- execute_reconstruction ---------------------------------------------
