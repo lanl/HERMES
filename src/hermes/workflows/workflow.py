@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from hermes.analysis.hermes.run import run_hermes_analysis
+from hermes.logging import configure_logging
 from hermes.state.models.shared_models import FileReference
 from hermes.state.state import HermesRecord
 from hermes.state_service.shared_types import StateServiceConfig
@@ -11,6 +12,9 @@ class Workflow:
     """Run HERMES operations against one measurement record."""
 
     def __init__(self, record: HermesRecord) -> None:
+        log_dir = record.environment.log_dir.resolved_path
+        if log_dir is not None:
+            configure_logging(log_dir)
         self._state_manager = StateManager(
             record,
             config=StateServiceConfig(allow_trusted_workflow_bypass=True),
