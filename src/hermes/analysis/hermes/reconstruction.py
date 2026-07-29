@@ -62,19 +62,35 @@ def derive_reconstruction_command(
     analysis_directory: Path,
     raw_file_stem: str,
     settings_file: Path,
+    *,
+    overwrite: bool = False,
 ) -> list[str]:
-    return [
+    command = [
         str(reconstruction.program.executable_path),
+        "--input",
         str(analysis_directory),
+        "--base-file-name",
         raw_file_stem,
+        "--output",
+        str(analysis_directory),
         "--settings",
         str(settings_file),
     ]
+    if overwrite:
+        command.append("--overwrite")
+    return command
 
 
-def plan_reconstruction(analysis: HermesTpx3AnalysisState) -> ReconstructionPlan:
+def plan_reconstruction(
+    analysis: HermesTpx3AnalysisState,
+    *,
+    overwrite: bool = False,
+) -> ReconstructionPlan:
     reconstruction = _require_reconstruction(analysis)
     _validate_program_and_algorithm(reconstruction)
+
+    if overwrite:
+        return [(raw_file, "run") for raw_file in analysis.tpx3_files]
 
     plan: ReconstructionPlan = []
     for raw_file in analysis.tpx3_files:
@@ -115,6 +131,8 @@ def plan_reconstruction(analysis: HermesTpx3AnalysisState) -> ReconstructionPlan
 def execute_reconstruction(
     analysis: HermesTpx3AnalysisState,
     raw_file: FileReference,
+    *,
+    overwrite: bool = False,
 ) -> Tpx3PhotonReconstructionSummary:
     reconstruction = _require_reconstruction(analysis)
     summary_path = derive_summary_path(analysis, raw_file)
@@ -138,6 +156,7 @@ def execute_reconstruction(
         analysis.analysis_directory,
         raw_file.path.stem,
         settings_file,
+        overwrite=overwrite,
     )
     _ANALYSIS_LOGGER.info(
         "analysis.tpx3_reconstruction.started",
