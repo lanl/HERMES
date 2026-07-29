@@ -1,3 +1,10 @@
+"""Runs the C++ photon reconstruction binary over unpacked pixel data.
+
+The flow is: plan_reconstruction decides which raw files still need work,
+execute_reconstruction runs the binary on one file and checks its output, and
+the helpers below validate that the files it produced are complete and safe.
+"""
+
 from __future__ import annotations
 
 import json
@@ -50,6 +57,8 @@ def derive_summary_path(
     analysis: HermesTpx3AnalysisState,
     raw_file: FileReference,
 ) -> Path:
+    """Return the path of the summary JSON the binary writes for one raw file."""
+    # The file is named after the raw file (without its extension), under logs/.
     return (
         analysis.analysis_directory
         / "logs"
@@ -62,28 +71,57 @@ def derive_reconstruction_command(
     analysis_directory: Path,
     raw_file_stem: str,
     settings_file: Path,
+    *,
+    overwrite: bool = False,
 ) -> list[str]:
-    return [
+    """Build the command line that launches the reconstruction binary."""
+    # Reads pixel data from and writes results to the same analysis directory.
+    # --overwrite lets it replace files from a previous run; without it the
+    # binary refuses and stops.
+    command = [
         str(reconstruction.program.executable_path),
+        "--input",
         str(analysis_directory),
+        "--base-file-name",
         raw_file_stem,
+        "--output",
+        str(analysis_directory),
         "--settings",
         str(settings_file),
     ]
+    if overwrite:
+        command.append("--overwrite")
+    return command
 
 
-def plan_reconstruction(analysis: HermesTpx3AnalysisState) -> ReconstructionPlan:
+def plan_reconstruction(
+    analysis: HermesTpx3AnalysisState,
+    *,
+    overwrite: bool = False,
+) -> ReconstructionPlan:
+    """Decide, per raw file, whether to "run" reconstruction or "skip" it.
+
+    A file is skipped when valid results already exist. This runs before any
+    binary is launched, so problems are caught up front.
+    """
     reconstruction = _require_reconstruction(analysis)
     _validate_program_and_algorithm(reconstruction)
+
+    # With overwrite, redo every file regardless of existing output.
+    if overwrite:
+        return [(raw_file, "run") for raw_file in analysis.tpx3_files]
 
     plan: ReconstructionPlan = []
     for raw_file in analysis.tpx3_files:
         summary_path = derive_summary_path(analysis, raw_file)
+        # Photon files already sitting in the output directory for this file.
         matching_photon_files = _matching_photon_files(
             reconstruction.photon_output_directory,
             raw_file.path.stem,
         )
 
+        # A summary exists: only skip if it matches the requested settings and
+        # its files check out. A mismatch means the existing results are stale.
         if summary_path.exists():
             summary = _load_summary(summary_path)
             if (
@@ -101,11 +139,14 @@ def plan_reconstruction(analysis: HermesTpx3AnalysisState) -> ReconstructionPlan
                 raw_file.path.stem,
             )
             plan.append((raw_file, "skip"))
+        # Photon files but no summary means a half-finished or corrupt run; stop
+        # rather than silently overwrite or trust them.
         elif matching_photon_files:
             raise HermesReconstructionPreflightError(
                 f"photon files exist without a valid summary for "
                 f"{raw_file.path}: {matching_photon_files[0]}"
             )
+        # Nothing on disk yet: this file needs reconstruction.
         else:
             plan.append((raw_file, "run"))
 
@@ -115,7 +156,14 @@ def plan_reconstruction(analysis: HermesTpx3AnalysisState) -> ReconstructionPlan
 def execute_reconstruction(
     analysis: HermesTpx3AnalysisState,
     raw_file: FileReference,
+    *,
+    overwrite: bool = False,
 ) -> Tpx3PhotonReconstructionSummary:
+    """Run the binary on one raw file and return its validated summary.
+
+    Raises a HermesReconstructionError if the binary fails to launch, exits with
+    an error, or produces output that does not pass validation.
+    """
     reconstruction = _require_reconstruction(analysis)
     summary_path = derive_summary_path(analysis, raw_file)
     started = perf_counter()
@@ -138,6 +186,7 @@ def execute_reconstruction(
         analysis.analysis_directory,
         raw_file.path.stem,
         settings_file,
+        overwrite=overwrite,
     )
     _ANALYSIS_LOGGER.info(
         "analysis.tpx3_reconstruction.started",
@@ -153,6 +202,8 @@ def execute_reconstruction(
     )
 
     try:
+        # Launch the binary and wait for it. shell=False avoids shell parsing;
+        # check=False lets us inspect the exit code ourselves below.
         try:
             process = subprocess.run(
                 command,
@@ -191,6 +242,8 @@ def execute_reconstruction(
                 f"{raw_file.path}"
             )
 
+        # The binary exited cleanly; now confirm the output it left behind is
+        # complete and matches what we asked for before trusting it.
         summary: Tpx3PhotonReconstructionSummary | None = None
         try:
             summary = _load_summary(summary_path)
@@ -225,6 +278,7 @@ def execute_reconstruction(
             )
             raise
     finally:
+        # Always remove the temporary settings file, even if the run failed.
         settings_file.unlink(missing_ok=True)
 
     _ANALYSIS_LOGGER.info(
@@ -248,6 +302,7 @@ def log_skipped_input(
     analysis: HermesTpx3AnalysisState,
     raw_file: FileReference,
 ) -> None:
+    """Log that one raw file was skipped because valid results already exist."""
     _ANALYSIS_LOGGER.info(
         "analysis.tpx3_reconstruction.skipped",
         event_type="analysis.tpx3_reconstruction.skipped",
@@ -263,6 +318,7 @@ def log_overall_completion(
     raw_file_count: int,
     reconstructed_file_count: int,
 ) -> None:
+    """Log a summary line once every raw file has been handled."""
     _ANALYSIS_LOGGER.info(
         "analysis.tpx3_reconstruction.completed",
         event_type="analysis.tpx3_reconstruction.completed",
@@ -274,6 +330,7 @@ def log_overall_completion(
 
 
 def log_overall_failure(error: Exception) -> None:
+    """Log that the overall reconstruction run failed."""
     _ANALYSIS_LOGGER.error(
         "analysis.tpx3_reconstruction.failed",
         event_type="analysis.tpx3_reconstruction.failed",
@@ -285,6 +342,7 @@ def log_overall_failure(error: Exception) -> None:
 def _require_reconstruction(
     analysis: HermesTpx3AnalysisState,
 ) -> Tpx3PhotonReconstructionConfiguration:
+    """Return the reconstruction config, or raise if it is not set up."""
     reconstruction = analysis.photon_reconstruction
     if reconstruction is None:
         raise HermesReconstructionPreflightError(
@@ -296,6 +354,7 @@ def _require_reconstruction(
 def _validate_program_and_algorithm(
     reconstruction: Tpx3PhotonReconstructionConfiguration,
 ) -> None:
+    """Check the algorithm is supported and the binary exists before running."""
     if reconstruction.clustering_algorithm != "connected_components":
         raise HermesReconstructionPreflightError(
             f"clustering_algorithm={reconstruction.clustering_algorithm!r} is "
@@ -309,6 +368,7 @@ def _validate_program_and_algorithm(
 
 
 def _load_summary(summary_path: Path) -> Tpx3PhotonReconstructionSummary:
+    """Read and parse a summary JSON file into a validated model object."""
     if not summary_path.is_file():
         raise HermesReconstructionPreflightError(
             f"summary path is not a regular file: {summary_path}"
@@ -333,11 +393,19 @@ def _validate_completed_files(
     analysis_directory: Path,
     raw_file_stem: str,
 ) -> None:
+    """Confirm the files the summary claims to have produced are real and sane.
+
+    Guards against a summary that reports errors, lists files that are missing,
+    misnamed, duplicated, or point outside the analysis directory, has row
+    counts that disagree with the files, or leaves stray files on disk. Any of
+    these raises HermesReconstructionOutputError.
+    """
     if summary.reconstruction.errors:
         raise HermesReconstructionOutputError(
             f"summary reports reconstruction errors: {summary_path}"
         )
 
+    # Used below to make sure no listed file escapes the analysis directory.
     analysis_root = analysis_directory.resolve()
 
     # photon_events is always written; photon_pixels only when it was requested.
@@ -362,6 +430,8 @@ def _validate_completed_files(
         rf"^{re.escape(raw_file_stem)}-chip-(\d+)-(photon-events|photon-pixels)"
         rf"-part-(\d{{5}})\.parquet$"
     )
+    # Check every file the summary lists: correct name, no duplicates, inside
+    # the directory, and actually present on disk.
     for filename_marker, category, _always in file_groups:
         parts_by_chip: dict[int, list[int]] = {}
         for relative_path in category.files:
@@ -399,6 +469,7 @@ def _validate_completed_files(
                 )
             listed_files.add(relative_path)
 
+        # Each chip's parts must be numbered 0, 1, 2, ... with no gaps.
         for chip_index, part_indexes in parts_by_chip.items():
             if sorted(part_indexes) != list(range(len(part_indexes))):
                 raise HermesReconstructionOutputError(
@@ -444,6 +515,7 @@ def _matching_photon_files(
     photon_output_directory: Path,
     raw_file_stem: str,
 ) -> list[Path]:
+    """List the photon files on disk that belong to one raw file."""
     if not photon_output_directory.is_dir():
         return []
     pattern = f"{raw_file_stem}-*.parquet"
@@ -451,6 +523,7 @@ def _matching_photon_files(
 
 
 def _bounded_text(text: str) -> str:
+    """Trim text so a single log entry cannot grow without bound."""
     return text[:_LOG_TEXT_LIMIT]
 
 
@@ -465,6 +538,7 @@ def _log_process_failure(
     stderr_excerpt: str = "",
     summary: dict[str, object] | None = None,
 ) -> None:
+    """Log a failure for one raw file with the command output for debugging."""
     _ANALYSIS_LOGGER.error(
         "analysis.tpx3_reconstruction.failed",
         event_type="analysis.tpx3_reconstruction.failed",

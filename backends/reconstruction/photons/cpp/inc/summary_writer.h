@@ -81,11 +81,13 @@ struct ReconstructionSummaryContent {
 std::string generateReconstructionSummaryJson(
     const ReconstructionSummaryContent& content);
 
-// Writes the summary JSON to output_path, refusing to overwrite an existing
-// file. Throws std::runtime_error on an existing file or a write failure.
+// Writes the summary JSON to output_path. When overwrite is false, refuses to
+// replace an existing file; when true, replaces it. Throws std::runtime_error
+// on a refused existing file or a write failure.
 void writeReconstructionSummaryJson(
     const std::string& output_path,
-    const ReconstructionSummaryContent& content);
+    const ReconstructionSummaryContent& content,
+    bool overwrite);
 
 }  // namespace hermes_photon_clusterer
 

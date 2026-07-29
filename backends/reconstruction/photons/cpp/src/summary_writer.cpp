@@ -136,8 +136,9 @@ std::string generateReconstructionSummaryJson(
 
 void writeReconstructionSummaryJson(
     const std::string& output_path,
-    const ReconstructionSummaryContent& content) {
-    if (std::filesystem::exists(output_path)) {
+    const ReconstructionSummaryContent& content,
+    bool overwrite) {
+    if (!overwrite && std::filesystem::exists(output_path)) {
         throw std::runtime_error(
             "Refusing to overwrite existing reconstruction summary file: " +
             output_path);

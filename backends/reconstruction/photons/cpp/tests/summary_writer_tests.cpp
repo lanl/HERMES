@@ -1,4 +1,7 @@
 #include <cstdint>
+#include <filesystem>
+#include <fstream>
+#include <sstream>
 #include <string>
 
 #include <nlohmann/json.hpp>
@@ -10,6 +13,14 @@ namespace {
 
 using hermes_photon_clusterer::ReconstructionSummaryContent;
 using hermes_photon_clusterer::generateReconstructionSummaryJson;
+using hermes_photon_clusterer::writeReconstructionSummaryJson;
+
+std::string readFile(const std::string& path) {
+    std::ifstream in(path);
+    std::ostringstream buffer;
+    buffer << in.rdbuf();
+    return buffer.str();
+}
 
 // A content struct whose counts satisfy the summary's cross-field validators:
 // pixel_rows_below_min_tot <= pixel_rows_read, photon_count +
@@ -129,6 +140,40 @@ int main() {
                             ["pixels_per_second"]
                         .get<double>() == 0.0,
                     "zero total time gives zero throughput");
+    }
+
+    // overwrite == false refuses an existing summary; overwrite == true replaces.
+    {
+        const auto base = std::filesystem::temp_directory_path() /
+                           "hermes_summary_writer_tests";
+        std::filesystem::remove_all(base);
+        std::filesystem::create_directories(base);
+        const auto path = (base / "summary.json").string();
+
+        auto content = consistentContent();
+        content.photon_count = 70;
+        writeReconstructionSummaryJson(path, content, false);
+        test.expect(std::filesystem::exists(path), "summary written initially");
+
+        // A second write with overwrite == false must throw.
+        bool refused = false;
+        try {
+            writeReconstructionSummaryJson(path, content, false);
+        } catch (const std::exception&) {
+            refused = true;
+        }
+        test.expect(refused, "overwrite == false refuses existing summary");
+
+        // With overwrite == true the file is replaced with the new content.
+        auto replacement = consistentContent();
+        replacement.photon_count = 12;
+        replacement.rejected_component_count = 88;  // keeps components_formed
+        writeReconstructionSummaryJson(path, replacement, true);
+        auto j = nlohmann::json::parse(readFile(path));
+        test.expectEqual(j["reconstruction"]["photon_count"].get<int>(), 12,
+                         "overwrite == true replaces the summary content");
+
+        std::filesystem::remove_all(base);
     }
 
     return test.finish();
