@@ -487,7 +487,8 @@ UnpackResult unpack(std::istream& input) {
 WorkflowResult runTwoPassWorkflow(std::istream& input,
                                   const std::string& source_file_path,
                                   const std::string& analysis_directory,
-                                  const bool overwrite) {
+                                  const bool overwrite,
+                                  const bool time_sort) {
     using Clock = std::chrono::high_resolution_clock;
     using Duration = std::chrono::duration<double>;
 
@@ -617,10 +618,14 @@ WorkflowResult runTwoPassWorkflow(std::istream& input,
     workflow_result.summary.timing_diagnostics.conversion_seconds =
         Duration(conversion_end - conversion_start).count();
 
-    // Sort the exact rows that will be split into Parquet part files.
+    // Sort the exact rows that will be split into Parquet part files. When
+    // time_sort is disabled (a diagnostics mode) the rows are left in the
+    // source packet order in which they were decoded.
     auto sort_start = Clock::now();
     SortingDiagnostics sort_diag;
-    sortAllOutputRows(output_rows, sort_diag);
+    if (time_sort) {
+        sortAllOutputRows(output_rows, sort_diag);
+    }
     auto sort_end = Clock::now();
     workflow_result.summary.timing_diagnostics.sorting_seconds =
         Duration(sort_end - sort_start).count();
