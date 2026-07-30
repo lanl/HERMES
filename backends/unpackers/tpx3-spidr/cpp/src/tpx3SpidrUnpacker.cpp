@@ -9,11 +9,16 @@ namespace {
 void printHelp(const char* program_name) {
     std::cout << "HERMES TPX3 SPIDR Unpacker v0.1.0\n\n";
     std::cout << "Usage: " << program_name
-              << " --input <input.tpx3> [--output <analysis_directory>] [--overwrite]\n\n";
+              << " --input <input.tpx3> [--output <analysis_directory>]"
+                 " [--overwrite] [--time-sort <true|false>]\n\n";
     std::cout << "Options:\n";
     std::cout << "  --input <input.tpx3>          Input TPX3 raw data file (required)\n";
     std::cout << "  --output <analysis_directory> Shared analysis directory (optional)\n";
     std::cout << "  --overwrite                   Overwrite existing summary and Parquet files\n";
+    std::cout << "  --time-sort <true|false>      Sort rows by timestamp (default: true).\n";
+    std::cout << "                                false leaves rows in source packet order\n";
+    std::cout << "                                (diagnostics only; downstream clustering\n";
+    std::cout << "                                assumes time-ordered data)\n";
     std::cout << "  -h, --help                    Show this help message\n";
     std::cout << "  -v, --version                 Show version information\n\n";
     std::cout << "Output Modes:\n";
@@ -42,6 +47,7 @@ void printVersion() {
 
 int main(const int argc, char* argv[]) {
     bool overwrite = false;
+    bool time_sort = true;
     std::string input_path;
     std::string output_dir;
     bool have_input = false;
@@ -59,6 +65,15 @@ int main(const int argc, char* argv[]) {
         }
         if (arg == "--overwrite") {
             overwrite = true;
+            continue;
+        }
+        if (arg == "--time-sort") {
+            if (i + 1 >= argc) {
+                std::cerr << "Error: --time-sort requires true or false\n";
+                return 2;
+            }
+            // Defaults to true; only an explicit "false" disables sorting.
+            time_sort = std::string(argv[++i]) != "false";
             continue;
         }
         if (arg == "--input") {
@@ -104,7 +119,7 @@ int main(const int argc, char* argv[]) {
     }
 
     const auto result = hermes_tpx3_spidr::runTwoPassWorkflow(
-        input, input_path, output_dir, overwrite);
+        input, input_path, output_dir, overwrite, time_sort);
 
     if (!result.success) {
         std::cerr << "Workflow failed with errors:\n";
