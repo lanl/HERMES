@@ -30,7 +30,10 @@ class FileReference(StrictBaseModel):
 
     path: Path
     media_type: str | None = Field(default=None, min_length=1)
-    sha256: str | None = Field(default=None, pattern=r"^[A-Fa-f0-9]{64}$")
-    size_bytes: int | None = Field(default=None, ge=0)
     created_at: datetime | None = None
     description: str | None = None
+
+class BinaryProgram(StrictBaseModel):
+    name: str = Field(min_length=1)
+    executable_path: Path
+    version: str | None = None
