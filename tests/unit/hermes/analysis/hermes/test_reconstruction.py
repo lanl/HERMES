@@ -8,29 +8,28 @@ import textwrap
 from pathlib import Path
 from typing import Any
 
-import pyarrow as pa
-import pyarrow.parquet as pq
 import pytest
 
 from hermes.analysis.hermes.reconstruction import (
     HermesReconstructionExecutionError,
+    HermesReconstructionOutputError,
     HermesReconstructionPreflightError,
+    derive_output_path,
     derive_reconstruction_command,
     derive_summary_path,
     execute_reconstruction,
     plan_reconstruction,
 )
+from hermes.analysis.hermes.run import run_hermes_analysis
 from hermes.state.models.analysis.hermes_tpx3_spidr import (
     HermesTpx3AnalysisState,
-    PhotonReconstructorProgram,
     Tpx3PhotonClusteringSettings,
-    Tpx3PhotonReconstructionConfiguration,
-    Tpx3SpidrUnpackerProgram,
+    Tpx3PhotonReconstruction,
+    Tpx3Unpacking,
 )
-from hermes.analysis.hermes.run import run_hermes_analysis
 from hermes.state.models.environment import RuntimeEnvironment
 from hermes.state.models.measurement import MeasurementInfo
-from hermes.state.models.shared_models import FileReference
+from hermes.state.models.shared_models import BinaryProgram, FileReference
 from hermes.state.state import HermesRecord
 from hermes.state_service.shared_types import StateServiceConfig
 from hermes.state_service.state_manager import StateManager
@@ -53,7 +52,7 @@ def _settings(**overrides: Any) -> Tpx3PhotonClusteringSettings:
 
 def _analysis(
     tmp_path: Path,
-    *raw_names: str,
+    *pixel_names: str,
     settings: Tpx3PhotonClusteringSettings | None = None,
     clustering_algorithm: str = "connected_components",
     with_reconstruction: bool = True,
@@ -65,83 +64,52 @@ def _analysis(
     clusterer_exe = tmp_path / "bin/hermes-photon-clusterer"
     clusterer_exe.touch()
 
-    raw_files: list[FileReference] = []
-    for raw_name in raw_names:
-        raw_path = tmp_path / "rawTpx3" / raw_name
-        raw_path.parent.mkdir(parents=True, exist_ok=True)
-        raw_path.touch()
-        raw_files.append(FileReference(path=raw_path))
-
     analysis_directory = tmp_path / "analysis"
+
+    # A raw TPX3 file is required to build the unpacking stage; the
+    # reconstruction stage reads pixel Parquet files it creates below.
+    raw_path = tmp_path / "rawTpx3" / "run_000000.tpx3"
+    raw_path.parent.mkdir(parents=True, exist_ok=True)
+    raw_path.touch()
+
+    # Pixel Parquet inputs for reconstruction live under pixelHits/.
+    pixel_directory = analysis_directory / "pixelHits"
+    for pixel_name in pixel_names:
+        pixel_path = pixel_directory / pixel_name
+        pixel_path.parent.mkdir(parents=True, exist_ok=True)
+        pixel_path.touch()
+
     reconstruction = None
     if with_reconstruction:
-        reconstruction = Tpx3PhotonReconstructionConfiguration(
-            program=PhotonReconstructorProgram(
+        reconstruction = Tpx3PhotonReconstruction(
+            program=BinaryProgram(
                 name="photon-clusterer-cpp",
                 executable_path=clusterer_exe,
                 version="0.1.0",
             ),
-            pixel_data_directory=analysis_directory / "pixelHits",
-            photon_output_directory=analysis_directory / "photons",
             settings=settings or _settings(),
             clustering_algorithm=clustering_algorithm,
         )
 
     return HermesTpx3AnalysisState(
-        unpacker_program=Tpx3SpidrUnpackerProgram(
-            name="tpx3-spidr-cpp",
-            executable_path=unpacker_exe,
-            version="0.1.0",
-        ),
         analysis_directory=analysis_directory,
-        tpx3_files=raw_files,
+        unpacking=Tpx3Unpacking(
+            program=BinaryProgram(
+                name="tpx3-spidr-cpp",
+                executable_path=unpacker_exe,
+                version="0.1.0",
+            ),
+            tpx3_files=[FileReference(path=raw_path)],
+        ),
         photon_reconstruction=reconstruction,
     )
 
 
 def _summary_dict(
-    raw_stem: str,
     *,
     photon_count: int = 3,
     rejected: int = 1,
-    save_photon_pixels: bool = False,
-    corrected: bool = False,
 ) -> dict[str, Any]:
-    events_files = [
-        f"photons/{raw_stem}-chip-0-photon-events-part-00000.parquet"
-    ]
-    if save_photon_pixels:
-        pixels = {
-            "requested": True,
-            "row_count": 7,
-            "files": [
-                f"photons/{raw_stem}-chip-0-photon-pixels-part-00000.parquet"
-            ],
-        }
-    else:
-        pixels = {"requested": False, "row_count": 0, "files": []}
-
-    if corrected:
-        timing = {
-            "estimator": "leading_edge",
-            "correction_model": "inverse",
-            "calibration_file": "calibrations/tpx3/time-walk_example.json",
-            "parameters": {"a": 1254855.58, "b": 10.6986},
-            "high_tot_anchor": 23.0,
-        }
-        calibration_file: str | None = (
-            "calibrations/tpx3/time-walk_example.json"
-        )
-    else:
-        timing = {
-            "estimator": "leading_edge",
-            "correction_model": "none",
-            "calibration_file": None,
-            "parameters": {},
-            "high_tot_anchor": None,
-        }
-        calibration_file = None
-
     return {
         "schema_version": 1,
         "reconstruction": {
@@ -165,35 +133,6 @@ def _summary_dict(
             "warnings": [],
             "errors": [],
         },
-        "clustering": {
-            "algorithm": "connected_components",
-            "settings": {
-                "max_time_spread_ticks": 491520,
-                "min_cluster_size": 2,
-                "max_cluster_size": 64,
-                "min_pixel_tot_raw": 1,
-                "min_cluster_tot_raw": 2,
-                "max_cluster_tot_raw": 65472,
-                "max_aspect_ratio": 3.0,
-                "min_filled_fraction": 0.5,
-                "adjacency": 8,
-                "position_averaging": "arithmetic",
-                "photon_time_estimator": "leading_edge",
-                "timewalk_calibration_file": calibration_file,
-                "save_photon_pixels": save_photon_pixels,
-            },
-        },
-        "photon_timing": timing,
-        "parquet": {
-            "input_pixel_data_files": [
-                f"pixelHits/{raw_stem}-chip-0-part-00000.parquet"
-            ],
-            "photon_events": {
-                "row_count": photon_count,
-                "files": events_files,
-            },
-            "photon_pixels": pixels,
-        },
         "processing_times_seconds": {
             "parquet_reading": 0.1,
             "clustering_and_filtering": 0.2,
@@ -207,36 +146,6 @@ def _summary_dict(
     }
 
 
-def _save_completed_files(
-    analysis: HermesTpx3AnalysisState,
-    raw_file: FileReference,
-    *,
-    photon_count: int = 3,
-    save_photon_pixels: bool = False,
-) -> None:
-    stem = raw_file.path.stem
-    summary = _summary_dict(
-        stem,
-        photon_count=photon_count,
-        save_photon_pixels=save_photon_pixels,
-    )
-    photons_dir = analysis.analysis_directory / "photons"
-    photons_dir.mkdir(parents=True, exist_ok=True)
-    # photon_events file with a matching row count.
-    pq.write_table(
-        pa.table({"photon_id": list(range(photon_count))}),
-        photons_dir / f"{stem}-chip-0-photon-events-part-00000.parquet",
-    )
-    if save_photon_pixels:
-        pq.write_table(
-            pa.table({"photon_id": [0]}),
-            photons_dir / f"{stem}-chip-0-photon-pixels-part-00000.parquet",
-        )
-    summary_path = derive_summary_path(analysis, raw_file)
-    summary_path.parent.mkdir(parents=True, exist_ok=True)
-    summary_path.write_text(json.dumps(summary), encoding="utf-8")
-
-
 def _write_fake_clusterer(
     executable: Path,
     *,
@@ -244,18 +153,14 @@ def _write_fake_clusterer(
     exit_code: int = 0,
     write_summary: bool = True,
 ) -> None:
-    summary_literal = json.dumps(
-        _summary_dict("PLACEHOLDER", photon_count=photon_count)
-    )
+    """Write a fake clusterer that creates the photon file and sidecar summary."""
+    summary_literal = json.dumps(_summary_dict(photon_count=photon_count))
     script = textwrap.dedent(
         f"""\
         #!{sys.executable}
         import json
         import sys
         from pathlib import Path
-
-        import pyarrow as pa
-        import pyarrow.parquet as pq
 
         args = sys.argv[1:]
         values = {{}}
@@ -269,37 +174,21 @@ def _write_fake_clusterer(
             values[flag] = args[i + 1]
             i += 2
 
-        # --output is where files go; --input holds pixelHits/ (same dir here).
-        analysis_dir = Path(values["--output"])
-        stem = values["--base-file-name"]
-        # settings arrive via --settings <file>; read to prove it is passed.
-        settings = json.loads(Path(values["--settings"]).read_text())
+        output_file = Path(values["--output"])
+        # Prove the settings file is passed and readable.
+        json.loads(Path(values["--settings"]).read_text())
 
-        exit_code = {exit_code}
         write_summary = {write_summary}
-        photon_count = {photon_count}
-
         if write_summary:
-            photons = analysis_dir / "photons"
-            photons.mkdir(parents=True, exist_ok=True)
-            pq.write_table(
-                pa.table({{"photon_id": list(range(photon_count))}}),
-                photons / (stem + "-chip-0-photon-events-part-00000.parquet"),
+            output_file.parent.mkdir(parents=True, exist_ok=True)
+            output_file.write_bytes(b"")
+            summary_path = (
+                output_file.parent
+                / (output_file.stem + "-reconstruction-summary.json")
             )
-            summary = json.loads({summary_literal!r})
-            summary["parquet"]["input_pixel_data_files"] = [
-                "pixelHits/" + stem + "-chip-0-part-00000.parquet"
-            ]
-            summary["parquet"]["photon_events"]["files"] = [
-                "photons/" + stem + "-chip-0-photon-events-part-00000.parquet"
-            ]
-            logs = analysis_dir / "logs"
-            logs.mkdir(parents=True, exist_ok=True)
-            (logs / (stem + "-reconstruction-summary.json")).write_text(
-                json.dumps(summary)
-            )
+            summary_path.write_text({summary_literal!r})
 
-        sys.exit(exit_code)
+        sys.exit({exit_code})
         """
     )
     executable.write_text(script, encoding="utf-8")
@@ -310,53 +199,55 @@ def _write_fake_clusterer(
 
 
 def test_plan_runs_when_no_output_exists(tmp_path: Path) -> None:
-    analysis = _analysis(tmp_path, "run_000000.tpx3")
+    analysis = _analysis(tmp_path, "run_000000-chip-0-part-00000.parquet")
     plan = plan_reconstruction(analysis)
     assert [action for _, action in plan] == ["run"]
 
 
-def test_plan_skips_when_valid_summary_exists(tmp_path: Path) -> None:
-    analysis = _analysis(tmp_path, "run_000000.tpx3")
-    _save_completed_files(analysis, analysis.tpx3_files[0])
+def test_plan_skips_when_output_exists(tmp_path: Path) -> None:
+    analysis = _analysis(tmp_path, "run_000000-chip-0-part-00000.parquet")
+    reconstruction = analysis.photon_reconstruction
+    input_file = FileReference(
+        path=analysis.analysis_directory
+        / "pixelHits"
+        / "run_000000-chip-0-part-00000.parquet"
+    )
+    output_file = derive_output_path(reconstruction, input_file)
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    output_file.touch()
+
     plan = plan_reconstruction(analysis)
     assert [action for _, action in plan] == ["skip"]
 
 
-def test_plan_rejects_summary_with_mismatched_settings(tmp_path: Path) -> None:
-    analysis = _analysis(tmp_path, "run_000000.tpx3")
-    _save_completed_files(analysis, analysis.tpx3_files[0])
-
-    requested = _analysis(
-        tmp_path,
-        "run_000000.tpx3",
-        settings=_settings(save_photon_pixels=True),
+def test_plan_runs_all_when_overwrite(tmp_path: Path) -> None:
+    analysis = _analysis(tmp_path, "run_000000-chip-0-part-00000.parquet")
+    reconstruction = analysis.photon_reconstruction
+    input_file = FileReference(
+        path=analysis.analysis_directory
+        / "pixelHits"
+        / "run_000000-chip-0-part-00000.parquet"
     )
+    output_file = derive_output_path(reconstruction, input_file)
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    output_file.touch()
 
-    with pytest.raises(HermesReconstructionPreflightError, match="settings"):
-        plan_reconstruction(requested)
-
-def test_plan_rejects_orphan_photon_files(tmp_path: Path) -> None:
-    analysis = _analysis(tmp_path, "run_000000.tpx3")
-    photons_dir = analysis.analysis_directory / "photons"
-    photons_dir.mkdir(parents=True, exist_ok=True)
-    pq.write_table(
-        pa.table({"photon_id": [0]}),
-        photons_dir / "run_000000-chip-0-photon-events-part-00000.parquet",
-    )
-    with pytest.raises(HermesReconstructionPreflightError, match="without a valid"):
-        plan_reconstruction(analysis)
+    plan = plan_reconstruction(analysis, overwrite=True)
+    assert [action for _, action in plan] == ["run"]
 
 
 def test_plan_rejects_dbscan(tmp_path: Path) -> None:
     analysis = _analysis(
-        tmp_path, "run_000000.tpx3", clustering_algorithm="dbscan"
+        tmp_path,
+        "run_000000-chip-0-part-00000.parquet",
+        clustering_algorithm="dbscan",
     )
     with pytest.raises(HermesReconstructionPreflightError, match="not implemented"):
         plan_reconstruction(analysis)
 
 
 def test_plan_rejects_missing_executable(tmp_path: Path) -> None:
-    analysis = _analysis(tmp_path, "run_000000.tpx3")
+    analysis = _analysis(tmp_path, "run_000000-chip-0-part-00000.parquet")
     analysis.photon_reconstruction.program.executable_path.unlink()
     with pytest.raises(
         HermesReconstructionPreflightError, match="executable does not exist"
@@ -366,7 +257,9 @@ def test_plan_rejects_missing_executable(tmp_path: Path) -> None:
 
 def test_plan_requires_reconstruction_config(tmp_path: Path) -> None:
     analysis = _analysis(
-        tmp_path, "run_000000.tpx3", with_reconstruction=False
+        tmp_path,
+        "run_000000-chip-0-part-00000.parquet",
+        with_reconstruction=False,
     )
     with pytest.raises(
         HermesReconstructionPreflightError, match="not configured"
@@ -374,58 +267,29 @@ def test_plan_requires_reconstruction_config(tmp_path: Path) -> None:
         plan_reconstruction(analysis)
 
 
-def test_plan_skips_when_pixels_requested_and_present(tmp_path: Path) -> None:
-    analysis = _analysis(
-        tmp_path,
-        "run_000000.tpx3",
-        settings=_settings(save_photon_pixels=True),
-    )
-    _save_completed_files(
-        analysis, analysis.tpx3_files[0], save_photon_pixels=True
-    )
-    plan = plan_reconstruction(analysis)
-    assert [action for _, action in plan] == ["skip"]
-
-
-def test_plan_rejects_summary_requesting_missing_pixels(tmp_path: Path) -> None:
-    # The summary records photon_pixels output, but the pixels file is absent.
-    analysis = _analysis(
-        tmp_path,
-        "run_000000.tpx3",
-        settings=_settings(save_photon_pixels=True),
-    )
-    _save_completed_files(
-        analysis, analysis.tpx3_files[0], save_photon_pixels=True
-    )
-    stem = analysis.tpx3_files[0].path.stem
-    (
-        analysis.analysis_directory
-        / "photons"
-        / f"{stem}-chip-0-photon-pixels-part-00000.parquet"
-    ).unlink()
-    with pytest.raises(HermesReconstructionPreflightError):
-        plan_reconstruction(analysis)
-
-
 # ---- derive_reconstruction_command --------------------------------------
 
 
 def test_command_passes_named_flags_and_settings(tmp_path: Path) -> None:
-    analysis = _analysis(tmp_path, "run_000000.tpx3")
+    analysis = _analysis(tmp_path, "run_000000-chip-0-part-00000.parquet")
     reconstruction = analysis.photon_reconstruction
+    input_file = FileReference(
+        path=analysis.analysis_directory
+        / "pixelHits"
+        / "run_000000-chip-0-part-00000.parquet"
+    )
+    output_file = derive_output_path(reconstruction, input_file)
     command = derive_reconstruction_command(
         reconstruction,
-        analysis.analysis_directory,
-        "run_000000",
+        input_file,
+        output_file,
         tmp_path / "settings.json",
     )
     assert command[1:] == [
         "--input",
-        str(analysis.analysis_directory),
-        "--base-file-name",
-        "run_000000",
+        str(input_file.path),
         "--output",
-        str(analysis.analysis_directory),
+        str(output_file),
         "--settings",
         str(tmp_path / "settings.json"),
     ]
@@ -433,11 +297,17 @@ def test_command_passes_named_flags_and_settings(tmp_path: Path) -> None:
 
 
 def test_command_appends_overwrite_when_requested(tmp_path: Path) -> None:
-    analysis = _analysis(tmp_path, "run_000000.tpx3")
+    analysis = _analysis(tmp_path, "run_000000-chip-0-part-00000.parquet")
+    reconstruction = analysis.photon_reconstruction
+    input_file = FileReference(
+        path=analysis.analysis_directory
+        / "pixelHits"
+        / "run_000000-chip-0-part-00000.parquet"
+    )
     command = derive_reconstruction_command(
-        analysis.photon_reconstruction,
-        analysis.analysis_directory,
-        "run_000000",
+        reconstruction,
+        input_file,
+        derive_output_path(reconstruction, input_file),
         tmp_path / "settings.json",
         overwrite=True,
     )
@@ -448,44 +318,70 @@ def test_command_appends_overwrite_when_requested(tmp_path: Path) -> None:
 
 
 def test_execute_success_returns_summary(tmp_path: Path) -> None:
-    analysis = _analysis(tmp_path, "run_000000.tpx3")
+    analysis = _analysis(tmp_path, "run_000000-chip-0-part-00000.parquet")
     _write_fake_clusterer(
         analysis.photon_reconstruction.program.executable_path,
         photon_count=5,
     )
-    summary = execute_reconstruction(analysis, analysis.tpx3_files[0])
-    assert summary.reconstruction.photon_count == 5
+    input_file = FileReference(
+        path=analysis.analysis_directory
+        / "pixelHits"
+        / "run_000000-chip-0-part-00000.parquet"
+    )
+    result = execute_reconstruction(analysis, input_file)
+    assert result.status == "completed"
+    assert result.counts is not None
+    assert result.counts.photon_count == 5
 
 
 def test_execute_removes_temp_settings_file(tmp_path: Path) -> None:
-    analysis = _analysis(tmp_path, "run_000000.tpx3")
+    analysis = _analysis(tmp_path, "run_000000-chip-0-part-00000.parquet")
     _write_fake_clusterer(analysis.photon_reconstruction.program.executable_path)
-    execute_reconstruction(analysis, analysis.tpx3_files[0])
-    leftover = list(Path(tempfile.gettempdir()).glob(
-        "run_000000-clustering-settings-*.json"
-    ))
+    input_file = FileReference(
+        path=analysis.analysis_directory
+        / "pixelHits"
+        / "run_000000-chip-0-part-00000.parquet"
+    )
+    execute_reconstruction(analysis, input_file)
+    leftover = list(
+        Path(tempfile.gettempdir()).glob(
+            "run_000000-chip-0-part-00000-clustering-settings-*.json"
+        )
+    )
     assert leftover == []
 
 
 def test_execute_raises_on_nonzero_exit(tmp_path: Path) -> None:
-    analysis = _analysis(tmp_path, "run_000000.tpx3")
+    analysis = _analysis(tmp_path, "run_000000-chip-0-part-00000.parquet")
     _write_fake_clusterer(
         analysis.photon_reconstruction.program.executable_path,
         exit_code=1,
         write_summary=False,
     )
-    with pytest.raises(HermesReconstructionExecutionError, match="exited with code"):
-        execute_reconstruction(analysis, analysis.tpx3_files[0])
+    input_file = FileReference(
+        path=analysis.analysis_directory
+        / "pixelHits"
+        / "run_000000-chip-0-part-00000.parquet"
+    )
+    with pytest.raises(
+        HermesReconstructionExecutionError, match="exited with code"
+    ):
+        execute_reconstruction(analysis, input_file)
 
 
 def test_execute_raises_on_missing_summary(tmp_path: Path) -> None:
-    analysis = _analysis(tmp_path, "run_000000.tpx3")
+    analysis = _analysis(tmp_path, "run_000000-chip-0-part-00000.parquet")
     _write_fake_clusterer(
         analysis.photon_reconstruction.program.executable_path,
         write_summary=False,
     )
-    with pytest.raises(HermesReconstructionPreflightError):
-        execute_reconstruction(analysis, analysis.tpx3_files[0])
+    input_file = FileReference(
+        path=analysis.analysis_directory
+        / "pixelHits"
+        / "run_000000-chip-0-part-00000.parquet"
+    )
+    with pytest.raises(HermesReconstructionOutputError):
+        execute_reconstruction(analysis, input_file)
 
 
 # ---- status flow through run_hermes_analysis ----------------------------
@@ -586,8 +482,8 @@ def _manager(analysis: HermesTpx3AnalysisState, tmp_path: Path) -> StateManager:
 
 
 def test_run_hermes_analysis_completes_reconstruction(tmp_path: Path) -> None:
-    analysis = _analysis(tmp_path, "run_000000.tpx3")
-    _write_fake_unpacker(analysis.unpacker_program.executable_path)
+    analysis = _analysis(tmp_path)
+    _write_fake_unpacker(analysis.unpacking.program.executable_path)
     _write_fake_clusterer(
         analysis.photon_reconstruction.program.executable_path,
         photon_count=4,
@@ -596,18 +492,19 @@ def test_run_hermes_analysis_completes_reconstruction(tmp_path: Path) -> None:
 
     run_hermes_analysis(manager)
 
-    results = manager.get_state().analysis.results
-    assert results.unpacking.status == "completed"
-    assert results.reconstruction is not None
-    assert results.reconstruction.status == "completed"
-    assert results.reconstruction.started_at is not None
-    assert results.reconstruction.completed_at is not None
-    assert results.reconstruction.photon_count == 4
+    result_analysis = manager.get_state().analysis
+    assert result_analysis.unpacking.results[0].status == "completed"
+    reconstruction_results = result_analysis.photon_reconstruction.results
+    assert len(reconstruction_results) == 1
+    assert reconstruction_results[0].status == "completed"
+    assert reconstruction_results[0].started_at is not None
+    assert reconstruction_results[0].completed_at is not None
+    assert reconstruction_results[0].counts.photon_count == 4
 
 
 def test_run_hermes_analysis_marks_reconstruction_failed(tmp_path: Path) -> None:
-    analysis = _analysis(tmp_path, "run_000000.tpx3")
-    _write_fake_unpacker(analysis.unpacker_program.executable_path)
+    analysis = _analysis(tmp_path)
+    _write_fake_unpacker(analysis.unpacking.program.executable_path)
     _write_fake_clusterer(
         analysis.photon_reconstruction.program.executable_path,
         exit_code=1,
@@ -618,24 +515,22 @@ def test_run_hermes_analysis_marks_reconstruction_failed(tmp_path: Path) -> None
     with pytest.raises(HermesReconstructionExecutionError):
         run_hermes_analysis(manager)
 
-    results = manager.get_state().analysis.results
-    assert results.unpacking.status == "completed"
-    assert results.reconstruction is not None
-    assert results.reconstruction.status == "failed"
-    assert results.reconstruction.errors
+    result_analysis = manager.get_state().analysis
+    assert result_analysis.unpacking.results[0].status == "completed"
+    reconstruction_results = result_analysis.photon_reconstruction.results
+    assert reconstruction_results
+    assert reconstruction_results[0].status == "failed"
 
 
 def test_run_hermes_analysis_without_reconstruction_leaves_result_none(
     tmp_path: Path,
 ) -> None:
-    analysis = _analysis(
-        tmp_path, "run_000000.tpx3", with_reconstruction=False
-    )
-    _write_fake_unpacker(analysis.unpacker_program.executable_path)
+    analysis = _analysis(tmp_path, with_reconstruction=False)
+    _write_fake_unpacker(analysis.unpacking.program.executable_path)
     manager = _manager(analysis, tmp_path)
 
     run_hermes_analysis(manager)
 
-    results = manager.get_state().analysis.results
-    assert results.unpacking.status == "completed"
-    assert results.reconstruction is None
+    result_analysis = manager.get_state().analysis
+    assert result_analysis.unpacking.results[0].status == "completed"
+    assert result_analysis.photon_reconstruction is None
