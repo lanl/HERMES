@@ -28,10 +28,9 @@ pixi run python examples/analysis/unpacking/run_unpacking.py \
   examples/analysis/unpacking/multiple_files.yaml
 ```
 
-For a self-contained demonstration, the script copies the checked-in TPX3 file
-five times with unique filename stems before loading this configuration.
-HERMES can then schedule the five raw files using the configured
-`resource_limit_percent`.
+Before loading this configuration, the script copies the checked-in TPX3 file
+five times, giving each copy a unique name. HERMES then schedules the five raw
+files using the configured `resource_limit_percent`.
 
 ## Use another configuration
 
@@ -58,8 +57,8 @@ tpx3_files:
 ```
 
 Each non-comment line in that text file names one raw TPX3 file. Relative
-entries are resolved from the text file's directory. Raw TPX3 filename stems
-must be unique because they are used in the Parquet and summary JSON filenames.
+entries are resolved from the text file's directory. Each raw TPX3 file name
+must be unique because it is reused in the Parquet and summary JSON file names.
 
 ## Output
 
