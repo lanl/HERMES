@@ -6,7 +6,11 @@ from typing import Literal
 
 from pydantic import Field, field_validator, model_validator
 
-from hermes.state.models.shared_models import FileReference, StrictBaseModel
+from hermes.state.models.shared_models import (
+    BinaryProgram,
+    FileReference,
+    StrictBaseModel,
+)
 
 HermesTpx3RunStatus = Literal["planned", "running", "completed", "failed"]
 SortingStrategy = Literal["in_memory", "external_merge"]
@@ -17,25 +21,45 @@ PhotonTimeEstimator = Literal[
     "mean",
     "tot_weighted",
 ]
-PhotonCorrectionModel = Literal["none", "linear", "inverse"]
 
 
-class Tpx3SpidrUnpackerProgram(StrictBaseModel):
-    name: str = Field(min_length=1)
-    executable_path: Path
-    version: str | None = None
+def _expand_file_list(value: object) -> object:
+    """Expand a ``{"file_list": path}`` mapping into a list of file entries.
 
+    Each non-empty, non-comment line of the referenced text file becomes one
+    ``{"path": ...}`` entry. Relative lines resolve against the list's own
+    directory. Any other value passes through unchanged.
+    """
+    if not isinstance(value, dict) or "file_list" not in value:
+        return value
 
-class HermesTpx3UnpackingResult(StrictBaseModel):
-    status: HermesTpx3RunStatus = "planned"
-    started_at: datetime | None = None
-    completed_at: datetime | None = None
+    if set(value) != {"file_list"}:
+        raise ValueError("the file-list form must contain only file_list")
 
+    file_list_value = value["file_list"]
+    if not isinstance(file_list_value, str | Path):
+        raise ValueError("file_list must be a file path")
 
-class PhotonReconstructorProgram(StrictBaseModel):
-    name: str = Field(min_length=1)
-    executable_path: Path
-    version: str | None = None
+    file_list_path = Path(file_list_value).expanduser().resolve(strict=False)
+    try:
+        lines = file_list_path.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeError) as exc:
+        raise ValueError(f"cannot read file list: {file_list_path}") from exc
+
+    files: list[dict[str, Path]] = []
+    for line in lines:
+        entry = line.strip()
+        if not entry or entry.startswith("#"):
+            continue
+        path = Path(entry).expanduser()
+        if not path.is_absolute():
+            path = file_list_path.parent / path
+        files.append({"path": path.resolve(strict=False)})
+
+    if not files:
+        raise ValueError(f"file list contains no file paths: {file_list_path}")
+
+    return files
 
 
 class Tpx3PhotonClusteringSettings(StrictBaseModel):
@@ -79,110 +103,9 @@ class Tpx3PhotonClusteringSettings(StrictBaseModel):
         return self
 
 
-class Tpx3PhotonReconstructionConfiguration(StrictBaseModel):
-    program: PhotonReconstructorProgram
-    pixel_data_directory: Path
-    photon_output_directory: Path
-    settings: Tpx3PhotonClusteringSettings
-    clustering_algorithm: ClusteringAlgorithm = "connected_components"
-
-
-class HermesTpx3ReconstructionResult(StrictBaseModel):
-    status: HermesTpx3RunStatus = "planned"
-    started_at: datetime | None = None
-    completed_at: datetime | None = None
-    photon_count: int = Field(default=0, ge=0)
-    rejected_count: int = Field(default=0, ge=0)
-    warnings: list[str] = Field(default_factory=list)
-    errors: list[str] = Field(default_factory=list)
-
-
-class HermesTpx3AnalysisResults(StrictBaseModel):
-    unpacking: HermesTpx3UnpackingResult = Field(
-        default_factory=HermesTpx3UnpackingResult
-    )
-    reconstruction: HermesTpx3ReconstructionResult | None = None
-
-
-class HermesTpx3AnalysisState(StrictBaseModel):
-    mode: Literal["hermes"] = "hermes"
-    unpacker_program: Tpx3SpidrUnpackerProgram
-    analysis_directory: Path
-    tpx3_files: list[FileReference] = Field(min_length=1)
-    resource_limit_percent: int = Field(default=90, ge=1, le=100)
-    photon_reconstruction: Tpx3PhotonReconstructionConfiguration | None = None
-    results: HermesTpx3AnalysisResults = Field(
-        default_factory=HermesTpx3AnalysisResults
-    )
-
-    @field_validator("tpx3_files", mode="before")
-    @classmethod
-    def expand_tpx3_file_list(cls, value: object) -> object:
-        if not isinstance(value, dict) or "file_list" not in value:
-            return value
-
-        if set(value) != {"file_list"}:
-            raise ValueError(
-                "the tpx3_files file-list form must contain only file_list"
-            )
-
-        file_list_value = value["file_list"]
-        if not isinstance(file_list_value, str | Path):
-            raise ValueError("tpx3_files.file_list must be a file path")
-
-        file_list_path = Path(file_list_value).expanduser().resolve(strict=False)
-        try:
-            lines = file_list_path.read_text(encoding="utf-8").splitlines()
-        except (OSError, UnicodeError) as exc:
-            raise ValueError(
-                f"cannot read raw TPX3 file list: {file_list_path}"
-            ) from exc
-
-        raw_tpx3_files: list[dict[str, Path]] = []
-        for line in lines:
-            entry = line.strip()
-            if not entry or entry.startswith("#"):
-                continue
-
-            raw_tpx3_path = Path(entry).expanduser()
-            if not raw_tpx3_path.is_absolute():
-                raw_tpx3_path = file_list_path.parent / raw_tpx3_path
-            raw_tpx3_files.append(
-                {"path": raw_tpx3_path.resolve(strict=False)}
-            )
-
-        if not raw_tpx3_files:
-            raise ValueError(
-                f"raw TPX3 file list contains no file paths: {file_list_path}"
-            )
-
-        return raw_tpx3_files
-
-    @model_validator(mode="after")
-    def validate_analysis_paths_and_inputs(self) -> HermesTpx3AnalysisState:
-        stems = [raw_file.path.stem for raw_file in self.tpx3_files]
-        duplicate_stems = sorted(
-            stem for stem in set(stems) if stems.count(stem) > 1
-        )
-        if duplicate_stems:
-            duplicates = ", ".join(duplicate_stems)
-            raise ValueError(f"raw TPX3 filename stems must be unique: {duplicates}")
-
-        reconstruction = self.photon_reconstruction
-        if reconstruction is not None:
-            expected_pixel_directory = self.analysis_directory / "pixelHits"
-            if reconstruction.pixel_data_directory != expected_pixel_directory:
-                raise ValueError(
-                    "photon reconstruction pixel_data_directory must equal "
-                    "analysis_directory / 'pixelHits'"
-                )
-            expected_photon_directory = self.analysis_directory / "photons"
-            if reconstruction.photon_output_directory != expected_photon_directory:
-                raise ValueError(
-                    "photon reconstruction photon_output_directory must equal "
-                    "analysis_directory / 'photons'"
-                )
-        return self
+# ---------------------------------------------------------------------------
+# Unpacker summary (parsed from the unpacker binary's sidecar JSON)
+# ---------------------------------------------------------------------------
 
 
 class Tpx3SpidrUnpackingSummary(StrictBaseModel):
@@ -297,6 +220,11 @@ class Tpx3SpidrSummary(StrictBaseModel):
     processing_times_seconds: Tpx3SpidrProcessingTimesSummary
 
 
+# ---------------------------------------------------------------------------
+# Reconstruction summary (parsed from the clusterer binary's sidecar JSON)
+# ---------------------------------------------------------------------------
+
+
 class Tpx3PhotonRejectionCountsSummary(StrictBaseModel):
     below_min_cluster_size: int = Field(ge=0)
     above_max_cluster_size: int = Field(ge=0)
@@ -346,108 +274,6 @@ class Tpx3PhotonReconstructionCountsSummary(StrictBaseModel):
         return self
 
 
-class Tpx3PhotonClusteringSummary(StrictBaseModel):
-    algorithm: ClusteringAlgorithm
-    settings: Tpx3PhotonClusteringSettings
-
-
-class Tpx3PhotonTimingSummary(StrictBaseModel):
-    estimator: Literal["leading_edge"]
-    correction_model: PhotonCorrectionModel
-    calibration_file: Path | None
-    parameters: dict[str, float]
-    high_tot_anchor: float | None = Field(ge=0, le=1023)
-
-    @model_validator(mode="after")
-    def require_correction_details(self) -> Tpx3PhotonTimingSummary:
-        if self.correction_model == "none":
-            if (
-                self.calibration_file is not None
-                or self.parameters
-                or self.high_tot_anchor is not None
-            ):
-                raise ValueError(
-                    "correction_model='none' cannot include calibration details"
-                )
-        elif (
-            self.calibration_file is None
-            or not self.parameters
-            or self.high_tot_anchor is None
-        ):
-            raise ValueError(
-                "a fitted correction requires a calibration file, parameters, "
-                "and high_tot_anchor"
-            )
-        return self
-
-
-class Tpx3PhotonParquetFilesSummary(StrictBaseModel):
-    row_count: int = Field(ge=0)
-    files: list[Path]
-
-    @model_validator(mode="after")
-    def require_files_for_saved_rows(self) -> Tpx3PhotonParquetFilesSummary:
-        if self.row_count == 0 and self.files:
-            raise ValueError("a file group with zero rows cannot list Parquet files")
-        if self.row_count > 0 and not self.files:
-            raise ValueError("a file group with saved rows must list a Parquet file")
-        return self
-
-
-class Tpx3PhotonPixelsParquetSummary(Tpx3PhotonParquetFilesSummary):
-    requested: bool
-
-    @model_validator(mode="after")
-    def require_no_unrequested_membership_files(
-        self,
-    ) -> Tpx3PhotonPixelsParquetSummary:
-        if not self.requested and (self.row_count != 0 or self.files):
-            raise ValueError(
-                "unrequested photon_pixels must have zero rows and no files"
-            )
-        return self
-
-
-class Tpx3PhotonParquetSummary(StrictBaseModel):
-    input_pixel_data_files: list[Path] = Field(min_length=1)
-    photon_events: Tpx3PhotonParquetFilesSummary
-    photon_pixels: Tpx3PhotonPixelsParquetSummary
-
-    @model_validator(mode="after")
-    def require_relative_category_paths(self) -> Tpx3PhotonParquetSummary:
-        for input_path in self.input_pixel_data_files:
-            if (
-                input_path.is_absolute()
-                or ".." in input_path.parts
-                or len(input_path.parts) != 2
-                or input_path.parts[0] != "pixelHits"
-            ):
-                raise ValueError(
-                    "input pixel_data paths must be relative and begin with "
-                    "pixelHits/"
-                )
-
-        file_groups = (
-            ("photon-events", self.photon_events.files),
-            ("photon-pixels", self.photon_pixels.files),
-        )
-        for filename_marker, files in file_groups:
-            for file_path in files:
-                if (
-                    file_path.is_absolute()
-                    or ".." in file_path.parts
-                    or len(file_path.parts) != 2
-                    or file_path.parts[0] != "photons"
-                    or filename_marker not in file_path.name
-                    or file_path.suffix != ".parquet"
-                ):
-                    raise ValueError(
-                        f"{filename_marker} paths must be relative Parquet "
-                        "paths beginning with photons/"
-                    )
-        return self
-
-
 class Tpx3PhotonThroughputSummary(StrictBaseModel):
     pixels_per_second: float = Field(ge=0)
     photons_per_second: float = Field(ge=0)
@@ -464,36 +290,117 @@ class Tpx3PhotonProcessingTimesSummary(StrictBaseModel):
 class Tpx3PhotonReconstructionSummary(StrictBaseModel):
     schema_version: Literal[1] = 1
     reconstruction: Tpx3PhotonReconstructionCountsSummary
-    clustering: Tpx3PhotonClusteringSummary
-    photon_timing: Tpx3PhotonTimingSummary
-    parquet: Tpx3PhotonParquetSummary
     processing_times_seconds: Tpx3PhotonProcessingTimesSummary
 
+
+# ---------------------------------------------------------------------------
+# Per-file results
+# ---------------------------------------------------------------------------
+
+
+class HermesTpx3UnpackingResult(StrictBaseModel):
+    input_file: FileReference
+    status: HermesTpx3RunStatus = "planned"
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+
+
+class HermesTpx3ReconstructionResult(StrictBaseModel):
+    input_file: FileReference
+    output_file: Path
+    status: HermesTpx3RunStatus = "planned"
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    counts: Tpx3PhotonReconstructionCountsSummary | None = None
+
+
+# ---------------------------------------------------------------------------
+# Stage containers
+# ---------------------------------------------------------------------------
+
+
+class Tpx3UnpackingRuntimeOptions(StrictBaseModel):
+    overwrite: bool = False
+    time_sort: bool = True
+
+
+class Tpx3Unpacking(StrictBaseModel):
+    program: BinaryProgram
+    tpx3_files: list[FileReference] = Field(min_length=1)
+    output_directory: Path | None = None
+    runtime_options: Tpx3UnpackingRuntimeOptions = Field(
+        default_factory=Tpx3UnpackingRuntimeOptions
+    )
+    results: list[HermesTpx3UnpackingResult] = Field(default_factory=list)
+
+    @field_validator("tpx3_files", mode="before")
+    @classmethod
+    def expand_tpx3_file_list(cls, value: object) -> object:
+        return _expand_file_list(value)
+
     @model_validator(mode="after")
-    def require_matching_settings_and_counts(
-        self,
-    ) -> Tpx3PhotonReconstructionSummary:
-        settings = self.clustering.settings
-        if settings.photon_time_estimator != self.photon_timing.estimator:
+    def require_unique_stems(self) -> Tpx3Unpacking:
+        stems = [raw_file.path.stem for raw_file in self.tpx3_files]
+        duplicate_stems = sorted(
+            stem for stem in set(stems) if stems.count(stem) > 1
+        )
+        if duplicate_stems:
             raise ValueError(
-                "photon timing estimator must match the clustering settings"
+                "raw TPX3 filename stems must be unique: "
+                + ", ".join(duplicate_stems)
             )
-        if settings.save_photon_pixels != self.parquet.photon_pixels.requested:
+        return self
+
+
+class Tpx3PhotonReconstructionRuntimeOptions(StrictBaseModel):
+    overwrite: bool = False
+
+
+class Tpx3PhotonReconstruction(StrictBaseModel):
+    program: BinaryProgram
+    # "auto" gathers pixel files from the unpacking stage's output; a list names
+    # specific pixelHits Parquet files to reconstruct.
+    pixel_parquet_files: Literal["auto"] | list[FileReference] = "auto"
+    output_directory: Path | None = None
+    clustering_algorithm: ClusteringAlgorithm = "connected_components"
+    settings: Tpx3PhotonClusteringSettings
+    runtime_options: Tpx3PhotonReconstructionRuntimeOptions = Field(
+        default_factory=Tpx3PhotonReconstructionRuntimeOptions
+    )
+    results: list[HermesTpx3ReconstructionResult] = Field(default_factory=list)
+
+    @field_validator("pixel_parquet_files", mode="before")
+    @classmethod
+    def expand_pixel_file_list(cls, value: object) -> object:
+        return _expand_file_list(value)
+
+    @field_validator("pixel_parquet_files", mode="after")
+    @classmethod
+    def require_non_empty_file_list(cls, value: object) -> object:
+        if isinstance(value, list) and not value:
             raise ValueError(
-                "photon_pixels requested value must match save_photon_pixels"
+                "pixel_parquet_files must be 'auto' or a non-empty file list"
             )
-        if (
-            settings.timewalk_calibration_file
-            != self.photon_timing.calibration_file
-        ):
-            raise ValueError(
-                "photon timing calibration file must match clustering settings"
-            )
-        if (
-            self.reconstruction.photon_count
-            != self.parquet.photon_events.row_count
-        ):
-            raise ValueError(
-                "photon_events row_count must match reconstruction photon_count"
-            )
+        return value
+
+
+# ---------------------------------------------------------------------------
+# Analysis state
+# ---------------------------------------------------------------------------
+
+
+class HermesTpx3AnalysisState(StrictBaseModel):
+    mode: Literal["hermes"] = "hermes"
+    analysis_directory: Path
+    resource_limit_percent: int = Field(default=90, ge=1, le=100)
+    unpacking: Tpx3Unpacking
+    photon_reconstruction: Tpx3PhotonReconstruction | None = None
+
+    @model_validator(mode="after")
+    def derive_output_directories(self) -> HermesTpx3AnalysisState:
+        if self.unpacking.output_directory is None:
+            self.unpacking.output_directory = self.analysis_directory
+        reconstruction = self.photon_reconstruction
+        if reconstruction is not None and reconstruction.output_directory is None:
+            reconstruction.output_directory = self.analysis_directory / "photons"
         return self
