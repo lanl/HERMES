@@ -204,16 +204,16 @@ def run_hermes_analysis(
         unpacking_results = [
             HermesTpx3UnpackingResult(
                 input_file=raw_file,
-                status="completed",
-                started_at=started_at,
-                completed_at=completed_at,
+                status="completed" if action == "run" else "skipped",
+                started_at=started_at if action == "run" else None,
+                completed_at=completed_at if action == "run" else None,
             )
-            for raw_file, _ in unpacking_plan
+            for raw_file, action in unpacking_plan
         ]
         _apply_unpacking_results(
             state_manager,
             unpacking_results,
-            justification="every raw TPX3 file passed unpacking validation",
+            justification="unpacked new raw TPX3 files; revalidated existing outputs",
         )
         log_overall_completion(
             raw_file_count=len(unpacking_plan),
