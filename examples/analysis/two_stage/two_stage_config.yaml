@@ -7,18 +7,18 @@ environment:
 
 analysis:
   mode: hermes
-  unpacker_program:
-    name: tpx3-spidr-cpp
-    executable_path: build/backends/tpx3-spidr/hermes-tpx3-spidr
   analysis_directory: data/examples/analysis/two_stage/analysis
-  tpx3_files:
-    - path: tests/data/Example_1kHz_5frames.tpx3
+  unpacking:
+    program:
+      name: tpx3-spidr-cpp
+      executable_path: build/backends/tpx3-spidr/hermes-tpx3-spidr
+    tpx3_files:
+      - path: tests/data/Example_1kHz_5frames.tpx3
   photon_reconstruction:
     program:
       name: photon-clusterer-cpp
       executable_path: build/backends/photon-clusterer/hermes-photon-clusterer
-    pixel_data_directory: data/examples/analysis/two_stage/analysis/pixelHits
-    photon_output_directory: data/examples/analysis/two_stage/analysis/photons
+    pixel_parquet_files: auto
     clustering_algorithm: connected_components
     settings:
       max_time_spread_ticks: 491520
