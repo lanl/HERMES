@@ -12,5 +12,7 @@ analysis:
     program:
       name: tpx3-spidr-cpp
       executable_path: build/backends/tpx3-spidr/hermes-tpx3-spidr
+    runtime_options:
+      overwrite: true
     tpx3_files:
       - path: tests/data/Example_1kHz_5frames.tpx3
