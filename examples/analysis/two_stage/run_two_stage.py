@@ -28,26 +28,34 @@ def main(input_yaml_path: Path = DEFAULT_INPUT_YAML_PATH) -> None:
     final_record = workflow.record
     final_analysis = final_record.analysis
     final_reconstruction = final_analysis.photon_reconstruction
-    reconstruction = final_analysis.results.reconstruction
+    reconstruction_results = final_reconstruction.results
     save_hermes_record_to_yaml(final_record, final_record_path)
 
     # Step 5: Display the unpacking and photon reconstruction results
-    print(f"Raw TPX3 files: {len(final_analysis.tpx3_files)}")
-    for raw_tpx3_file in final_analysis.tpx3_files:
+    raw_tpx3_files = final_analysis.unpacking.tpx3_files
+    print(f"Raw TPX3 files: {len(raw_tpx3_files)}")
+    for raw_tpx3_file in raw_tpx3_files:
         print(f"  - {raw_tpx3_file.path}")
     print(f"Unpacked this run: {len(unpacked_raw_files)}")
     print(
         "Skipped existing valid unpacking output: "
-        f"{len(final_analysis.tpx3_files) - len(unpacked_raw_files)}"
+        f"{len(raw_tpx3_files) - len(unpacked_raw_files)}"
     )
-    print(f"Photon reconstruction status: {reconstruction.status}")
-    print(f"Photons: {reconstruction.photon_count}")
-    print(f"Rejected clusters: {reconstruction.rejected_count}")
+    photon_count = sum(
+        result.counts.photon_count
+        for result in reconstruction_results
+        if result.counts is not None
+    )
+    rejected_count = sum(
+        result.counts.rejected_component_count
+        for result in reconstruction_results
+        if result.counts is not None
+    )
+    print(f"Reconstructed photon files: {len(reconstruction_results)}")
+    print(f"Photons: {photon_count}")
+    print(f"Rejected clusters: {rejected_count}")
     print(f"Analysis directory: {final_analysis.analysis_directory}")
-    print(
-        "Photon output directory: "
-        f"{final_reconstruction.photon_output_directory}"
-    )
+    print(f"Photon output directory: {final_reconstruction.output_directory}")
     print(f"HERMES state file: {final_record_path}")
 
 
