@@ -211,7 +211,7 @@ def test_real_cpp_unpacker_handles_two_inputs_and_skips_completed_files(
     ]
     assert skipped_inputs == ["example-first.tpx3", "example-second.tpx3"]
     final_results = manager.get_state().analysis.unpacking.results
-    assert all(result.status == "completed" for result in final_results)
+    assert all(result.status == "skipped" for result in final_results)
 
 
 def _contains_key(value: object, keys: set[str]) -> bool:

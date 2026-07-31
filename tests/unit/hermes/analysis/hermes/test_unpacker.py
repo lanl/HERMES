@@ -490,9 +490,9 @@ def test_run_with_only_completed_files_does_not_mark_running(
     assert run_hermes_analysis(manager) == []
     results = manager.get_state().analysis.unpacking.results
     assert len(results) == 1
-    assert results[0].status == "completed"
-    assert results[0].started_at is not None
-    assert results[0].completed_at is not None
+    assert results[0].status == "skipped"
+    assert results[0].started_at is None
+    assert results[0].completed_at is None
 
 
 def test_run_rejects_empir_analysis(tmp_path: Path) -> None:
