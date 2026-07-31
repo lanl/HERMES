@@ -275,7 +275,7 @@ def _run_photon_reconstruction(
                     HermesTpx3ReconstructionResult(
                         input_file=input_file,
                         output_file=output_file,
-                        status="completed",
+                        status="skipped",
                     )
                 )
 
