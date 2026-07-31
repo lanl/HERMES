@@ -14,7 +14,6 @@
 
 namespace {
 
-using hermes_photon_clusterer::discoverPixelFiles;
 using hermes_photon_clusterer::PixelHit;
 using hermes_photon_clusterer::readPixelHits;
 using hermes_photon_clusterer::readPixelHitsFiltered;
@@ -77,25 +76,17 @@ int main() {
     std::filesystem::remove_all(base);
     std::filesystem::create_directories(base);
 
-    // Two contiguous parts for one chip, read back in part order.
-    writePixelFile((base / "raw-chip-0-part-00000.parquet").string(),
-                   {PixelHit{10, 20, 100, 1000}, PixelHit{11, 20, 90, 1005}});
-    writePixelFile((base / "raw-chip-0-part-00001.parquet").string(),
-                   {PixelHit{12, 20, 80, 1010}});
-    // A file for a different stem must be ignored.
-    writePixelFile((base / "other-chip-0-part-00000.parquet").string(),
-                   {PixelHit{0, 0, 1, 1}});
-
-    auto groups = discoverPixelFiles(base.string(), "raw");
-    test.expect(groups.errors.empty(), "discovery reports no errors");
-    test.expect(groups.files_by_chip.count(0) == 1, "chip 0 discovered");
-    test.expectEqual(groups.files_by_chip[0].size(), std::size_t{2},
-                     "two parts discovered for chip 0");
+    // A single pixel file is read back in row order.
+    const auto pixel_file =
+        (base / "raw-chip-0-part-00000.parquet").string();
+    writePixelFile(pixel_file,
+                   {PixelHit{10, 20, 100, 1000}, PixelHit{11, 20, 90, 1005},
+                    PixelHit{12, 20, 80, 1010}});
 
     std::vector<PixelHit> read_hits;
     std::vector<std::string> errors;
     const bool ok = readPixelHits(
-        groups.files_by_chip[0],
+        {pixel_file},
         [&](const PixelHit& hit) { read_hits.push_back(hit); }, errors);
     test.expect(ok, "reading succeeds");
     test.expectEqual(read_hits.size(), std::size_t{3}, "three rows read");
@@ -105,7 +96,11 @@ int main() {
         test.expectEqual(read_hits[0].timestamp_canonical,
                          std::uint64_t{1000}, "row 0 timestamp");
         test.expectEqual(read_hits[2].timestamp_canonical,
-                         std::uint64_t{1010}, "row 2 timestamp (part 1)");
+                         std::uint64_t{1010}, "row 2 timestamp");
+        test.expectEqual(read_hits[0].pixel_event_id, std::uint64_t{0},
+                         "row 0 pixel_event_id is zero-based");
+        test.expectEqual(read_hits[2].pixel_event_id, std::uint64_t{2},
+                         "row 2 pixel_event_id");
     }
 
     // The per-pixel min-ToT filter drops low-ToT noise rows as they are read.
@@ -113,7 +108,7 @@ int main() {
     std::uint64_t rejected = 0;
     std::vector<std::string> filter_errors;
     const bool filter_ok = readPixelHitsFiltered(
-        groups.files_by_chip[0], 90,
+        {pixel_file}, 90,
         [&](const PixelHit& hit) { kept_hits.push_back(hit); }, rejected,
         filter_errors);
     test.expect(filter_ok, "filtered reading succeeds");
@@ -123,17 +118,6 @@ int main() {
     for (const auto& hit : kept_hits) {
         test.expect(hit.tot_raw >= 90, "kept rows meet the ToT threshold");
     }
-
-    // A non-contiguous part set is rejected.
-    const auto gap = base / "gap";
-    std::filesystem::create_directories(gap);
-    writePixelFile((gap / "raw-chip-0-part-00000.parquet").string(),
-                   {PixelHit{0, 0, 1, 1}});
-    writePixelFile((gap / "raw-chip-0-part-00002.parquet").string(),
-                   {PixelHit{0, 0, 1, 2}});
-    auto gap_groups = discoverPixelFiles(gap.string(), "raw");
-    test.expect(!gap_groups.errors.empty(),
-                "non-contiguous parts report an error");
 
     std::filesystem::remove_all(base);
     return test.finish();
