@@ -3,7 +3,6 @@
 
 #include <cstdint>
 #include <functional>
-#include <map>
 #include <string>
 #include <vector>
 
@@ -20,21 +19,6 @@ struct PixelHit {
     // reference the source pixel in photon_pixels output.
     std::uint64_t pixel_event_id = 0;
 };
-
-// Pixel-data Parquet files for one raw stem, grouped by chip index and ordered
-// by part number. The unpacker writes each chip's parts in timestamp order and
-// numbers them contiguously from zero, so reading parts in order yields a
-// time-sorted stream per chip.
-struct PixelFileGroups {
-    std::map<int, std::vector<std::string>> files_by_chip;
-    std::vector<std::string> errors;
-};
-
-// Discover pixel_data files named "<stem>-chip-<chip>-part-<00000>.parquet" in
-// pixel_data_directory for the given raw stem. Reports an error when a chip's
-// part numbers are not contiguous from zero.
-PixelFileGroups discoverPixelFiles(const std::string& pixel_data_directory,
-                                   const std::string& raw_file_stem);
 
 // Stream the pixel_data rows of the ordered files, invoking on_hit for each row
 // in file/part order. Returns false and appends to errors on a read failure.
