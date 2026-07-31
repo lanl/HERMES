@@ -43,7 +43,7 @@ def test_checked_in_yaml_configures_unpacking_and_clustering(
     assert initial_record.analysis.analysis_directory == Path(
         "data/examples/analysis/timewalk_calibration/analysis"
     )
-    assert initial_record.analysis.tpx3_files == [
+    assert initial_record.analysis.unpacking.tpx3_files == [
         FileReference(path=Path("tests/data/Example_1kHz_5frames.tpx3"))
     ]
     assert initial_record.analysis.photon_reconstruction is None
@@ -89,12 +89,13 @@ environment:
   working_dir: {working_directory}
 analysis:
   mode: hermes
-  unpacker_program:
-    name: tpx3-spidr-cpp
-    executable_path: {unpacker_executable}
   analysis_directory: {analysis_directory}
-  tpx3_files:
-    - path: {raw_tpx3_file}
+  unpacking:
+    program:
+      name: tpx3-spidr-cpp
+      executable_path: {unpacker_executable}
+    tpx3_files:
+      - path: {raw_tpx3_file}
 """,
         encoding="utf-8",
     )
@@ -109,7 +110,7 @@ analysis:
         def run_analysis(self) -> list[FileReference]:
             analysis = self.record.analysis
             assert isinstance(analysis, HermesTpx3AnalysisState)
-            return analysis.tpx3_files
+            return analysis.unpacking.tpx3_files
 
     calibration_calls: list[dict[str, object]] = []
 
