@@ -16,7 +16,7 @@ from hermes.state.models.analysis.empir import (
     EmpirPixelToPhotonSettings,
     EmpirPixelToPhotonState,
 )
-from hermes.state.models.shared_models import FileReference
+from hermes.state.models.shared_models import BinaryProgram, FileReference
 
 
 def test_empir_analysis_state_serializes_direct_binary_pipeline(
@@ -31,7 +31,10 @@ def test_empir_analysis_state_serializes_direct_binary_pipeline(
         save_photon_files=False,
         save_event_files=True,
         pixel_to_photon=EmpirPixelToPhotonState(
-            executable_path=tmp_path / "bin/empir_pixel2photon_tpx3spidr",
+            program=BinaryProgram(
+                name="empir-pixel2photon",
+                executable_path=tmp_path / "bin/empir_pixel2photon_tpx3spidr",
+            ),
             settings=EmpirPixelToPhotonSettings(
                 spatial_distance_pixels=5,
                 time_distance_seconds=500e-9,
@@ -47,7 +50,10 @@ def test_empir_analysis_state_serializes_direct_binary_pipeline(
             ],
         ),
         photon_to_event=EmpirPhotonToEventState(
-            executable_path=tmp_path / "bin/empir_photon2event",
+            program=BinaryProgram(
+                name="empir-photon2event",
+                executable_path=tmp_path / "bin/empir_photon2event",
+            ),
             settings=EmpirPhotonToEventSettings(
                 spatial_distance_pixels=4,
                 time_distance_seconds=100e-6,
@@ -62,7 +68,10 @@ def test_empir_analysis_state_serializes_direct_binary_pipeline(
             ],
         ),
         event_to_image=EmpirEventToImageState(
-            executable_path=tmp_path / "bin/empir_event2image",
+            program=BinaryProgram(
+                name="empir-event2image",
+                executable_path=tmp_path / "bin/empir_event2image",
+            ),
             settings=EmpirEventToImageSettings(
                 image_width_pixels=2048,
                 image_height_pixels=2048,
@@ -121,7 +130,10 @@ def test_event_to_image_settings_reject_invalid_combinations(
 def test_empir_stage_requires_at_least_one_file(tmp_path: Path) -> None:
     with pytest.raises(ValidationError, match="at least 1 item"):
         EmpirPixelToPhotonState(
-            executable_path=tmp_path / "empir_pixel2photon_tpx3spidr",
+            program=BinaryProgram(
+                name="empir-pixel2photon",
+                executable_path=tmp_path / "empir_pixel2photon_tpx3spidr",
+            ),
             settings=EmpirPixelToPhotonSettings(
                 spatial_distance_pixels=5,
                 time_distance_seconds=500e-9,

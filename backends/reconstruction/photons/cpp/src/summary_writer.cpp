@@ -10,48 +10,6 @@ namespace hermes_photon_clusterer {
 
 using json = nlohmann::ordered_json;
 
-namespace {
-
-json settingsJson(const SummaryClusteringSettings& s) {
-    json j;
-    j["max_time_spread_ticks"] = s.max_time_spread_ticks;
-    j["min_cluster_size"] = s.min_cluster_size;
-    j["max_cluster_size"] = s.max_cluster_size;
-    j["min_pixel_tot_raw"] = s.min_pixel_tot_raw;
-    j["min_cluster_tot_raw"] = s.min_cluster_tot_raw;
-    j["max_cluster_tot_raw"] = s.max_cluster_tot_raw;
-    j["max_aspect_ratio"] = s.max_aspect_ratio;
-    j["min_filled_fraction"] = s.min_filled_fraction;
-    j["adjacency"] = s.adjacency;
-    j["position_averaging"] = s.position_averaging;
-    j["photon_time_estimator"] = s.photon_time_estimator;
-    if (s.timewalk_calibration_file.empty()) {
-        j["timewalk_calibration_file"] = nullptr;
-    } else {
-        j["timewalk_calibration_file"] = s.timewalk_calibration_file;
-    }
-    j["save_photon_pixels"] = s.save_photon_pixels;
-    return j;
-}
-
-json timingJson(const SummaryPhotonTiming& t) {
-    json j;
-    j["estimator"] = t.estimator;
-    j["correction_model"] = t.correction_model;
-    j["calibration_file"] =
-        t.calibration_file.empty() ? json(nullptr) : json(t.calibration_file);
-    json parameters = json::object();
-    for (const auto& [key, value] : t.parameters) {
-        parameters[key] = value;
-    }
-    j["parameters"] = parameters;
-    j["high_tot_anchor"] =
-        t.has_high_tot_anchor ? json(t.high_tot_anchor) : json(nullptr);
-    return j;
-}
-
-}  // namespace
-
 std::string generateReconstructionSummaryJson(
     const ReconstructionSummaryContent& content) {
     const double pixels_per_second =
@@ -95,28 +53,6 @@ std::string generateReconstructionSummaryJson(
          }},
         {"warnings", content.warnings},
         {"errors", content.errors},
-    };
-
-    j["clustering"] = {
-        {"algorithm", content.algorithm},
-        {"settings", settingsJson(content.settings)},
-    };
-
-    j["photon_timing"] = timingJson(content.photon_timing);
-
-    j["parquet"] = {
-        {"input_pixel_data_files", content.input_pixel_data_files},
-        {"photon_events",
-         {
-             {"row_count", content.photon_events_row_count},
-             {"files", content.photon_events_files},
-         }},
-        {"photon_pixels",
-         {
-             {"requested", content.photon_pixels_requested},
-             {"row_count", content.photon_pixels_row_count},
-             {"files", content.photon_pixels_files},
-         }},
     };
 
     j["processing_times_seconds"] = {

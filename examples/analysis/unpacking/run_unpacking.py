@@ -57,13 +57,14 @@ def main(input_yaml_path: Path = DEFAULT_INPUT_YAML_PATH) -> None:
     save_hermes_record_to_yaml(final_record, final_record_path)
 
     # Step 6: Display the unpacking results
-    print(f"Raw TPX3 files: {len(final_analysis.tpx3_files)}")
-    for raw_tpx3_file in final_analysis.tpx3_files:
+    raw_tpx3_files = final_analysis.unpacking.tpx3_files
+    print(f"Raw TPX3 files: {len(raw_tpx3_files)}")
+    for raw_tpx3_file in raw_tpx3_files:
         print(f"  - {raw_tpx3_file.path}")
     print(f"Unpacked this run: {len(unpacked_raw_files)}")
     print(
         "Skipped existing valid outputs: "
-        f"{len(final_analysis.tpx3_files) - len(unpacked_raw_files)}"
+        f"{len(raw_tpx3_files) - len(unpacked_raw_files)}"
     )
     print(f"Analysis directory: {final_analysis.analysis_directory}")
     print(f"HERMES state file: {final_record_path}")

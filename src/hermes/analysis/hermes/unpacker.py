@@ -69,14 +69,16 @@ def derive_unpacker_command(
     overwrite: bool = False,
 ) -> list[str]:
     command = [
-        str(analysis.unpacker_program.executable_path),
+        str(analysis.unpacking.program.executable_path),
         "--input",
         str(raw_file.path),
         "--output",
-        str(analysis.analysis_directory),
+        str(analysis.unpacking.output_directory),
     ]
     if overwrite:
         command.append("--overwrite")
+    if not analysis.unpacking.runtime_options.time_sort:
+        command.extend(["--time-sort", "false"])
     return command
 
 
@@ -88,10 +90,10 @@ def plan_unpacking(
     _validate_program_and_inputs(analysis)
 
     if overwrite:
-        return [(raw_file, "run") for raw_file in analysis.tpx3_files]
+        return [(raw_file, "run") for raw_file in analysis.unpacking.tpx3_files]
 
     plan: UnpackingPlan = []
-    for raw_file in analysis.tpx3_files:
+    for raw_file in analysis.unpacking.tpx3_files:
         summary_path = derive_summary_path(analysis, raw_file)
         matching_parquet_files = _matching_parquet_files(
             analysis.analysis_directory,
@@ -127,7 +129,7 @@ def execute_unpacker(
     command = derive_unpacker_command(analysis, raw_file, overwrite=overwrite)
     summary_path = derive_summary_path(analysis, raw_file)
     resolved_executable_path = (
-        analysis.unpacker_program.executable_path.resolve()
+        analysis.unpacking.program.executable_path.resolve()
     )
     started = perf_counter()
     _ANALYSIS_LOGGER.info(
@@ -137,9 +139,9 @@ def execute_unpacker(
         raw_tpx3_size_bytes=raw_file.path.stat().st_size,
         analysis_directory=str(analysis.analysis_directory),
         summary_json_file=str(summary_path),
-        executable_path=str(analysis.unpacker_program.executable_path),
+        executable_path=str(analysis.unpacking.program.executable_path),
         resolved_executable_path=str(resolved_executable_path),
-        executable_version=analysis.unpacker_program.version,
+        executable_version=analysis.unpacking.program.version,
         command=command,
     )
 
@@ -226,7 +228,7 @@ def log_skipped_input(
     analysis: HermesTpx3AnalysisState,
     raw_file: FileReference,
 ) -> None:
-    _ANALYSIS_LOGGER.info(
+    _ANALYSIS_LOGGER.warning(
         "analysis.tpx3_unpacking.skipped",
         event_type="analysis.tpx3_unpacking.skipped",
         raw_tpx3_file=str(raw_file.path),
@@ -261,20 +263,20 @@ def log_overall_failure(error: Exception) -> None:
 
 
 def _validate_program_and_inputs(analysis: HermesTpx3AnalysisState) -> None:
-    executable = analysis.unpacker_program.executable_path
+    executable = analysis.unpacking.program.executable_path
     if not executable.is_file():
         raise HermesTpx3PreflightError(
             f"unpacker executable does not exist: {executable}; build the "
-            "binary (e.g. via pixi) and set unpacker_program.executable_path"
+            "binary (e.g. via pixi) and set unpacking.program.executable_path"
         )
 
-    for raw_file in analysis.tpx3_files:
+    for raw_file in analysis.unpacking.tpx3_files:
         if not raw_file.path.is_file():
             raise HermesTpx3PreflightError(
                 f"raw TPX3 file does not exist: {raw_file.path}"
             )
 
-    stems = [raw_file.path.stem for raw_file in analysis.tpx3_files]
+    stems = [raw_file.path.stem for raw_file in analysis.unpacking.tpx3_files]
     if len(stems) != len(set(stems)):
         raise HermesTpx3PreflightError(
             "raw TPX3 filename stems must be unique"

@@ -11,14 +11,13 @@ from hermes.state.models.acquisition.serval import (
     ServalEnvironment,
 )
 from hermes.state.models.analysis.hermes_tpx3_spidr import (
-    HermesTpx3AnalysisResults,
     HermesTpx3AnalysisState,
     HermesTpx3UnpackingResult,
-    Tpx3SpidrUnpackerProgram,
+    Tpx3Unpacking,
 )
 from hermes.state.models.environment import RuntimeEnvironment
 from hermes.state.models.measurement import MeasurementInfo
-from hermes.state.models.shared_models import FileReference
+from hermes.state.models.shared_models import BinaryProgram, FileReference
 from hermes.state.state import HermesRecord
 
 
@@ -29,8 +28,6 @@ def test_hermes_record_serializes_paths_datetimes_and_mode_tags(tmp_path: Path) 
     raw_file = FileReference(
         path=tmp_path / "run-001/data/tpx3/raw.tpx3",
         media_type="application/octet-stream",
-        sha256=HASH,
-        size_bytes=1024,
     )
     record = HermesRecord(
         measurement_info=MeasurementInfo(
@@ -44,15 +41,20 @@ def test_hermes_record_serializes_paths_datetimes_and_mode_tags(tmp_path: Path) 
             result=ServalAcquisitionResult(status="completed", output_files=[raw_file])
         ),
         analysis=HermesTpx3AnalysisState(
-            unpacker_program=Tpx3SpidrUnpackerProgram(
-                name="tpx3-spidr-cpp",
-                executable_path=tmp_path / "bin/hermes-tpx3-spidr",
-                version="0.1.0",
-            ),
             analysis_directory=tmp_path / "run-001/data/analyzed",
-            tpx3_files=[raw_file],
-            results=HermesTpx3AnalysisResults(
-                unpacking=HermesTpx3UnpackingResult(status="completed")
+            unpacking=Tpx3Unpacking(
+                program=BinaryProgram(
+                    name="tpx3-spidr-cpp",
+                    executable_path=tmp_path / "bin/hermes-tpx3-spidr",
+                    version="0.1.0",
+                ),
+                tpx3_files=[raw_file],
+                results=[
+                    HermesTpx3UnpackingResult(
+                        input_file=raw_file,
+                        status="completed",
+                    )
+                ],
             ),
         ),
     )
@@ -69,8 +71,12 @@ def test_hermes_record_serializes_paths_datetimes_and_mode_tags(tmp_path: Path) 
         "raw.tpx3"
     )
     assert dumped["analysis"]["mode"] == "hermes"
-    assert dumped["analysis"]["tpx3_files"][0]["path"].endswith("raw.tpx3")
-    assert dumped["analysis"]["results"]["unpacking"]["status"] == "completed"
+    assert dumped["analysis"]["unpacking"]["tpx3_files"][0]["path"].endswith(
+        "raw.tpx3"
+    )
+    assert (
+        dumped["analysis"]["unpacking"]["results"][0]["status"] == "completed"
+    )
 
 
 def test_hermes_record_serializes_serval_requested_applied_and_calibration(

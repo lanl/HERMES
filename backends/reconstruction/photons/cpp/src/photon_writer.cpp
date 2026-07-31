@@ -16,21 +16,6 @@
 
 namespace hermes_photon_clusterer {
 
-namespace {
-
-// "<stem>-chip-<chip>-<group>-part-<00000>.parquet".
-std::string makePhotonFileName(const std::string& stem,
-                               int chip_index,
-                               const std::string& group,
-                               std::uint64_t part) {
-    std::ostringstream name;
-    name << stem << "-chip-" << chip_index << "-" << group << "-part-"
-         << std::setw(5) << std::setfill('0') << part << ".parquet";
-    return name.str();
-}
-
-}  // namespace
-
 #ifdef HERMES_HAS_ARROW_PARQUET
 
 namespace {
@@ -79,26 +64,30 @@ std::shared_ptr<arrow::KeyValueMetadata> buildFileMetadata(
     return std::make_shared<arrow::KeyValueMetadata>(keys, values);
 }
 
-bool ensureDirectory(const std::string& path, std::vector<std::string>& errors) {
+// Creates the parent directory of output_file_path if it has one.
+bool ensureParentDirectory(const std::string& output_file_path,
+                           std::vector<std::string>& errors) {
+    const std::filesystem::path parent =
+        std::filesystem::path(output_file_path).parent_path();
+    if (parent.empty()) {
+        return true;
+    }
     std::error_code ec;
-    std::filesystem::create_directories(path, ec);
+    std::filesystem::create_directories(parent, ec);
     if (ec) {
-        errors.push_back("Failed to create photon output directory " + path +
-                         ": " + ec.message());
+        errors.push_back("Failed to create photon output directory " +
+                         parent.string() + ": " + ec.message());
         return false;
     }
     return true;
 }
 
-// Writes one Arrow table to a Parquet part file. When overwrite is false,
+// Writes one Arrow table to a single Parquet file. When overwrite is false,
 // refuses to replace an existing file; when true, replaces it.
-bool writeTablePart(const std::shared_ptr<arrow::Table>& table,
-                    const std::string& directory,
-                    const std::string& filename,
-                    std::uint64_t rows_per_part,
-                    bool overwrite,
-                    std::vector<std::string>& errors) {
-    const std::string full_path = directory + "/" + filename;
+bool writeTable(const std::shared_ptr<arrow::Table>& table,
+                const std::string& full_path,
+                bool overwrite,
+                std::vector<std::string>& errors) {
     if (!overwrite && std::filesystem::exists(full_path)) {
         errors.push_back("Refusing to overwrite existing photon file " +
                          full_path);
@@ -114,35 +103,15 @@ bool writeTablePart(const std::shared_ptr<arrow::Table>& table,
     // metadata, so a reader recovers it; WriteTable drops it otherwise.
     auto arrow_properties =
         parquet::ArrowWriterProperties::Builder().store_schema()->build();
+    const std::int64_t chunk_size =
+        std::max<std::int64_t>(table->num_rows(), 1);
     auto status = parquet::arrow::WriteTable(
-        *table, arrow::default_memory_pool(), *out_result, rows_per_part,
+        *table, arrow::default_memory_pool(), *out_result, chunk_size,
         parquet::default_writer_properties(), arrow_properties);
     if (!status.ok()) {
         errors.push_back("Failed to write photon file " + full_path + ": " +
                          status.ToString());
         return false;
-    }
-    return true;
-}
-
-// Refuses the whole write up front if any expected part file already exists, so
-// a refused overwrite never leaves some parts written and others not. Only used
-// when overwrite is false. Returns false and appends an error on the first
-// existing part.
-bool ensureNoExistingParts(const std::string& directory,
-                           const std::string& stem,
-                           int chip_index,
-                           const std::string& group,
-                           std::uint64_t parts,
-                           std::vector<std::string>& errors) {
-    for (std::uint64_t part = 0; part < parts; ++part) {
-        const std::string full_path =
-            directory + "/" + makePhotonFileName(stem, chip_index, group, part);
-        if (std::filesystem::exists(full_path)) {
-            errors.push_back("Refusing to overwrite existing photon file " +
-                             full_path);
-            return false;
-        }
     }
     return true;
 }
@@ -241,81 +210,49 @@ std::shared_ptr<arrow::Table> buildPixelsTable(
 
 PhotonWriteResult writePhotonEventsParquet(
     const std::vector<Photon>& photons,
-    const std::string& photon_output_directory,
+    const std::string& output_file_path,
     const PhotonFileMetadata& metadata,
-    std::uint64_t rows_per_part,
     bool overwrite,
     std::vector<std::string>& errors) {
     PhotonWriteResult result;
     if (photons.empty()) {
         return result;
     }
-    if (!ensureDirectory(photon_output_directory, errors)) {
+    if (!ensureParentDirectory(output_file_path, errors)) {
         return {};
     }
 
     const auto kv = buildFileMetadata(metadata, kPhotonEventsSchemaName);
-    const std::uint64_t total = photons.size();
-    const std::uint64_t parts = (total + rows_per_part - 1) / rows_per_part;
-    if (!overwrite &&
-        !ensureNoExistingParts(photon_output_directory, metadata.raw_file_stem,
-                               metadata.chip_index, "photon-events", parts,
-                               errors)) {
+    auto table = buildEventsTable(photons, 0, photons.size(), kv);
+    if (!writeTable(table, output_file_path, overwrite, errors)) {
         return {};
     }
-    for (std::uint64_t part = 0; part < parts; ++part) {
-        const std::uint64_t start = part * rows_per_part;
-        const std::uint64_t count = std::min(rows_per_part, total - start);
-        auto table = buildEventsTable(photons, start, count, kv);
-        const std::string filename = makePhotonFileName(
-            metadata.raw_file_stem, metadata.chip_index, "photon-events", part);
-        if (!writeTablePart(table, photon_output_directory, filename,
-                            rows_per_part, overwrite, errors)) {
-            return {};
-        }
-        result.files.push_back(filename);
-    }
-    result.row_count = total;
+    result.file = output_file_path;
+    result.row_count = photons.size();
     return result;
 }
 
 PhotonWriteResult writePhotonPixelsParquet(
     const std::vector<PhotonPixelRow>& rows,
-    const std::string& photon_output_directory,
+    const std::string& output_file_path,
     const PhotonFileMetadata& metadata,
-    std::uint64_t rows_per_part,
     bool overwrite,
     std::vector<std::string>& errors) {
     PhotonWriteResult result;
     if (rows.empty()) {
         return result;
     }
-    if (!ensureDirectory(photon_output_directory, errors)) {
+    if (!ensureParentDirectory(output_file_path, errors)) {
         return {};
     }
 
     const auto kv = buildFileMetadata(metadata, kPhotonPixelsSchemaName);
-    const std::uint64_t total = rows.size();
-    const std::uint64_t parts = (total + rows_per_part - 1) / rows_per_part;
-    if (!overwrite &&
-        !ensureNoExistingParts(photon_output_directory, metadata.raw_file_stem,
-                               metadata.chip_index, "photon-pixels", parts,
-                               errors)) {
+    auto table = buildPixelsTable(rows, 0, rows.size(), kv);
+    if (!writeTable(table, output_file_path, overwrite, errors)) {
         return {};
     }
-    for (std::uint64_t part = 0; part < parts; ++part) {
-        const std::uint64_t start = part * rows_per_part;
-        const std::uint64_t count = std::min(rows_per_part, total - start);
-        auto table = buildPixelsTable(rows, start, count, kv);
-        const std::string filename = makePhotonFileName(
-            metadata.raw_file_stem, metadata.chip_index, "photon-pixels", part);
-        if (!writeTablePart(table, photon_output_directory, filename,
-                            rows_per_part, overwrite, errors)) {
-            return {};
-        }
-        result.files.push_back(filename);
-    }
-    result.row_count = total;
+    result.file = output_file_path;
+    result.row_count = rows.size();
     return result;
 }
 
@@ -323,9 +260,8 @@ PhotonWriteResult writePhotonPixelsParquet(
 
 PhotonWriteResult writePhotonEventsParquet(
     const std::vector<Photon>& /*photons*/,
-    const std::string& /*photon_output_directory*/,
+    const std::string& /*output_file_path*/,
     const PhotonFileMetadata& /*metadata*/,
-    std::uint64_t /*rows_per_part*/,
     bool /*overwrite*/,
     std::vector<std::string>& errors) {
     errors.push_back("photon_events writing requires Arrow/Parquet support");
@@ -334,9 +270,8 @@ PhotonWriteResult writePhotonEventsParquet(
 
 PhotonWriteResult writePhotonPixelsParquet(
     const std::vector<PhotonPixelRow>& /*rows*/,
-    const std::string& /*photon_output_directory*/,
+    const std::string& /*output_file_path*/,
     const PhotonFileMetadata& /*metadata*/,
-    std::uint64_t /*rows_per_part*/,
     bool /*overwrite*/,
     std::vector<std::string>& errors) {
     errors.push_back("photon_pixels writing requires Arrow/Parquet support");

@@ -26,7 +26,6 @@ from hermes.state_service.state_io import (
 )
 
 
-HASH = "a" * 64
 NOW = datetime(2026, 5, 5, 12, 0, tzinfo=timezone.utc)
 PARTIAL_HERMES_ANALYSIS_YAML = """
 measurement_info:
@@ -36,12 +35,13 @@ environment:
   working_dir: data/examples/analysis/unpacker
 analysis:
   mode: hermes
-  unpacker_program:
-    name: tpx3-spidr-cpp
-    executable_path: build/backends/tpx3-spidr/hermes-tpx3-spidr
   analysis_directory: data/examples/analysis/unpacker/analysis
-  tpx3_files:
-    - path: tests/data/Example_1kHz_5frames.tpx3
+  unpacking:
+    program:
+      name: tpx3-spidr-cpp
+      executable_path: build/backends/tpx3-spidr/hermes-tpx3-spidr
+    tpx3_files:
+      - path: tests/data/Example_1kHz_5frames.tpx3
 """
 
 
@@ -49,8 +49,6 @@ def _example_record(tmp_path: Path) -> HermesRecord:
     raw_file = FileReference(
         path=tmp_path / "run-001/data/raw.tpx3",
         media_type="application/octet-stream",
-        sha256=HASH,
-        size_bytes=2048,
         created_at=NOW,
     )
     return HermesRecord(
@@ -154,17 +152,12 @@ def test_load_partial_hermes_analysis_yaml_applies_nested_defaults(
     assert loaded.acquisition is None
     assert isinstance(loaded.analysis, HermesTpx3AnalysisState)
     assert loaded.analysis.resource_limit_percent == 90
-    assert loaded.analysis.unpacker_program.version is None
+    assert loaded.analysis.unpacking.program.version is None
     assert loaded.analysis.photon_reconstruction is None
-    assert loaded.analysis.results.unpacking.status == "planned"
-    assert loaded.analysis.results.unpacking.started_at is None
-    assert loaded.analysis.results.unpacking.completed_at is None
-    assert loaded.analysis.results.reconstruction is None
+    assert loaded.analysis.unpacking.results == []
 
-    raw_file = loaded.analysis.tpx3_files[0]
+    raw_file = loaded.analysis.unpacking.tpx3_files[0]
     assert raw_file.media_type is None
-    assert raw_file.sha256 is None
-    assert raw_file.size_bytes is None
     assert raw_file.created_at is None
     assert raw_file.description is None
 
@@ -183,9 +176,12 @@ def test_save_partial_loaded_record_writes_defaults_and_round_trips(
 
     assert saved_yaml["acquisition"] is None
     assert saved_yaml["analysis"]["resource_limit_percent"] == 90
-    assert saved_yaml["analysis"]["unpacker_program"]["version"] is None
-    assert saved_yaml["analysis"]["results"]["unpacking"]["status"] == "planned"
-    assert saved_yaml["analysis"]["tpx3_files"][0]["sha256"] is None
+    assert saved_yaml["analysis"]["unpacking"]["program"]["version"] is None
+    assert saved_yaml["analysis"]["unpacking"]["results"] == []
+    assert (
+        saved_yaml["analysis"]["unpacking"]["tpx3_files"][0]["media_type"]
+        is None
+    )
     assert reloaded == loaded
 
 
@@ -208,12 +204,13 @@ measurement_info:
 environment: {{}}
 analysis:
   mode: hermes
-  unpacker_program:
-    name: tpx3-spidr-cpp
-    executable_path: hermes-tpx3-spidr
   analysis_directory: analysis
-  tpx3_files:
-    file_list: {file_list_path}
+  unpacking:
+    program:
+      name: tpx3-spidr-cpp
+      executable_path: hermes-tpx3-spidr
+    tpx3_files:
+      file_list: {file_list_path}
 """,
         encoding="utf-8",
     )
@@ -224,11 +221,13 @@ analysis:
     reloaded = load_hermes_record_from_yaml(final_record_path)
 
     assert isinstance(loaded.analysis, HermesTpx3AnalysisState)
-    assert [raw_file.path for raw_file in loaded.analysis.tpx3_files] == [
+    assert [
+        raw_file.path for raw_file in loaded.analysis.unpacking.tpx3_files
+    ] == [
         (file_list_path.parent / "first.tpx3").resolve(),
         (file_list_path.parent / "second.tpx3").resolve(),
     ]
-    saved_raw_tpx3_files = saved_yaml["analysis"]["tpx3_files"]
+    saved_raw_tpx3_files = saved_yaml["analysis"]["unpacking"]["tpx3_files"]
     assert isinstance(saved_raw_tpx3_files, list)
     assert [Path(raw_file["path"]) for raw_file in saved_raw_tpx3_files] == [
         (file_list_path.parent / "first.tpx3").resolve(),

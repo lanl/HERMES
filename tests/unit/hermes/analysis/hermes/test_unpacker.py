@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import subprocess
 import sys
 import textwrap
 from pathlib import Path
@@ -24,11 +23,11 @@ from hermes.state.models.analysis.empir import EmpirAnalysisState
 from hermes.state.models.analysis.hermes_tpx3_spidr import (
     HermesTpx3AnalysisState,
     Tpx3SpidrSummary,
-    Tpx3SpidrUnpackerProgram,
+    Tpx3Unpacking,
 )
 from hermes.state.models.environment import RuntimeEnvironment
 from hermes.state.models.measurement import MeasurementInfo
-from hermes.state.models.shared_models import FileReference
+from hermes.state.models.shared_models import BinaryProgram, FileReference
 from hermes.state.state import HermesRecord
 from hermes.state_service.change_requests import ChangeRequest
 from hermes.state_service.shared_types import (
@@ -73,13 +72,15 @@ def _analysis(tmp_path: Path, *raw_names: str) -> HermesTpx3AnalysisState:
         raw_files.append(FileReference(path=raw_path))
 
     return HermesTpx3AnalysisState(
-        unpacker_program=Tpx3SpidrUnpackerProgram(
-            name="tpx3-spidr-cpp",
-            executable_path=executable,
-            version="0.1.0",
-        ),
         analysis_directory=tmp_path / "analysis",
-        tpx3_files=raw_files,
+        unpacking=Tpx3Unpacking(
+            program=BinaryProgram(
+                name="tpx3-spidr-cpp",
+                executable_path=executable,
+                version="0.1.0",
+            ),
+            tpx3_files=raw_files,
+        ),
     )
 
 
@@ -322,18 +323,36 @@ def _write_fake_unpacker(executable: Path) -> None:
 
 def test_derives_command_and_input_specific_summary_path(tmp_path: Path) -> None:
     analysis = _analysis(tmp_path, "first.tpx3")
-    raw_file = analysis.tpx3_files[0]
+    raw_file = analysis.unpacking.tpx3_files[0]
 
     assert derive_unpacker_command(analysis, raw_file) == [
-        str(analysis.unpacker_program.executable_path),
+        str(analysis.unpacking.program.executable_path),
         "--input",
         str(raw_file.path),
         "--output",
-        str(analysis.analysis_directory),
+        str(analysis.unpacking.output_directory),
     ]
     assert derive_summary_path(analysis, raw_file) == (
         analysis.analysis_directory / "logs/first-unpacker-summary.json"
     )
+
+
+def test_command_includes_time_sort_false_when_time_sort_disabled(
+    tmp_path: Path,
+) -> None:
+    analysis = _analysis(tmp_path, "first.tpx3")
+    analysis.unpacking.runtime_options.time_sort = False
+    raw_file = analysis.unpacking.tpx3_files[0]
+
+    assert derive_unpacker_command(analysis, raw_file) == [
+        str(analysis.unpacking.program.executable_path),
+        "--input",
+        str(raw_file.path),
+        "--output",
+        str(analysis.unpacking.output_directory),
+        "--time-sort",
+        "false",
+    ]
 
 
 def test_plan_preserves_multiple_raw_file_order(tmp_path: Path) -> None:
@@ -349,7 +368,7 @@ def test_plan_preserves_multiple_raw_file_order(tmp_path: Path) -> None:
 
 def test_plan_skips_valid_completed_files(tmp_path: Path) -> None:
     analysis = _analysis(tmp_path, "completed.tpx3")
-    raw_file = analysis.tpx3_files[0]
+    raw_file = analysis.unpacking.tpx3_files[0]
     _save_completed_files(analysis, raw_file, pixel_rows=1)
 
     assert plan_unpacking(analysis) == [(raw_file, "skip")]
@@ -362,9 +381,9 @@ def test_plan_rejects_missing_required_files(
 ) -> None:
     analysis = _analysis(tmp_path, "missing.tpx3")
     path = (
-        analysis.unpacker_program.executable_path
+        analysis.unpacking.program.executable_path
         if missing_file == "executable"
-        else analysis.tpx3_files[0].path
+        else analysis.unpacking.tpx3_files[0].path
     )
     path.unlink()
 
@@ -379,7 +398,7 @@ def test_plan_rejects_invalid_or_partial_existing_output(
 ) -> None:
     analysis = _analysis(tmp_path, "broken.tpx3")
     if invalid_existing_output == "invalid_summary":
-        summary_path = derive_summary_path(analysis, analysis.tpx3_files[0])
+        summary_path = derive_summary_path(analysis, analysis.unpacking.tpx3_files[0])
         summary_path.parent.mkdir(parents=True)
         summary_path.write_text("not JSON", encoding="utf-8")
     else:
@@ -396,7 +415,7 @@ def test_plan_rejects_invalid_or_partial_existing_output(
 
 def test_plan_rejects_summary_with_missing_parquet_file(tmp_path: Path) -> None:
     analysis = _analysis(tmp_path, "incomplete.tpx3")
-    raw_file = analysis.tpx3_files[0]
+    raw_file = analysis.unpacking.tpx3_files[0]
     summary_path = derive_summary_path(analysis, raw_file)
     summary_path.parent.mkdir(parents=True)
     summary_path.write_text(
@@ -413,17 +432,12 @@ def test_plan_rejects_duplicate_raw_filename_stems(tmp_path: Path) -> None:
     duplicate = tmp_path / "other/first.tpx3"
     duplicate.parent.mkdir()
     duplicate.touch()
-    analysis = analysis.model_copy(
-        update={
-            "tpx3_files": [
-                analysis.tpx3_files[0],
-                FileReference(path=duplicate),
-            ]
-        }
-    )
 
-    with pytest.raises(HermesTpx3PreflightError, match="stems must be unique"):
-        plan_unpacking(analysis)
+    with pytest.raises(ValueError, match="stems must be unique"):
+        analysis.unpacking.tpx3_files = [
+            analysis.unpacking.tpx3_files[0],
+            FileReference(path=duplicate),
+        ]
 
 
 def test_run_marks_analysis_only_state_running_through_state_manager(
@@ -448,11 +462,15 @@ def test_run_marks_analysis_only_state_running_through_state_manager(
         "first.tpx3",
         "second.tpx3",
     ]
-    result = manager.get_state().analysis.results.unpacking
-    assert result.status == "completed"
-    assert result.started_at is not None
-    assert result.completed_at is not None
-    assert state_logger.changes[-1].path == "analysis.results"
+    results = manager.get_state().analysis.unpacking.results
+    assert [result.input_file.path.name for result in results] == [
+        "first.tpx3",
+        "second.tpx3",
+    ]
+    assert all(result.status == "completed" for result in results)
+    assert all(result.started_at is not None for result in results)
+    assert all(result.completed_at is not None for result in results)
+    assert state_logger.changes[-1].path == "analysis.unpacking.results"
     assert state_logger.changes[-1].origin == "trusted_workflow"
     assert state_logger.changes[-1].proposer == "tpx3_spidr_unpacking"
     assert state_logger.changes[-1].status == "applied"
@@ -462,7 +480,7 @@ def test_run_with_only_completed_files_does_not_mark_running(
     tmp_path: Path,
 ) -> None:
     analysis = _analysis(tmp_path, "completed.tpx3")
-    _save_completed_files(analysis, analysis.tpx3_files[0])
+    _save_completed_files(analysis, analysis.unpacking.tpx3_files[0])
     manager = StateManager(
         _record(tmp_path, analysis),
         config=StateServiceConfig(allow_trusted_workflow_bypass=True),
@@ -470,10 +488,11 @@ def test_run_with_only_completed_files_does_not_mark_running(
     )
 
     assert run_hermes_analysis(manager) == []
-    result = manager.get_state().analysis.results.unpacking
-    assert result.status == "completed"
-    assert result.started_at is None
-    assert result.completed_at is not None
+    results = manager.get_state().analysis.unpacking.results
+    assert len(results) == 1
+    assert results[0].status == "skipped"
+    assert results[0].started_at is None
+    assert results[0].completed_at is None
 
 
 def test_run_rejects_empir_analysis(tmp_path: Path) -> None:
@@ -527,32 +546,25 @@ def test_run_rejects_missing_analysis(tmp_path: Path) -> None:
     assert invalid_mode["extra"]["actual_analysis_mode"] is None
 
 
-def test_disabled_bypass_leaves_pending_change_before_process_execution(
+def test_disabled_bypass_leaves_results_change_pending(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     analysis = _analysis(tmp_path, "first.tpx3")
+    _write_fake_unpacker(analysis.unpacking.program.executable_path)
+    analysis.unpacking.tpx3_files[0].path.write_text("success", encoding="utf-8")
     state_logger = CapturingStateLogger()
     manager = StateManager(
         _record(tmp_path, analysis),
         state_logger=state_logger,
     )
-    process_called = False
-
-    def unexpected_process(*args: object, **kwargs: object) -> None:
-        nonlocal process_called
-        process_called = True
-
-    monkeypatch.setattr(subprocess, "run", unexpected_process)
 
     with pytest.raises(ChangeApprovalError, match="requires approval"):
         run_hermes_analysis(manager)
 
-    assert process_called is False
-    assert manager.get_state().analysis.results.unpacking.status == "planned"
+    assert manager.get_state().analysis.unpacking.results == []
     pending = manager.list_pending_changes()
     assert len(pending) == 1
-    assert pending[0].path == "analysis.results"
+    assert pending[0].path == "analysis.unpacking.results"
     assert pending[0].origin == "trusted_workflow"
     assert pending[0].proposer == "tpx3_spidr_unpacking"
 
@@ -561,7 +573,7 @@ def test_run_executes_fake_unpacker_logs_details_and_round_trips_yaml(
     tmp_path: Path,
 ) -> None:
     analysis = _analysis(tmp_path, "success.tpx3")
-    _write_fake_unpacker(analysis.unpacker_program.executable_path)
+    _write_fake_unpacker(analysis.unpacking.program.executable_path)
     state_logger = CapturingStateLogger()
     manager = StateManager(
         _record(tmp_path, analysis),
@@ -578,11 +590,12 @@ def test_run_executes_fake_unpacker_logs_details_and_round_trips_yaml(
     finally:
         logger.remove(sink_id)
 
-    assert files_run == analysis.tpx3_files
-    result = manager.get_state().analysis.results.unpacking
-    assert result.status == "completed"
-    assert result.started_at is not None
-    assert result.completed_at is not None
+    assert files_run == analysis.unpacking.tpx3_files
+    results = manager.get_state().analysis.unpacking.results
+    assert len(results) == 1
+    assert results[0].status == "completed"
+    assert results[0].started_at is not None
+    assert results[0].completed_at is not None
 
     started = next(
         record
@@ -592,7 +605,7 @@ def test_run_executes_fake_unpacker_logs_details_and_round_trips_yaml(
     )
     assert started["extra"]["command"] == derive_unpacker_command(
         analysis,
-        analysis.tpx3_files[0],
+        analysis.unpacking.tpx3_files[0],
     )
     completed = next(
         record
@@ -618,15 +631,15 @@ def test_run_processes_multiple_inputs_and_then_skips_them(
     tmp_path: Path,
 ) -> None:
     analysis = _analysis(tmp_path, "first.tpx3", "second.tpx3")
-    _write_fake_unpacker(analysis.unpacker_program.executable_path)
+    _write_fake_unpacker(analysis.unpacking.program.executable_path)
     manager = StateManager(
         _record(tmp_path, analysis),
         config=StateServiceConfig(allow_trusted_workflow_bypass=True),
         state_logger=CapturingStateLogger(),
     )
 
-    assert run_hermes_analysis(manager) == analysis.tpx3_files
-    for raw_file in analysis.tpx3_files:
+    assert run_hermes_analysis(manager) == analysis.unpacking.tpx3_files
+    for raw_file in analysis.unpacking.tpx3_files:
         assert (
             analysis.analysis_directory
             / "pixelHits"
@@ -678,8 +691,8 @@ def test_run_saves_failed_state_before_raising_for_output_failures(
     message: str,
 ) -> None:
     analysis = _analysis(tmp_path, f"{mode}.tpx3")
-    analysis.tpx3_files[0].path.write_text(mode, encoding="utf-8")
-    _write_fake_unpacker(analysis.unpacker_program.executable_path)
+    analysis.unpacking.tpx3_files[0].path.write_text(mode, encoding="utf-8")
+    _write_fake_unpacker(analysis.unpacking.program.executable_path)
     manager = StateManager(
         _record(tmp_path, analysis),
         config=StateServiceConfig(allow_trusted_workflow_bypass=True),
@@ -697,10 +710,10 @@ def test_run_saves_failed_state_before_raising_for_output_failures(
     finally:
         logger.remove(sink_id)
 
-    result = manager.get_state().analysis.results.unpacking
-    assert result.status == "failed"
-    assert result.started_at is not None
-    assert result.completed_at is not None
+    results = manager.get_state().analysis.unpacking.results
+    assert results
+    assert all(result.status == "failed" for result in results)
+    assert all(result.completed_at is not None for result in results)
     failures = [
         record
         for record in records
@@ -725,7 +738,7 @@ def test_run_saves_failed_state_before_raising_for_output_failures(
 
 def test_run_saves_failed_state_for_preflight_failure(tmp_path: Path) -> None:
     analysis = _analysis(tmp_path, "invalid-existing.tpx3")
-    summary_path = derive_summary_path(analysis, analysis.tpx3_files[0])
+    summary_path = derive_summary_path(analysis, analysis.unpacking.tpx3_files[0])
     summary_path.parent.mkdir(parents=True)
     summary_path.write_text("not JSON", encoding="utf-8")
     manager = StateManager(
@@ -737,10 +750,10 @@ def test_run_saves_failed_state_for_preflight_failure(tmp_path: Path) -> None:
     with pytest.raises(HermesTpx3PreflightError, match="invalid summary"):
         run_hermes_analysis(manager)
 
-    result = manager.get_state().analysis.results.unpacking
-    assert result.status == "failed"
-    assert result.started_at is None
-    assert result.completed_at is not None
+    results = manager.get_state().analysis.unpacking.results
+    assert results
+    assert all(result.status == "failed" for result in results)
+    assert all(result.completed_at is not None for result in results)
 
 
 def test_resource_limit_percent_field_defaults_to_90(tmp_path: Path) -> None:
@@ -757,13 +770,15 @@ def test_resource_limit_percent_accepts_integers_from_1_to_100(tmp_path: Path) -
 
     for percent in [1, 50, 90, 100]:
         analysis = HermesTpx3AnalysisState(
-            unpacker_program=Tpx3SpidrUnpackerProgram(
-                name="test",
-                executable_path=executable,
-            ),
             analysis_directory=tmp_path / "analysis",
-            tpx3_files=[FileReference(path=raw_file)],
             resource_limit_percent=percent,
+            unpacking=Tpx3Unpacking(
+                program=BinaryProgram(
+                    name="test",
+                    executable_path=executable,
+                ),
+                tpx3_files=[FileReference(path=raw_file)],
+            ),
         )
         assert analysis.resource_limit_percent == percent
 
@@ -778,20 +793,22 @@ def test_resource_limit_percent_rejects_zero_and_above_100(tmp_path: Path) -> No
     for invalid_percent in [0, 101, 200, -1]:
         with pytest.raises(Exception):
             HermesTpx3AnalysisState(
-                unpacker_program=Tpx3SpidrUnpackerProgram(
-                    name="test",
-                    executable_path=executable,
-                ),
                 analysis_directory=tmp_path / "analysis",
-                tpx3_files=[FileReference(path=raw_file)],
                 resource_limit_percent=invalid_percent,
+                unpacking=Tpx3Unpacking(
+                    program=BinaryProgram(
+                        name="test",
+                        executable_path=executable,
+                    ),
+                    tpx3_files=[FileReference(path=raw_file)],
+                ),
             )
 
 
 def test_parallel_unpacking_returns_files_in_input_order(tmp_path: Path) -> None:
     analysis = _analysis(tmp_path, "c.tpx3", "a.tpx3", "b.tpx3")
-    _write_fake_unpacker(analysis.unpacker_program.executable_path)
-    for raw_file in analysis.tpx3_files:
+    _write_fake_unpacker(analysis.unpacking.program.executable_path)
+    for raw_file in analysis.unpacking.tpx3_files:
         raw_file.path.write_text("success", encoding="utf-8")
 
     records: list[dict[str, Any]] = []
@@ -815,8 +832,8 @@ def test_parallel_unpacking_returns_files_in_input_order(tmp_path: Path) -> None
 
 def test_parallel_unpacking_logs_resource_calculation(tmp_path: Path) -> None:
     analysis = _analysis(tmp_path, "a.tpx3", "b.tpx3")
-    _write_fake_unpacker(analysis.unpacker_program.executable_path)
-    for raw_file in analysis.tpx3_files:
+    _write_fake_unpacker(analysis.unpacking.program.executable_path)
+    for raw_file in analysis.unpacking.tpx3_files:
         raw_file.path.write_text("success", encoding="utf-8")
 
     records: list[dict[str, Any]] = []
@@ -851,11 +868,11 @@ def test_parallel_unpacking_logs_resource_calculation(tmp_path: Path) -> None:
 def test_parallel_unpacking_one_failure_stops_remaining_work(tmp_path: Path) -> None:
     analysis = _analysis(tmp_path, "a.tpx3", "failing.tpx3", "c.tpx3", "d.tpx3")
     analysis.resource_limit_percent = 1
-    _write_fake_unpacker(analysis.unpacker_program.executable_path)
-    analysis.tpx3_files[0].path.write_text("success", encoding="utf-8")
-    analysis.tpx3_files[1].path.write_text("nonzero", encoding="utf-8")
-    analysis.tpx3_files[2].path.write_text("success", encoding="utf-8")
-    analysis.tpx3_files[3].path.write_text("success", encoding="utf-8")
+    _write_fake_unpacker(analysis.unpacking.program.executable_path)
+    analysis.unpacking.tpx3_files[0].path.write_text("success", encoding="utf-8")
+    analysis.unpacking.tpx3_files[1].path.write_text("nonzero", encoding="utf-8")
+    analysis.unpacking.tpx3_files[2].path.write_text("success", encoding="utf-8")
+    analysis.unpacking.tpx3_files[3].path.write_text("success", encoding="utf-8")
 
     manager = StateManager(
         _record(tmp_path, analysis),
@@ -866,8 +883,9 @@ def test_parallel_unpacking_one_failure_stops_remaining_work(tmp_path: Path) -> 
     with pytest.raises(HermesTpx3ExecutionError, match="exited with code 7"):
         run_hermes_analysis(manager)
 
-    result = manager.get_state().analysis.results.unpacking
-    assert result.status == "failed"
+    results = manager.get_state().analysis.unpacking.results
+    assert results
+    assert all(result.status == "failed" for result in results)
 
     summary_files = list((analysis.analysis_directory / "logs").glob("*.json"))
     completed_count = len(summary_files)
@@ -876,9 +894,9 @@ def test_parallel_unpacking_one_failure_stops_remaining_work(tmp_path: Path) -> 
 
 def test_parallel_unpacking_skips_valid_files(tmp_path: Path) -> None:
     analysis = _analysis(tmp_path, "skip-me.tpx3", "run-me.tpx3")
-    _write_fake_unpacker(analysis.unpacker_program.executable_path)
-    _save_completed_files(analysis, analysis.tpx3_files[0], pixel_rows=1)
-    analysis.tpx3_files[1].path.write_text("success", encoding="utf-8")
+    _write_fake_unpacker(analysis.unpacking.program.executable_path)
+    _save_completed_files(analysis, analysis.unpacking.tpx3_files[0], pixel_rows=1)
+    analysis.unpacking.tpx3_files[1].path.write_text("success", encoding="utf-8")
 
     records: list[dict[str, Any]] = []
     sink_id = logger.add(lambda msg: records.append(msg.record))
@@ -907,14 +925,14 @@ def test_parallel_unpacking_skips_valid_files(tmp_path: Path) -> None:
 
 def test_resource_calculation_uses_only_pending_files(tmp_path: Path) -> None:
     analysis = _analysis(tmp_path, "large-skip.tpx3", "small-run.tpx3")
-    _write_fake_unpacker(analysis.unpacker_program.executable_path)
+    _write_fake_unpacker(analysis.unpacking.program.executable_path)
 
     # Make the first file large but already completed (will be skipped)
-    analysis.tpx3_files[0].path.write_bytes(b"x" * (100 * 1024 * 1024))
-    _save_completed_files(analysis, analysis.tpx3_files[0], pixel_rows=1)
+    analysis.unpacking.tpx3_files[0].path.write_bytes(b"x" * (100 * 1024 * 1024))
+    _save_completed_files(analysis, analysis.unpacking.tpx3_files[0], pixel_rows=1)
 
     # Make the second file small (will be run)
-    analysis.tpx3_files[1].path.write_text("success", encoding="utf-8")
+    analysis.unpacking.tpx3_files[1].path.write_text("success", encoding="utf-8")
 
     records: list[dict[str, Any]] = []
     sink_id = logger.add(lambda msg: records.append(msg.record))

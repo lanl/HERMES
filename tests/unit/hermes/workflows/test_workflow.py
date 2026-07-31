@@ -5,14 +5,13 @@ from pathlib import Path
 import pytest
 
 from hermes.state.models.analysis.hermes_tpx3_spidr import (
-    HermesTpx3AnalysisResults,
     HermesTpx3AnalysisState,
     HermesTpx3UnpackingResult,
-    Tpx3SpidrUnpackerProgram,
+    Tpx3Unpacking,
 )
 from hermes.state.models.environment import RuntimeEnvironment
 from hermes.state.models.measurement import MeasurementInfo
-from hermes.state.models.shared_models import FileReference
+from hermes.state.models.shared_models import BinaryProgram, FileReference
 from hermes.state.state import HermesRecord
 from hermes.state_service.state_manager import StateManager
 from hermes.workflows.workflow import Workflow
@@ -26,12 +25,14 @@ def _record(tmp_path: Path) -> HermesRecord:
         ),
         environment=RuntimeEnvironment(working_dir=tmp_path),
         analysis=HermesTpx3AnalysisState(
-            unpacker_program=Tpx3SpidrUnpackerProgram(
-                name="test-unpacker",
-                executable_path=tmp_path / "test-unpacker",
-            ),
             analysis_directory=tmp_path / "analysis",
-            tpx3_files=[FileReference(path=tmp_path / "input.tpx3")],
+            unpacking=Tpx3Unpacking(
+                program=BinaryProgram(
+                    name="test-unpacker",
+                    executable_path=tmp_path / "test-unpacker",
+                ),
+                tpx3_files=[FileReference(path=tmp_path / "input.tpx3")],
+            ),
         ),
     )
 
@@ -49,19 +50,23 @@ def test_run_analysis_returns_files_and_updates_record(
         overwrite: bool = False,
     ) -> list[FileReference]:
         assert overwrite is True
+        analysis = state_manager.get_state().analysis
+        assert isinstance(analysis, HermesTpx3AnalysisState)
         change = state_manager.propose_change(
-            "analysis.results",
-            HermesTpx3AnalysisResults(
-                unpacking=HermesTpx3UnpackingResult(status="completed")
-            ),
+            "analysis.unpacking.results",
+            [
+                HermesTpx3UnpackingResult(
+                    input_file=raw_file,
+                    status="completed",
+                )
+                for raw_file in analysis.unpacking.tpx3_files
+            ],
             origin="trusted_workflow",
             proposer="test_analysis",
         )
         state_manager.apply_change(change.change_id)
 
-        analysis = state_manager.get_state().analysis
-        assert isinstance(analysis, HermesTpx3AnalysisState)
-        return analysis.tpx3_files
+        return analysis.unpacking.tpx3_files
 
     monkeypatch.setattr(
         "hermes.workflows.workflow.run_hermes_analysis",
@@ -70,9 +75,10 @@ def test_run_analysis_returns_files_and_updates_record(
 
     unpacked_files = workflow.run_analysis(overwrite=True)
 
-    assert unpacked_files == initial_record.analysis.tpx3_files
-    assert workflow.record.analysis.results.unpacking.status == "completed"
-    assert initial_record.analysis.results.unpacking.status == "planned"
+    assert unpacked_files == initial_record.analysis.unpacking.tpx3_files
+    updated_results = workflow.record.analysis.unpacking.results
+    assert [result.status for result in updated_results] == ["completed"]
+    assert initial_record.analysis.unpacking.results == []
 
 
 @pytest.mark.parametrize("method_name", ["run_acquisition", "run"])

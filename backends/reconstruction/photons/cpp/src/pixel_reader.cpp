@@ -1,9 +1,5 @@
 #include "pixel_reader.h"
 
-#include <algorithm>
-#include <filesystem>
-#include <regex>
-
 #ifdef HERMES_HAS_ARROW_PARQUET
 #include <arrow/array.h>
 #include <arrow/io/file.h>
@@ -13,72 +9,6 @@
 #endif
 
 namespace hermes_photon_clusterer {
-
-namespace {
-
-// Matches "<stem>-chip-<chip>-part-<00000>.parquet", the unpacker's pixel_data
-// filename convention.
-const std::regex& pixelFilePattern() {
-    static const std::regex pattern(
-        R"(^(.+)-chip-(\d+)-part-(\d{5})\.parquet$)");
-    return pattern;
-}
-
-}  // namespace
-
-PixelFileGroups discoverPixelFiles(const std::string& pixel_data_directory,
-                                   const std::string& raw_file_stem) {
-    PixelFileGroups groups;
-
-    // Collect (part_number, path) per chip, then verify contiguity and order.
-    std::map<int, std::vector<std::pair<int, std::string>>> parts_by_chip;
-    std::error_code ec;
-    std::filesystem::directory_iterator it(pixel_data_directory, ec);
-    if (ec) {
-        groups.errors.push_back("Failed to read pixel_data directory " +
-                                pixel_data_directory + ": " + ec.message());
-        return groups;
-    }
-
-    for (const auto& entry : it) {
-        if (!entry.is_regular_file()) {
-            continue;
-        }
-        const std::string name = entry.path().filename().string();
-        std::smatch match;
-        if (!std::regex_match(name, match, pixelFilePattern())) {
-            continue;
-        }
-        if (match[1].str() != raw_file_stem) {
-            continue;
-        }
-        const int chip = std::stoi(match[2].str());
-        const int part = std::stoi(match[3].str());
-        parts_by_chip[chip].emplace_back(part, entry.path().string());
-    }
-
-    if (parts_by_chip.empty()) {
-        groups.errors.push_back(
-            "No pixel_data Parquet files found for stem '" + raw_file_stem +
-            "' in " + pixel_data_directory);
-        return groups;
-    }
-
-    for (auto& [chip, parts] : parts_by_chip) {
-        std::sort(parts.begin(), parts.end());
-        for (std::size_t index = 0; index < parts.size(); ++index) {
-            if (parts[index].first != static_cast<int>(index)) {
-                groups.errors.push_back(
-                    "pixel_data parts are not contiguous for stem '" +
-                    raw_file_stem + "' chip " + std::to_string(chip));
-                break;
-            }
-            groups.files_by_chip[chip].push_back(parts[index].second);
-        }
-    }
-
-    return groups;
-}
 
 #ifdef HERMES_HAS_ARROW_PARQUET
 

@@ -7,10 +7,12 @@ from types import ModuleType
 import pytest
 
 from hermes.state.models.analysis.hermes_tpx3_spidr import (
-    HermesTpx3AnalysisResults,
     HermesTpx3AnalysisState,
     HermesTpx3ReconstructionResult,
     HermesTpx3UnpackingResult,
+    Tpx3PhotonQualityFlagCountsSummary,
+    Tpx3PhotonRejectionCountsSummary,
+    Tpx3PhotonReconstructionCountsSummary,
 )
 from hermes.state.models.shared_models import FileReference
 from hermes.state.state import HermesRecord
@@ -42,14 +44,14 @@ def test_checked_in_yaml_configures_both_analysis_stages(
     assert isinstance(initial_record.analysis, HermesTpx3AnalysisState)
 
     analysis = initial_record.analysis
-    assert analysis.unpacker_program.name == "tpx3-spidr-cpp"
-    assert analysis.unpacker_program.executable_path == Path(
+    assert analysis.unpacking.program.name == "tpx3-spidr-cpp"
+    assert analysis.unpacking.program.executable_path == Path(
         "build/backends/tpx3-spidr/hermes-tpx3-spidr"
     )
     assert analysis.analysis_directory == Path(
         "data/examples/analysis/two_stage/analysis"
     )
-    assert analysis.tpx3_files == [
+    assert analysis.unpacking.tpx3_files == [
         FileReference(path=Path("tests/data/Example_1kHz_5frames.tpx3"))
     ]
 
@@ -60,10 +62,8 @@ def test_checked_in_yaml_configures_both_analysis_stages(
         "build/backends/photon-clusterer/hermes-photon-clusterer"
     )
     assert reconstruction.clustering_algorithm == "connected_components"
-    assert reconstruction.pixel_data_directory == (
-        analysis.analysis_directory / "pixelHits"
-    )
-    assert reconstruction.photon_output_directory == (
+    assert reconstruction.pixel_parquet_files == "auto"
+    assert reconstruction.output_directory == (
         analysis.analysis_directory / "photons"
     )
     assert reconstruction.settings.timewalk_calibration_file == Path(
@@ -95,19 +95,19 @@ environment:
   working_dir: {working_directory}
 analysis:
   mode: hermes
-  unpacker_program:
-    name: test-unpacker
-    executable_path: {tmp_path / "test-unpacker"}
   analysis_directory: {analysis_directory}
-  tpx3_files:
-    - path: {first_raw_file}
-    - path: {second_raw_file}
+  unpacking:
+    program:
+      name: test-unpacker
+      executable_path: {tmp_path / "test-unpacker"}
+    tpx3_files:
+      - path: {first_raw_file}
+      - path: {second_raw_file}
   photon_reconstruction:
     program:
       name: test-clusterer
       executable_path: {tmp_path / "test-clusterer"}
-    pixel_data_directory: {analysis_directory / "pixelHits"}
-    photon_output_directory: {photon_directory}
+    pixel_parquet_files: auto
     settings:
       max_time_spread_ticks: 100
       min_cluster_size: 2
@@ -128,16 +128,59 @@ analysis:
             received_records.append(record.model_copy(deep=True))
             analysis = record.analysis
             assert isinstance(analysis, HermesTpx3AnalysisState)
+            tpx3_files = analysis.unpacking.tpx3_files
+            counts = Tpx3PhotonReconstructionCountsSummary(
+                pixel_rows_read=10,
+                pixel_rows_below_min_tot=0,
+                components_formed=5,
+                photon_count=3,
+                rejected_component_count=2,
+                rejection_counts=Tpx3PhotonRejectionCountsSummary(
+                    below_min_cluster_size=0,
+                    above_max_cluster_size=0,
+                    below_min_cluster_tot=0,
+                    above_max_cluster_tot=0,
+                    above_max_aspect_ratio=0,
+                    below_min_filled_fraction=0,
+                ),
+                quality_flag_counts=Tpx3PhotonQualityFlagCountsSummary(
+                    saturated_pixel=0,
+                    bridged_components=0,
+                ),
+                warnings=[],
+                errors=[],
+            )
+            completed_unpacking = analysis.unpacking.model_copy(
+                update={
+                    "results": [
+                        HermesTpx3UnpackingResult(
+                            input_file=raw_file,
+                            status="completed",
+                        )
+                        for raw_file in tpx3_files
+                    ]
+                }
+            )
+            assert analysis.photon_reconstruction is not None
+            completed_reconstruction = analysis.photon_reconstruction.model_copy(
+                update={
+                    "results": [
+                        HermesTpx3ReconstructionResult(
+                            input_file=tpx3_files[0],
+                            output_file=(
+                                analysis.photon_reconstruction.output_directory
+                                / "photons.parquet"
+                            ),
+                            status="completed",
+                            counts=counts,
+                        )
+                    ]
+                }
+            )
             completed_analysis = analysis.model_copy(
                 update={
-                    "results": HermesTpx3AnalysisResults(
-                        unpacking=HermesTpx3UnpackingResult(status="completed"),
-                        reconstruction=HermesTpx3ReconstructionResult(
-                            status="completed",
-                            photon_count=3,
-                            rejected_count=2,
-                        ),
-                    )
+                    "unpacking": completed_unpacking,
+                    "photon_reconstruction": completed_reconstruction,
                 }
             )
             self.record = record.model_copy(
@@ -147,7 +190,7 @@ analysis:
         def run_analysis(self) -> list[FileReference]:
             analysis = self.record.analysis
             assert isinstance(analysis, HermesTpx3AnalysisState)
-            return analysis.tpx3_files
+            return analysis.unpacking.tpx3_files
 
     monkeypatch.setattr(run_two_stage_module, "Workflow", CompletedWorkflow)
 
@@ -162,28 +205,30 @@ analysis:
     assert len(received_records) == 1
     received_analysis = received_records[0].analysis
     assert isinstance(received_analysis, HermesTpx3AnalysisState)
-    assert [raw_file.path for raw_file in received_analysis.tpx3_files] == [
+    assert [
+        raw_file.path for raw_file in received_analysis.unpacking.tpx3_files
+    ] == [
         first_raw_file,
         second_raw_file,
     ]
     assert received_analysis.photon_reconstruction is not None
 
     assert isinstance(saved_final_record.analysis, HermesTpx3AnalysisState)
-    assert saved_final_record.analysis.results.unpacking.status == "completed"
-    assert (
-        saved_final_record.analysis.results.reconstruction is not None
-    )
-    assert (
-        saved_final_record.analysis.results.reconstruction.status
-        == "completed"
-    )
+    unpacking_results = saved_final_record.analysis.unpacking.results
+    assert [result.status for result in unpacking_results] == [
+        "completed",
+        "completed",
+    ]
+    reconstruction = saved_final_record.analysis.photon_reconstruction
+    assert reconstruction is not None
+    assert reconstruction.results[0].status == "completed"
 
     assert str(first_raw_file) in console_output
     assert str(second_raw_file) in console_output
     assert "Raw TPX3 files: 2" in console_output
     assert "Unpacked this run: 2" in console_output
     assert "Skipped existing valid unpacking output: 0" in console_output
-    assert "Photon reconstruction status: completed" in console_output
+    assert "Reconstructed photon files: 1" in console_output
     assert "Photons: 3" in console_output
     assert "Rejected clusters: 2" in console_output
     assert str(analysis_directory) in console_output

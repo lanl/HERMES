@@ -38,25 +38,22 @@ def test_checked_in_partial_yaml_loads_with_expected_defaults(
     )
     assert initial_record.acquisition is None
     assert isinstance(initial_record.analysis, HermesTpx3AnalysisState)
-    assert initial_record.analysis.unpacker_program.executable_path == Path(
+    assert initial_record.analysis.unpacking.program.executable_path == Path(
         "build/backends/tpx3-spidr/hermes-tpx3-spidr"
     )
     assert initial_record.analysis.analysis_directory == Path(
         "data/examples/analysis/unpacking/single_file/analysis"
     )
-    assert initial_record.analysis.tpx3_files[0].path == Path(
+    assert initial_record.analysis.unpacking.tpx3_files[0].path == Path(
         "tests/data/Example_1kHz_5frames.tpx3"
     )
     assert initial_record.analysis.resource_limit_percent == 90
-    assert initial_record.analysis.unpacker_program.version is None
+    assert initial_record.analysis.unpacking.program.version is None
     assert initial_record.analysis.photon_reconstruction is None
-    assert initial_record.analysis.results.unpacking.status == "planned"
-    assert initial_record.analysis.results.reconstruction is None
+    assert initial_record.analysis.unpacking.results == []
 
-    raw_tpx3_file = initial_record.analysis.tpx3_files[0]
+    raw_tpx3_file = initial_record.analysis.unpacking.tpx3_files[0]
     assert raw_tpx3_file.media_type is None
-    assert raw_tpx3_file.sha256 is None
-    assert raw_tpx3_file.size_bytes is None
     assert raw_tpx3_file.created_at is None
     assert raw_tpx3_file.description is None
 
@@ -103,12 +100,13 @@ environment:
   working_dir: {working_directory}
 analysis:
   mode: hermes
-  unpacker_program:
-    name: tpx3-spidr-cpp
-    executable_path: {unpacker_executable}
   analysis_directory: {analysis_directory}
-  tpx3_files:
-    - path: {raw_tpx3_file}
+  unpacking:
+    program:
+      name: tpx3-spidr-cpp
+      executable_path: {unpacker_executable}
+    tpx3_files:
+      - path: {raw_tpx3_file}
 """,
         encoding="utf-8",
     )
@@ -122,7 +120,7 @@ analysis:
         assert overwrite is False
         current_record = state_manager.get_state()
         assert isinstance(current_record.analysis, HermesTpx3AnalysisState)
-        return current_record.analysis.tpx3_files
+        return current_record.analysis.unpacking.tpx3_files
 
     monkeypatch.setattr(
         "hermes.workflows.workflow.run_hermes_analysis",

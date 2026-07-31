@@ -370,6 +370,24 @@ void testWorkflowErrorHandling(TestContext& test) {
     std::filesystem::remove_all(analysis_directory);
 }
 
+void testTimeSortDisabledStillWritesRows(TestContext& test) {
+    const auto analysis_directory = makeTestDirectory("no-time-sort");
+    const auto bytes = makePixelInput();
+
+    std::istringstream input(bytes);
+    const auto result = runTwoPassWorkflow(
+        input, "/tmp/no_time_sort.tpx3", analysis_directory.string(),
+        /*overwrite=*/false, /*time_sort=*/false);
+
+    printWorkflowErrors(result, "time-sort-disabled run");
+    test.expect(result.success, "workflow succeeded with time_sort disabled");
+    test.expectEqual(result.summary.writer_diagnostics.pixel_hits.row_count,
+                     std::uint64_t{1},
+                     "pixel row written with time_sort disabled");
+
+    std::filesystem::remove_all(analysis_directory);
+}
+
 }  // namespace
 
 int main() {
@@ -380,5 +398,6 @@ int main() {
     testSummaryJsonGeneration(test);
     testSummaryJsonStructure(test);
     testWorkflowErrorHandling(test);
+    testTimeSortDisabledStillWritesRows(test);
     return test.finish();
 }

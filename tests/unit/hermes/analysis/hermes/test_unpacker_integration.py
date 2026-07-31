@@ -11,11 +11,11 @@ from hermes.analysis.hermes.unpacker import derive_summary_path
 from hermes.state.models.analysis.hermes_tpx3_spidr import (
     HermesTpx3AnalysisState,
     Tpx3SpidrSummary,
-    Tpx3SpidrUnpackerProgram,
+    Tpx3Unpacking,
 )
 from hermes.state.models.environment import RuntimeEnvironment
 from hermes.state.models.measurement import MeasurementInfo
-from hermes.state.models.shared_models import FileReference
+from hermes.state.models.shared_models import BinaryProgram, FileReference
 from hermes.state.state import HermesRecord
 from hermes.state_service.shared_types import StateServiceConfig
 from hermes.state_service.state_manager import StateManager
@@ -51,13 +51,15 @@ def test_real_cpp_unpacker_handles_two_inputs_and_skips_completed_files(
         shutil.copyfile(_TPX3_FIXTURE, raw_path)
 
     analysis = HermesTpx3AnalysisState(
-        unpacker_program=Tpx3SpidrUnpackerProgram(
-            name="tpx3-spidr-cpp",
-            executable_path=_UNPACKER_EXECUTABLE,
-            version="0.1.0",
-        ),
         analysis_directory=tmp_path / "analysis",
-        tpx3_files=[FileReference(path=raw_path) for raw_path in raw_paths],
+        unpacking=Tpx3Unpacking(
+            program=BinaryProgram(
+                name="tpx3-spidr-cpp",
+                executable_path=_UNPACKER_EXECUTABLE,
+                version="0.1.0",
+            ),
+            tpx3_files=[FileReference(path=raw_path) for raw_path in raw_paths],
+        ),
     )
     manager = StateManager(
         HermesRecord(
@@ -85,13 +87,15 @@ def test_real_cpp_unpacker_handles_two_inputs_and_skips_completed_files(
     assert [raw_file.path for raw_file in first_run] == raw_paths
     completed_state = manager.get_state()
     assert completed_state.acquisition is None
-    assert completed_state.analysis.results.unpacking.status == "completed"
-    assert completed_state.analysis.results.unpacking.started_at is not None
-    assert completed_state.analysis.results.unpacking.completed_at is not None
+    unpacking_results = completed_state.analysis.unpacking.results
+    assert [result.input_file.path for result in unpacking_results] == raw_paths
+    assert all(result.status == "completed" for result in unpacking_results)
+    assert all(result.started_at is not None for result in unpacking_results)
+    assert all(result.completed_at is not None for result in unpacking_results)
 
     summaries: list[Tpx3SpidrSummary] = []
     generated_paths: set[Path] = set()
-    for raw_file in analysis.tpx3_files:
+    for raw_file in analysis.unpacking.tpx3_files:
         summary_path = derive_summary_path(analysis, raw_file)
         assert summary_path.is_file()
         summary = Tpx3SpidrSummary.model_validate_json(summary_path.read_bytes())
@@ -129,19 +133,26 @@ def test_real_cpp_unpacker_handles_two_inputs_and_skips_completed_files(
     saved_analysis = completed_state.analysis.model_dump(mode="json")
     assert set(saved_analysis) == {
         "mode",
-        "unpacker_program",
         "analysis_directory",
-        "tpx3_files",
         "resource_limit_percent",
+        "unpacking",
         "photon_reconstruction",
-        "results",
     }
     assert saved_analysis["photon_reconstruction"] is None
-    assert set(saved_analysis["results"]["unpacking"]) == {
-        "status",
-        "started_at",
-        "completed_at",
+    assert set(saved_analysis["unpacking"]) == {
+        "program",
+        "tpx3_files",
+        "output_directory",
+        "runtime_options",
+        "results",
     }
+    for saved_result in saved_analysis["unpacking"]["results"]:
+        assert set(saved_result) == {
+            "input_file",
+            "status",
+            "started_at",
+            "completed_at",
+        }
     assert not _contains_key(
         saved_analysis,
         {
@@ -167,7 +178,7 @@ def test_real_cpp_unpacker_handles_two_inputs_and_skips_completed_files(
 
     saved_files = [
         derive_summary_path(analysis, raw_file)
-        for raw_file in analysis.tpx3_files
+        for raw_file in analysis.unpacking.tpx3_files
     ] + [
         analysis.analysis_directory / relative_path
         for relative_path in generated_paths
@@ -199,7 +210,8 @@ def test_real_cpp_unpacker_handles_two_inputs_and_skips_completed_files(
         == "analysis.tpx3_unpacking.skipped"
     ]
     assert skipped_inputs == ["example-first.tpx3", "example-second.tpx3"]
-    assert manager.get_state().analysis.results.unpacking.status == "completed"
+    final_results = manager.get_state().analysis.unpacking.results
+    assert all(result.status == "skipped" for result in final_results)
 
 
 def _contains_key(value: object, keys: set[str]) -> bool:
