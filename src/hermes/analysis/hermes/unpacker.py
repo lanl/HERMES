@@ -228,7 +228,7 @@ def log_skipped_input(
     analysis: HermesTpx3AnalysisState,
     raw_file: FileReference,
 ) -> None:
-    _ANALYSIS_LOGGER.info(
+    _ANALYSIS_LOGGER.warning(
         "analysis.tpx3_unpacking.skipped",
         event_type="analysis.tpx3_unpacking.skipped",
         raw_tpx3_file=str(raw_file.path),
