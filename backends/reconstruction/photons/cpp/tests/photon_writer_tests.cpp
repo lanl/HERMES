@@ -28,9 +28,7 @@ std::shared_ptr<arrow::Table> readTable(const std::string& path) {
     auto input = arrow::io::ReadableFile::Open(path).ValueOrDie();
     auto reader =
         parquet::arrow::OpenFile(input, arrow::default_memory_pool()).ValueOrDie();
-    std::shared_ptr<arrow::Table> table;
-    (void)reader->ReadTable(&table);
-    return table;
+    return reader->ReadTable().ValueOrDie();
 }
 
 double doubleAt(const std::shared_ptr<arrow::Table>& table, int col, int row) {
