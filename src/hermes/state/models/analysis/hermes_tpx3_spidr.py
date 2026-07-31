@@ -12,7 +12,9 @@ from hermes.state.models.shared_models import (
     StrictBaseModel,
 )
 
-HermesTpx3RunStatus = Literal["planned", "running", "completed", "failed"]
+HermesTpx3RunStatus = Literal[
+    "planned", "running", "completed", "skipped", "failed"
+]
 SortingStrategy = Literal["in_memory", "external_merge"]
 ClusteringAlgorithm = Literal["connected_components", "dbscan"]
 PhotonTimeEstimator = Literal[
