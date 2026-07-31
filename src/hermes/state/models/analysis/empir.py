@@ -6,7 +6,11 @@ from typing import Literal
 
 from pydantic import Field, model_validator
 
-from hermes.state.models.shared_models import FileReference, StrictBaseModel
+from hermes.state.models.shared_models import (
+    BinaryProgram,
+    FileReference,
+    StrictBaseModel,
+)
 
 EmpirRunStatus = Literal["planned", "running", "completed", "failed"]
 EmpirExternalTriggerMode = Literal["ignore", "reference", "frameSync"]
@@ -40,7 +44,7 @@ class EmpirPixelToPhotonRun(StrictBaseModel):
 
 
 class EmpirPixelToPhotonState(StrictBaseModel):
-    executable_path: Path
+    program: BinaryProgram
     settings: EmpirPixelToPhotonSettings
     runs: list[EmpirPixelToPhotonRun] = Field(min_length=1)
 
@@ -71,7 +75,7 @@ class EmpirPhotonToEventRun(StrictBaseModel):
 
 
 class EmpirPhotonToEventState(StrictBaseModel):
-    executable_path: Path
+    program: BinaryProgram
     settings: EmpirPhotonToEventSettings
     runs: list[EmpirPhotonToEventRun] = Field(min_length=1)
 
@@ -125,7 +129,7 @@ class EmpirEventToImageResult(StrictBaseModel):
 
 
 class EmpirEventToImageState(StrictBaseModel):
-    executable_path: Path
+    program: BinaryProgram
     settings: EmpirEventToImageSettings
     input_event_files: list[FileReference] = Field(min_length=1)
     requested_tiff_file: Path
