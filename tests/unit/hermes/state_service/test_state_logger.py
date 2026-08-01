@@ -94,7 +94,6 @@ def test_state_logger_logs_initial_state_record(tmp_path: Path) -> None:
     assert fields["event_type"] == "state.initial_record"
     assert fields["domain"] == "state"
     assert fields["run_id"] == "run-007"
-    assert fields["event_type"] == "state.initial_record"
     assert fields["measurement_id"] == "LC-20260505"
     assert fields["run_number"] == 7
     assert fields["record"]["measurement_info"]["measurement_id"] == "LC-20260505"
