@@ -84,8 +84,14 @@ def derive_output_path(
 
 
 def derive_summary_path(output_file: Path) -> Path:
-    """Return the reconstruction-summary sidecar the binary writes."""
-    return output_file.parent / f"{output_file.stem}-reconstruction-summary.json"
+    """Return the reconstruction-summary sidecar the binary writes.
+
+    The binary writes the summary to a ``logs`` directory beside the photon
+    output directory, so it is a log artifact rather than sitting next to the
+    photon files themselves.
+    """
+    logs_directory = output_file.parent.parent / "logs"
+    return logs_directory / f"{output_file.stem}-reconstruction-summary.json"
 
 
 def derive_reconstruction_command(
