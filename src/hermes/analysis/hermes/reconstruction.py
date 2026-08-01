@@ -119,16 +119,18 @@ def plan_reconstruction(
     """Decide, per pixel file, whether to "run" reconstruction or "skip" it.
 
     With overwrite every file runs. Otherwise a file is skipped only when its
-    photon output file already exists.
+    reconstruction summary already exists, which the binary writes on every
+    success (including zero-photon runs that produce no photon parquet).
     """
     reconstruction = _require_reconstruction(analysis)
     _validate_program_and_algorithm(reconstruction)
 
     plan: ReconstructionPlan = []
     for input_file in resolve_pixel_files(analysis):
-        if not overwrite and derive_output_path(
-            reconstruction, input_file
-        ).exists():
+        summary_path = derive_summary_path(
+            derive_output_path(reconstruction, input_file)
+        )
+        if not overwrite and summary_path.exists():
             plan.append((input_file, "skip"))
         else:
             plan.append((input_file, "run"))
@@ -255,13 +257,13 @@ def log_skipped_input(
     input_file: FileReference,
     output_file: Path,
 ) -> None:
-    """Log that one pixel file was skipped because its photon file exists."""
-    _ANALYSIS_LOGGER.info(
-        "Skipped {pixel_file}: photon output already exists",
+    """Log that one pixel file was skipped because its summary already exists."""
+    _ANALYSIS_LOGGER.warning(
+        "Skipped {pixel_file}: valid outputs already exist",
         event_type="analysis.tpx3_reconstruction.skipped",
         pixel_file=str(input_file.path),
         output_file=str(output_file),
-        reason="photon output file already exists",
+        reason="valid reconstruction summary already exists",
     )
 
 
