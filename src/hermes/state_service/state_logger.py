@@ -20,7 +20,8 @@ class StateLogger:
 
     def log_initial_state(self, record: HermesRecord) -> None:
         self._logger.info(
-            "state.initial_record",
+            "Initialized HERMES Record for measurement {measurement_id}, "
+            "run {run_number}",
             event_type="state.initial_record",
             record=_serialize_record(record),
             **_record_context(record),
@@ -28,7 +29,7 @@ class StateLogger:
 
     def log_state_loaded(self, record: HermesRecord, path: str | Path) -> None:
         self._logger.info(
-            "state.loaded",
+            "HERMES Record loaded from {record_path}",
             event_type="state.loaded",
             record_path=str(path),
             **_record_context(record),
@@ -36,7 +37,7 @@ class StateLogger:
 
     def log_state_saved(self, record: HermesRecord, path: str | Path) -> None:
         self._logger.info(
-            "state.saved",
+            "HERMES Record saved to {record_path}",
             event_type="state.saved",
             record_path=str(path),
             **_record_context(record),
@@ -44,8 +45,13 @@ class StateLogger:
 
     def log_change(self, change_request: ChangeRequest) -> None:
         change = change_request.model_dump(mode="json")
-        self._logger.info(
-            "state.change",
+        log = (
+            self._logger.debug
+            if change_request.status == "pending"
+            else self._logger.info
+        )
+        log(
+            "HERMES Record change {status}: {path}",
             event_type="state.change",
             change=change,
             change_id=change_request.change_id,
@@ -71,7 +77,7 @@ class StateLogger:
         proposed_value: JsonValue = None,
     ) -> None:
         self._logger.error(
-            "state.validation_failed",
+            "HERMES Record validation failed for {path}: {error}",
             event_type="state.validation_failed",
             change_id=change_id,
             path=path,
