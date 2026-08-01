@@ -24,9 +24,9 @@ extra-index-urls = ["https://pypi.org/simple"]
 hermes = { path = ".", editable = true }
 
 [tool.pixi.tasks]
-build-cpp-unpacker = "cmake -S backends/unpackers/tpx3-spidr/cpp -B build/backends/tpx3-spidr -DCMAKE_BUILD_TYPE=Release && cmake --build build/backends/tpx3-spidr"
+build-cpp-unpacker = "cmake -S src/backends/unpackers/tpx3-spidr/cpp -B build/backends/tpx3-spidr -DCMAKE_BUILD_TYPE=Release && cmake --build build/backends/tpx3-spidr"
 test-cpp-unpacker = { cmd = "ctest --test-dir build/backends/tpx3-spidr --output-on-failure", depends-on = ["build-cpp-unpacker"] }
-build-cpp-photon-clusterer = "cmake -S backends/reconstruction/photons/cpp -B build/backends/photon-clusterer -DCMAKE_BUILD_TYPE=Release && cmake --build build/backends/photon-clusterer"
+build-cpp-photon-clusterer = "cmake -S src/backends/reconstruction/photons/cpp -B build/backends/photon-clusterer -DCMAKE_BUILD_TYPE=Release && cmake --build build/backends/photon-clusterer"
 test-cpp-photon-clusterer = { cmd = "ctest --test-dir build/backends/photon-clusterer --output-on-failure", depends-on = ["build-cpp-photon-clusterer"] }
 install-backends = { cmd = "bash -c 'mkdir -p .pixi/bin && cp build/backends/tpx3-spidr/hermes-tpx3-spidr .pixi/bin/ && cp build/backends/photon-clusterer/hermes-photon-clusterer .pixi/bin/ && echo \"Installed to .pixi/bin/hermes-tpx3-spidr and .pixi/bin/hermes-photon-clusterer\"'", depends-on = ["build-cpp-unpacker", "build-cpp-photon-clusterer"] }
 

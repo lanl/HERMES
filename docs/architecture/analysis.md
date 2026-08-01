@@ -62,23 +62,24 @@ src/hermes/state/models/analysis/
 
 Python code under `src/hermes/analysis/` runs the selected analysis mode. The
 C++ and Rust programs that perform HERMES unpacking and reconstruction remain
-outside the Python package under `backends/`:
+outside the Python package, under `src/backends/`:
 
 ```text
 HERMES/
 ├── Cargo.toml
-└── backends/
-    ├── unpackers/
-    │   └── tpx3-spidr/
-    │       ├── cpp/
-    │       └── rust/
-    └── reconstruction/
-        ├── photons/
-        │   ├── cpp/
-        │   └── rust/
-        └── events/
-            ├── cpp/
-            └── rust/
+└── src/
+    └── backends/
+        ├── unpackers/
+        │   └── tpx3-spidr/
+        │       ├── cpp/
+        │       └── rust/
+        └── reconstruction/
+            ├── photons/
+            │   ├── cpp/
+            │   └── rust/
+            └── events/
+                ├── cpp/
+                └── rust/
 ```
 
 C++ and Rust versions of the same HERMES analysis step should live beside each

@@ -83,7 +83,7 @@ pixi run hermes-tpx3-spidr \
     data/my_experiment/analysis/run_001_unpacked
 
 # Verify sorting
-pixi run python backends/unpackers/tpx3-spidr/cpp/tests/check_sorting.py \
+pixi run python src/backends/unpackers/tpx3-spidr/cpp/tests/check_sorting.py \
     data/my_experiment/analysis/run_001_unpacked
 ```
 
@@ -253,7 +253,7 @@ pixi run hermes-tpx3-spidr \
     data/photodetection_test_2024/analysis/run_001_unpacked
 
 # 5. Verify results
-pixi run python backends/unpackers/tpx3-spidr/cpp/tests/check_sorting.py \
+pixi run python src/backends/unpackers/tpx3-spidr/cpp/tests/check_sorting.py \
     data/photodetection_test_2024/analysis/run_001_unpacked
 
 # 6. View timing
@@ -287,5 +287,5 @@ cat data/photodetection_test_2024/analysis/run_001_unpacked/summary.json | \
 ## Questions?
 
 See the main HERMES documentation or backend-specific READMEs:
-- TPX3 unpacker: `backends/unpackers/tpx3-spidr/README.md`
+- TPX3 unpacker: `src/backends/unpackers/tpx3-spidr/README.md`
 - Build instructions: Root `README.md`
