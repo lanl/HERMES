@@ -173,6 +173,30 @@ def run_hermes_analysis(
         )
         raise HermesAnalysisError(error)
 
+    output_directories = list(analysis.output_directories())
+    for directory in output_directories:
+        try:
+            directory.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            error = f"cannot create analysis output directory {directory}: {exc}"
+            _ANALYSIS_LOGGER.error(
+                "Cannot run HERMES analysis: {error}",
+                event_type="analysis.hermes.directory_creation_failed",
+                error=error,
+                measurement_id=state.measurement_info.measurement_id,
+                run_number=state.measurement_info.run_number,
+                directory=str(directory),
+            )
+            raise HermesAnalysisError(error) from exc
+    _ANALYSIS_LOGGER.debug(
+        "Prepared {directory_count} analysis output directories under "
+        "{analysis_directory}",
+        event_type="analysis.hermes.directories_prepared",
+        analysis_directory=str(analysis.analysis_directory),
+        directory_count=len(output_directories),
+        directories=[str(directory) for directory in output_directories],
+    )
+
     unpack_overwrite = overwrite or analysis.unpacking.runtime_options.overwrite
     try:
         unpacking_plan = plan_unpacking(analysis, overwrite=unpack_overwrite)
