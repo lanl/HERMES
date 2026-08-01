@@ -57,7 +57,8 @@ void printHelp(const char* program_name) {
                  "photon_pixels\n";
     std::cout << "    sidecar when enabled. The reconstruction-summary JSON is "
                  "written\n";
-    std::cout << "    to a logs/ directory beside the output directory.\n";
+    std::cout << "    to a logs/photons/ directory beside the output "
+                 "directory.\n";
 }
 
 void printVersion() {
@@ -204,12 +205,13 @@ int main(const int argc, char* argv[]) {
         const fs::path output_path(output_file);
         const fs::path parent = output_path.parent_path();
         const std::string stem = output_path.stem().string();
-        // The summary is a log artifact: it goes in a logs/ directory beside the
-        // photon output directory (matching the unpacker), while the photon file
-        // and its photon_pixels sidecar stay at the output path. Both directories
-        // are created up front so the summary is written even when reconstruction
-        // produces zero photons (no parquet files).
-        const fs::path logs_dir = parent.parent_path() / "logs";
+        // The summary is a log artifact: it goes in a logs/photons/ directory
+        // beside the photon output directory (the unpacker writes to
+        // logs/unpacker/), while the photon file and its photon_pixels sidecar
+        // stay at the output path. Both directories are created up front so the
+        // summary is written even when reconstruction produces zero photons (no
+        // parquet files).
+        const fs::path logs_dir = parent.parent_path() / "logs" / "photons";
         for (const fs::path& directory : {parent, logs_dir}) {
             if (directory.empty()) {
                 continue;
