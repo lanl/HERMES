@@ -133,7 +133,7 @@ def execute_unpacker(
     )
     started = perf_counter()
     _ANALYSIS_LOGGER.info(
-        "Unpacking {raw_tpx3_file}",
+        "Unpacking {raw_tpx3_file} (time_sort={time_sort})",
         event_type="analysis.tpx3_unpacking.started",
         raw_tpx3_file=str(raw_file.path),
         raw_tpx3_size_bytes=raw_file.path.stat().st_size,
@@ -142,6 +142,7 @@ def execute_unpacker(
         executable_path=str(analysis.unpacking.program.executable_path),
         resolved_executable_path=str(resolved_executable_path),
         executable_version=analysis.unpacking.program.version,
+        time_sort=analysis.unpacking.runtime_options.time_sort,
         command=command,
     )
 
