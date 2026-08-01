@@ -58,6 +58,7 @@ def derive_summary_path(
     return (
         analysis.analysis_directory
         / "logs"
+        / "unpacker"
         / f"{raw_file.path.stem}-unpacker-summary.json"
     )
 
