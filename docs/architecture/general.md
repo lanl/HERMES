@@ -51,7 +51,7 @@ HERMES/
 │   │   │   └── tpx3-spidr/
 │   │   │       ├── cpp/
 │   │   │       │   ├── CMakeLists.txt
-│   │   │       │   ├── include/
+│   │   │       │   ├── inc/
 │   │   │       │   ├── src/
 │   │   │       │   └── tests/
 │   │   │       └── rust/
@@ -60,7 +60,8 @@ HERMES/
 │   │   │           │   ├── lib.rs
 │   │   │           │   └── main.rs
 │   │   │           └── tests/
-│   │   ├── photon-reconstructors/
+│   │   ├── reconstruction/
+│   │   │   └── photons/
 │   │   └── event-reconstructors/
 │   │
 │   └── hermes/
