@@ -17,8 +17,8 @@ HermesTpx3RunStatus = Literal[
 ]
 
 # Canonical parquet-category subdirectory names the unpacker writes under the
-# unpacking output directory. HERMES owns this layout and creates these
-# directories itself; the backend binaries are not relied on to create them.
+# unpacking output directory. The unpacker binary creates these directories;
+# this mapping lets HERMES validate the relative paths reported in its summary.
 TPX3_PARQUET_CATEGORY_DIRECTORIES = {
     "pixel_data": "pixelHits",
     "tdc_timestamps": "tdcTriggers",
@@ -412,21 +412,3 @@ class HermesTpx3AnalysisState(StrictBaseModel):
         if reconstruction is not None and reconstruction.output_directory is None:
             reconstruction.output_directory = self.analysis_directory / "photons"
         return self
-
-    def output_directories(self) -> list[Path]:
-        """Every output directory HERMES creates before running a backend.
-
-        HERMES owns the run's directory layout; the backend binaries write into
-        these directories but are not relied on to create them.
-        """
-        directories = [self.analysis_directory / "logs"]
-        assert self.unpacking.output_directory is not None
-        directories.extend(
-            self.unpacking.output_directory / name
-            for name in TPX3_PARQUET_CATEGORY_DIRECTORIES.values()
-        )
-        reconstruction = self.photon_reconstruction
-        if reconstruction is not None:
-            assert reconstruction.output_directory is not None
-            directories.append(reconstruction.output_directory)
-        return directories
