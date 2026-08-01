@@ -356,8 +356,11 @@ def _log_process_failure(
     stderr_excerpt: str = "",
 ) -> None:
     """Log a failure for one pixel file with the command output for debugging."""
+    message = "Reconstructing {pixel_file} failed: {error}"
+    if stderr_excerpt:
+        message += "\nstderr: {stderr_excerpt}"
     _ANALYSIS_LOGGER.error(
-        "Reconstructing {pixel_file} failed: {error}",
+        message,
         event_type="analysis.tpx3_reconstruction.failed",
         pixel_file=str(input_file.path),
         command=command,
