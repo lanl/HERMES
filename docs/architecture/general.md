@@ -45,24 +45,24 @@ for each major boundary live in separate files:
 
 HERMES/
 ├── Cargo.toml  # Rust workspace file for Rust analysis backends
-├── backends/   # backends selected by HERMES for each analysis step
-│   ├── unpackers/
-│   │   └── tpx3-spidr/
-│   │       ├── cpp/
-│   │       │   ├── CMakeLists.txt
-│   │       │   ├── include/
-│   │       │   ├── src/
-│   │       │   └── tests/
-│   │       └── rust/
-│   │           ├── Cargo.toml
-│   │           ├── src/
-│   │           │   ├── lib.rs
-│   │           │   └── main.rs
-│   │           └── tests/
-│   ├── photon-reconstructors/
-│   └── event-reconstructors/
-│
 ├── src/
+│   ├── backends/   # backends selected by HERMES for each analysis step
+│   │   ├── unpackers/
+│   │   │   └── tpx3-spidr/
+│   │   │       ├── cpp/
+│   │   │       │   ├── CMakeLists.txt
+│   │   │       │   ├── include/
+│   │   │       │   ├── src/
+│   │   │       │   └── tests/
+│   │   │       └── rust/
+│   │   │           ├── Cargo.toml
+│   │   │           ├── src/
+│   │   │           │   ├── lib.rs
+│   │   │           │   └── main.rs
+│   │   │           └── tests/
+│   │   ├── photon-reconstructors/
+│   │   └── event-reconstructors/
+│   │
 │   └── hermes/
 │       ├── __init__.py         # makes hermes the Python import package
 │       ├── state_service/      # state management, change proposal, validation, and approval workflow 
@@ -121,7 +121,7 @@ HERMES/
 This layout is a target shape, not a requirement to create every file
 immediately. Add a backend directory only when its first working version is
 being implemented. Rust backends remain members of the top-level Cargo
-workspace even though they are grouped by analysis step under `backends/`.
+workspace even though they are grouped by analysis step under `src/backends/`.
 
 ## External References
 

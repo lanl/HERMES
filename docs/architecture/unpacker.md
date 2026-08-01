@@ -4,7 +4,7 @@ TPX3 SPIDR unpackers should live outside the Python package. C++ and Rust
 versions should live beside each other:
 
 ```text
-backends/unpackers/tpx3-spidr/
+src/backends/unpackers/tpx3-spidr/
 ├── cpp/
 └── rust/
 ```
@@ -396,7 +396,7 @@ from `analysis/pixelHits/` and writes photon Parquet files under
 `analysis/photons/`. C++ and Rust versions live beside each other:
 
 ```text
-backends/reconstruction/photons/
+src/backends/reconstruction/photons/
 ├── cpp/
 └── rust/
 ```
@@ -683,7 +683,7 @@ reconstruction backend should read photon Parquet files and write event Parquet
 files. Possible C++ and Rust versions should be grouped under:
 
 ```text
-backends/event-reconstructors/<name>/
+src/backends/event-reconstructors/<name>/
 ├── cpp/
 └── rust/
 ```
