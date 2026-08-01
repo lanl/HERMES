@@ -41,6 +41,12 @@ def main(input_yaml_path: Path = DEFAULT_INPUT_YAML_PATH) -> None:
         "Skipped existing valid unpacking output: "
         f"{len(raw_tpx3_files) - len(unpacked_raw_files)}"
     )
+    reconstructed_count = sum(
+        1 for result in reconstruction_results if result.status == "completed"
+    )
+    skipped_count = sum(
+        1 for result in reconstruction_results if result.status == "skipped"
+    )
     photon_count = sum(
         result.counts.photon_count
         for result in reconstruction_results
@@ -51,7 +57,8 @@ def main(input_yaml_path: Path = DEFAULT_INPUT_YAML_PATH) -> None:
         for result in reconstruction_results
         if result.counts is not None
     )
-    print(f"Reconstructed photon files: {len(reconstruction_results)}")
+    print(f"Reconstructed photon files this run: {reconstructed_count}")
+    print(f"Skipped existing valid reconstruction output: {skipped_count}")
     print(f"Photons: {photon_count}")
     print(f"Rejected clusters: {rejected_count}")
     print(f"Analysis directory: {final_analysis.analysis_directory}")

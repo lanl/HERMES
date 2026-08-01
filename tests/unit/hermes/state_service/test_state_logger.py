@@ -31,6 +31,15 @@ class CapturingLogger:
             context={**self.context, **context},
         )
 
+    def debug(self, message: str, **fields: Any) -> None:
+        self.events.append(
+            {
+                "level": "debug",
+                "message": message,
+                "fields": {**self.context, **fields},
+            }
+        )
+
     def info(self, message: str, **fields: Any) -> None:
         self.events.append(
             {
@@ -82,10 +91,9 @@ def test_state_logger_logs_initial_state_record(tmp_path: Path) -> None:
     event = logger.events[0]
     fields = event["fields"]
     assert event["level"] == "info"
-    assert event["message"] == "state.initial_record"
+    assert fields["event_type"] == "state.initial_record"
     assert fields["domain"] == "state"
     assert fields["run_id"] == "run-007"
-    assert fields["event_type"] == "state.initial_record"
     assert fields["measurement_id"] == "LC-20260505"
     assert fields["run_number"] == 7
     assert fields["record"]["measurement_info"]["measurement_id"] == "LC-20260505"
@@ -101,10 +109,8 @@ def test_state_logger_logs_state_load_and_save_events(tmp_path: Path) -> None:
     state_logger.log_state_saved(record, record_path)
 
     loaded, saved = logger.events
-    assert loaded["message"] == "state.loaded"
     assert loaded["fields"]["event_type"] == "state.loaded"
     assert loaded["fields"]["record_path"] == str(record_path)
-    assert saved["message"] == "state.saved"
     assert saved["fields"]["event_type"] == "state.saved"
     assert saved["fields"]["record_path"] == str(record_path)
 
@@ -123,8 +129,9 @@ def test_state_logger_logs_change_with_value_summaries() -> None:
 
     state_logger.log_change(change)
 
+    assert logger.events[0]["level"] == "debug"
     fields = logger.events[0]["fields"]
-    assert logger.events[0]["message"] == "state.change"
+    assert fields["event_type"] == "state.change"
     assert fields["change_id"] == "change-001"
     assert fields["path"] == "acquisition.result.status"
     assert fields["status"] == "pending"
@@ -172,6 +179,8 @@ def test_state_logger_logs_rejected_and_failed_change_metadata() -> None:
     state_logger.log_change(rejected)
     state_logger.log_change(failed)
 
+    assert logger.events[0]["level"] == "info"
+    assert logger.events[1]["level"] == "info"
     rejected_fields = logger.events[0]["fields"]
     failed_fields = logger.events[1]["fields"]
     assert rejected_fields["status"] == "rejected"
@@ -197,7 +206,6 @@ def test_state_logger_logs_validation_failure() -> None:
     event = logger.events[0]
     fields = event["fields"]
     assert event["level"] == "error"
-    assert event["message"] == "state.validation_failed"
     assert fields["event_type"] == "state.validation_failed"
     assert fields["change_id"] == "change-003"
     assert fields["path"] == "acquisition.result.status"

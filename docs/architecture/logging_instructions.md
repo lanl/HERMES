@@ -65,7 +65,14 @@ working_dir/
 
 Logging is initialized once at HERMES process startup:
 
+The console sink uses Loguru's default format and defaults to INFO level, so
+DEBUG events (such as `pending` change proposals) stay off the console while the
+serialized file sinks still capture them. The level is configurable through the
+`log_level` field on the record's `RuntimeEnvironment`; `Workflow` passes it into
+`configure_logging`. File sinks are added only when a `log_dir` is provided.
+
 ```python
+import sys
 from pathlib import Path
 from loguru import logger
 
@@ -74,8 +81,15 @@ def _domain_filter(domain: str):
     return lambda record: record["extra"].get("domain") == domain
 
 
-def configure_logging(log_dir: Path) -> None:
+def configure_logging(log_dir: Path | None = None, level: str = "INFO") -> None:
     logger.remove()
+
+    logger.add(sys.stderr, level=level)
+
+    if log_dir is None:
+        return
+
+    log_dir.mkdir(parents=True, exist_ok=True)
 
     logger.add(
         log_dir / "state.jsonl",
@@ -147,6 +161,23 @@ serval_log = logger.bind(
 analysis_log = logger.bind(domain="analysis", measurement_id=measurement_id, run_id=run_id)
 ```
 
+## Message Conventions
+
+Every log call carries three complementary pieces:
+
+- a human-readable `message` that interpolates the event's key fields, so console
+  and log readers understand what happened at a glance
+  (e.g. `Unpacked {raw_tpx3_file} in {elapsed_seconds:.2f}s`)
+- an `event_type` token for machine parsing and downstream filtering
+  (e.g. `analysis.tpx3_unpacking.completed`); tokens are stable and must not
+  change casually
+- structured keyword fields carrying the full context (paths, counts, timings,
+  bounded excerpts)
+
+Loguru interpolates `{field}` in the message from the same keyword fields, so no
+data is written twice by hand. Never emit a bare `event_type` token as the
+message; give a readable sentence and keep the token in the `event_type` field.
+
 ## StateLogger
 
 `StateLogger` records the audit trail for HERMES record mutation.
@@ -161,6 +192,12 @@ Responsibilities:
   approval-bypass marker, timestamps, and concise value summaries
 - avoid configuring Loguru
 - avoid mutating state
+
+Change proposals (`pending`) are logged at DEBUG, because trusted-workflow
+changes are proposed and immediately applied and the two console lines would
+otherwise be redundant. The `applied`, `approved`, `rejected`, and `failed`
+transitions are logged at INFO. Every transition is still written to the
+`state.jsonl` sink regardless of level, so the audit trail stays complete.
 
 For small scalar or bounded structured values, state logs may include old and
 new values inline. For saved `.bpc` and `.dacs` files, state logs should include

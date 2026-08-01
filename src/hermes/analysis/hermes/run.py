@@ -75,7 +75,7 @@ def _calculate_worker_count(
     worker_count = min(pending_file_count, cpu_slots, memory_slots)
 
     _ANALYSIS_LOGGER.info(
-        "analysis.tpx3_unpacking.resource_calculation",
+        "Using {worker_count} worker(s) for {pending_file_count} file(s)",
         event_type="analysis.tpx3_unpacking.resource_calculation",
         resource_limit_percent=analysis.resource_limit_percent,
         resource_fraction=resource_fraction,

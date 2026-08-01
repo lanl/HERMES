@@ -15,6 +15,17 @@ from hermes.state.models.shared_models import (
 HermesTpx3RunStatus = Literal[
     "planned", "running", "completed", "skipped", "failed"
 ]
+
+# Canonical parquet-category subdirectory names the unpacker writes under the
+# unpacking output directory. The unpacker binary creates these directories;
+# this mapping lets HERMES validate the relative paths reported in its summary.
+TPX3_PARQUET_CATEGORY_DIRECTORIES = {
+    "pixel_data": "pixelHits",
+    "tdc_timestamps": "tdcTriggers",
+    "heartbeat_packets": "globalTimestamps",
+    "control_packets": "controlPackets",
+    "unrecognized_packets": "unknownPackets",
+}
 SortingStrategy = Literal["in_memory", "external_merge"]
 ClusteringAlgorithm = Literal["connected_components", "dbscan"]
 PhotonTimeEstimator = Literal[
@@ -175,14 +186,9 @@ class Tpx3SpidrParquetSummary(StrictBaseModel):
 
     @model_validator(mode="after")
     def require_category_relative_paths(self) -> Tpx3SpidrParquetSummary:
-        expected_directories = {
-            "pixel_data": "pixelHits",
-            "tdc_timestamps": "tdcTriggers",
-            "heartbeat_packets": "globalTimestamps",
-            "control_packets": "controlPackets",
-            "unrecognized_packets": "unknownPackets",
-        }
-        for field_name, expected_directory in expected_directories.items():
+        for field_name, expected_directory in (
+            TPX3_PARQUET_CATEGORY_DIRECTORIES.items()
+        ):
             category = getattr(self, field_name)
             for file_path in category.files:
                 if file_path.is_absolute() or ".." in file_path.parts:

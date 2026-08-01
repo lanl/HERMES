@@ -133,7 +133,7 @@ def execute_unpacker(
     )
     started = perf_counter()
     _ANALYSIS_LOGGER.info(
-        "analysis.tpx3_unpacking.started",
+        "Unpacking {raw_tpx3_file} (time_sort={time_sort})",
         event_type="analysis.tpx3_unpacking.started",
         raw_tpx3_file=str(raw_file.path),
         raw_tpx3_size_bytes=raw_file.path.stat().st_size,
@@ -142,6 +142,7 @@ def execute_unpacker(
         executable_path=str(analysis.unpacking.program.executable_path),
         resolved_executable_path=str(resolved_executable_path),
         executable_version=analysis.unpacking.program.version,
+        time_sort=analysis.unpacking.runtime_options.time_sort,
         command=command,
     )
 
@@ -209,7 +210,7 @@ def execute_unpacker(
         raise
 
     _ANALYSIS_LOGGER.info(
-        "analysis.tpx3_unpacking.completed",
+        "Unpacked {raw_tpx3_file} in {elapsed_seconds:.2f}s",
         event_type="analysis.tpx3_unpacking.completed",
         raw_tpx3_file=str(raw_file.path),
         analysis_directory=str(analysis.analysis_directory),
@@ -229,7 +230,7 @@ def log_skipped_input(
     raw_file: FileReference,
 ) -> None:
     _ANALYSIS_LOGGER.warning(
-        "analysis.tpx3_unpacking.skipped",
+        "Skipped {raw_tpx3_file}: valid outputs already exist",
         event_type="analysis.tpx3_unpacking.skipped",
         raw_tpx3_file=str(raw_file.path),
         analysis_directory=str(analysis.analysis_directory),
@@ -244,7 +245,8 @@ def log_overall_completion(
     unpacked_file_count: int,
 ) -> None:
     _ANALYSIS_LOGGER.info(
-        "analysis.tpx3_unpacking.completed",
+        "Unpacking finished: {unpacked_file_count} unpacked, "
+        "{skipped_file_count} skipped of {raw_file_count} raw files",
         event_type="analysis.tpx3_unpacking.completed",
         scope="all_raw_tpx3_files",
         raw_file_count=raw_file_count,
@@ -255,7 +257,7 @@ def log_overall_completion(
 
 def log_overall_failure(error: Exception) -> None:
     _ANALYSIS_LOGGER.error(
-        "analysis.tpx3_unpacking.failed",
+        "Unpacking failed: {error}",
         event_type="analysis.tpx3_unpacking.failed",
         scope="all_raw_tpx3_files",
         error=str(error),
@@ -456,8 +458,11 @@ def _log_process_failure(
     stderr_excerpt: str = "",
     summary: dict[str, object] | None = None,
 ) -> None:
+    message = "Unpacking {raw_tpx3_file} failed: {error}"
+    if stderr_excerpt:
+        message += "\nstderr: {stderr_excerpt}"
     _ANALYSIS_LOGGER.error(
-        "analysis.tpx3_unpacking.failed",
+        message,
         event_type="analysis.tpx3_unpacking.failed",
         raw_tpx3_file=str(raw_file.path),
         command=command,

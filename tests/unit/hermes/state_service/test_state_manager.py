@@ -28,6 +28,10 @@ class CapturingStateLogger:
     def __init__(self) -> None:
         self.changes: list[ChangeRequest] = []
         self.validation_failures: list[dict[str, Any]] = []
+        self.initial_records: list[HermesRecord] = []
+
+    def log_initial_state(self, record: HermesRecord) -> None:
+        self.initial_records.append(record.model_copy(deep=True))
 
     def log_change(self, change_request: ChangeRequest) -> None:
         self.changes.append(change_request.model_copy(deep=True))

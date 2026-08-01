@@ -8,6 +8,7 @@ from pydantic import ValidationError
 
 from hermes.state.state import HermesRecord
 from hermes.state_service.shared_types import StateIOError
+from hermes.state_service.state_logger import StateLogger
 
 
 class _NoAliasSafeDumper(yaml.SafeDumper):
@@ -34,10 +35,13 @@ def load_hermes_record_from_yaml(file_path: str | Path) -> HermesRecord:
         raise StateIOError(msg)
 
     try:
-        return HermesRecord.model_validate(data)
+        record = HermesRecord.model_validate(data)
     except ValidationError as exc:
         msg = f"failed to validate HermesRecord YAML from {path}"
         raise StateIOError(msg) from exc
+
+    StateLogger().log_state_loaded(record, path)
+    return record
 
 
 def save_hermes_record_to_yaml(record: HermesRecord, file_path: str | Path) -> Path:
@@ -59,4 +63,5 @@ def save_hermes_record_to_yaml(record: HermesRecord, file_path: str | Path) -> P
         msg = f"failed to write HermesRecord YAML to {path}"
         raise StateIOError(msg) from exc
 
+    StateLogger().log_state_saved(record, path)
     return path

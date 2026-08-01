@@ -126,6 +126,7 @@ class RuntimeEnvironment(StrictBaseModel):
     python_version: str | None = None
     platform: str | None = None
     allow_overlapping_output_dirs: bool = Field(default=False)
+    log_level: str = Field(default="INFO")
 
     @model_validator(mode="before")
     @classmethod

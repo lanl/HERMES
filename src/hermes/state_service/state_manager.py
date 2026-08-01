@@ -27,6 +27,8 @@ _JSON_VALUE_ADAPTER = TypeAdapter(JsonValue)
 
 
 class StateAuditLogger(Protocol):
+    def log_initial_state(self, record: HermesRecord) -> None: ...
+
     def log_change(self, change_request: ChangeRequest) -> None: ...
 
     def log_validation_failure(
@@ -53,6 +55,7 @@ class StateManager:
         self._config = config or StateServiceConfig()
         self._state_logger = state_logger or StateLogger()
         self._changes: dict[ChangeId, ChangeRequest] = {}
+        self._state_logger.log_initial_state(self._record)
 
     def get_state(self) -> HermesRecord:
         return self._record.model_copy(deep=True)

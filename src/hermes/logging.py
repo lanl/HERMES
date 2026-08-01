@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from collections.abc import Callable
 from pathlib import Path
 
@@ -10,9 +11,15 @@ def _domain_filter(domain: str) -> Callable[[dict], bool]:
     return lambda record: record["extra"].get("domain") == domain
 
 
-def configure_logging(log_dir: Path) -> None:
-    log_dir.mkdir(parents=True, exist_ok=True)
+def configure_logging(log_dir: Path | None = None, level: str = "INFO") -> None:
     logger.remove()
+
+    logger.add(sys.stderr, level=level)
+
+    if log_dir is None:
+        return
+
+    log_dir.mkdir(parents=True, exist_ok=True)
 
     logger.add(
         log_dir / "state.jsonl",

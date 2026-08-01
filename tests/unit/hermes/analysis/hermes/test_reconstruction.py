@@ -204,7 +204,28 @@ def test_plan_runs_when_no_output_exists(tmp_path: Path) -> None:
     assert [action for _, action in plan] == ["run"]
 
 
-def test_plan_skips_when_output_exists(tmp_path: Path) -> None:
+def test_plan_skips_when_summary_exists(tmp_path: Path) -> None:
+    analysis = _analysis(tmp_path, "run_000000-chip-0-part-00000.parquet")
+    reconstruction = analysis.photon_reconstruction
+    input_file = FileReference(
+        path=analysis.analysis_directory
+        / "pixelHits"
+        / "run_000000-chip-0-part-00000.parquet"
+    )
+    summary_path = derive_summary_path(
+        derive_output_path(reconstruction, input_file)
+    )
+    summary_path.parent.mkdir(parents=True, exist_ok=True)
+    summary_path.touch()
+
+    plan = plan_reconstruction(analysis)
+    assert [action for _, action in plan] == ["skip"]
+
+
+def test_plan_runs_when_only_photon_parquet_exists(tmp_path: Path) -> None:
+    # A photon parquet without a summary is an incomplete run; it must re-run so
+    # the summary (the completion marker) gets written, matching the binary's
+    # zero-photon behavior where only the summary is produced.
     analysis = _analysis(tmp_path, "run_000000-chip-0-part-00000.parquet")
     reconstruction = analysis.photon_reconstruction
     input_file = FileReference(
@@ -217,7 +238,7 @@ def test_plan_skips_when_output_exists(tmp_path: Path) -> None:
     output_file.touch()
 
     plan = plan_reconstruction(analysis)
-    assert [action for _, action in plan] == ["skip"]
+    assert [action for _, action in plan] == ["run"]
 
 
 def test_plan_runs_all_when_overwrite(tmp_path: Path) -> None:
