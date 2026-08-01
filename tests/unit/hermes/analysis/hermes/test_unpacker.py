@@ -215,6 +215,7 @@ def _write_fake_unpacker(executable: Path) -> None:
         summary_path = (
             analysis_directory
             / "logs"
+            / "unpacker"
             / f"{{raw_stem}}-unpacker-summary.json"
         )
         summary_path.parent.mkdir(parents=True, exist_ok=True)
@@ -337,7 +338,7 @@ def test_derives_command_and_input_specific_summary_path(tmp_path: Path) -> None
         str(analysis.unpacking.output_directory),
     ]
     assert derive_summary_path(analysis, raw_file) == (
-        analysis.analysis_directory / "logs/first-unpacker-summary.json"
+        analysis.analysis_directory / "logs/unpacker/first-unpacker-summary.json"
     )
 
 
@@ -891,7 +892,9 @@ def test_parallel_unpacking_one_failure_stops_remaining_work(tmp_path: Path) -> 
     assert results
     assert all(result.status == "failed" for result in results)
 
-    summary_files = list((analysis.analysis_directory / "logs").glob("*.json"))
+    summary_files = list(
+        (analysis.analysis_directory / "logs" / "unpacker").glob("*.json")
+    )
     completed_count = len(summary_files)
     assert completed_count < 4
 
