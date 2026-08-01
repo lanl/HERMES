@@ -458,8 +458,11 @@ def _log_process_failure(
     stderr_excerpt: str = "",
     summary: dict[str, object] | None = None,
 ) -> None:
+    message = "Unpacking {raw_tpx3_file} failed: {error}"
+    if stderr_excerpt:
+        message += "\nstderr: {stderr_excerpt}"
     _ANALYSIS_LOGGER.error(
-        "Unpacking {raw_tpx3_file} failed: {error}",
+        message,
         event_type="analysis.tpx3_unpacking.failed",
         raw_tpx3_file=str(raw_file.path),
         command=command,
