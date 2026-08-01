@@ -172,7 +172,7 @@ def execute_reconstruction(
         overwrite=overwrite,
     )
     _ANALYSIS_LOGGER.info(
-        "analysis.tpx3_reconstruction.started",
+        "Reconstructing {pixel_file}",
         event_type="analysis.tpx3_reconstruction.started",
         pixel_file=str(input_file.path),
         output_file=str(output_file),
@@ -227,7 +227,8 @@ def execute_reconstruction(
         settings_file.unlink(missing_ok=True)
 
     _ANALYSIS_LOGGER.info(
-        "analysis.tpx3_reconstruction.completed",
+        "Reconstructed {pixel_file} in {elapsed_seconds:.2f}s: "
+        "{photon_count} photons",
         event_type="analysis.tpx3_reconstruction.completed",
         pixel_file=str(input_file.path),
         output_file=str(output_file),
@@ -256,7 +257,7 @@ def log_skipped_input(
 ) -> None:
     """Log that one pixel file was skipped because its photon file exists."""
     _ANALYSIS_LOGGER.info(
-        "analysis.tpx3_reconstruction.skipped",
+        "Skipped {pixel_file}: photon output already exists",
         event_type="analysis.tpx3_reconstruction.skipped",
         pixel_file=str(input_file.path),
         output_file=str(output_file),
@@ -271,7 +272,8 @@ def log_overall_completion(
 ) -> None:
     """Log a summary line once every pixel file has been handled."""
     _ANALYSIS_LOGGER.info(
-        "analysis.tpx3_reconstruction.completed",
+        "Reconstruction finished: {reconstructed_file_count} reconstructed, "
+        "{skipped_file_count} skipped of {pixel_file_count} pixel files",
         event_type="analysis.tpx3_reconstruction.completed",
         scope="all_pixel_files",
         pixel_file_count=pixel_file_count,
@@ -283,7 +285,7 @@ def log_overall_completion(
 def log_overall_failure(error: Exception) -> None:
     """Log that the overall reconstruction run failed."""
     _ANALYSIS_LOGGER.error(
-        "analysis.tpx3_reconstruction.failed",
+        "Reconstruction failed: {error}",
         event_type="analysis.tpx3_reconstruction.failed",
         scope="all_pixel_files",
         error=str(error),
@@ -355,7 +357,7 @@ def _log_process_failure(
 ) -> None:
     """Log a failure for one pixel file with the command output for debugging."""
     _ANALYSIS_LOGGER.error(
-        "analysis.tpx3_reconstruction.failed",
+        "Reconstructing {pixel_file} failed: {error}",
         event_type="analysis.tpx3_reconstruction.failed",
         pixel_file=str(input_file.path),
         command=command,
