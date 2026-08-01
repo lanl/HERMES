@@ -201,6 +201,17 @@ int main(const int argc, char* argv[]) {
         const fs::path output_path(output_file);
         const fs::path parent = output_path.parent_path();
         const std::string stem = output_path.stem().string();
+        // Create the output directory up front so the summary is written even
+        // when reconstruction produces zero photons (no parquet files).
+        if (!parent.empty()) {
+            std::error_code ec;
+            fs::create_directories(parent, ec);
+            if (ec) {
+                std::cerr << "Error: cannot create output directory "
+                          << parent.string() << ": " << ec.message() << "\n";
+                return 1;
+            }
+        }
         pixels_output_file =
             (parent / (stem + "-photon-pixels.parquet")).string();
         summary_path =
