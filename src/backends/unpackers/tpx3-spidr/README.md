@@ -67,7 +67,7 @@ output_directory/
 Use the provided script to verify all datasets are properly time-sorted:
 
 ```bash
-pixi run python backends/unpackers/tpx3-spidr/cpp/tests/check_sorting.py output_directory
+pixi run python src/backends/unpackers/tpx3-spidr/cpp/tests/check_sorting.py output_directory
 ```
 
 Example output:
@@ -180,7 +180,7 @@ pixi run hermes-tpx3-spidr \
     .scratch/test_output
 
 # Verify sorting
-pixi run python backends/unpackers/tpx3-spidr/cpp/tests/check_sorting.py .scratch/test_output
+pixi run python src/backends/unpackers/tpx3-spidr/cpp/tests/check_sorting.py .scratch/test_output
 
 # View summary
 cat .scratch/test_output/summary.json | python3 -m json.tool
