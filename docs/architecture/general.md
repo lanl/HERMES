@@ -16,6 +16,8 @@ for each major boundary live in separate files:
 - [Environment](environment.md)
 - [Acquisition](acquisition.md)
 - [TPX3 SPIDR Unpacker](unpacker.md)
+- [Photon Reconstruction](photon_reconstruction.md)
+- [Event Reconstruction](event_reconstruction.md)
 - [Analysis](analysis.md)
 - [State](state-model.md)
 - [State Services](state-service.md)
@@ -106,6 +108,8 @@ HERMES/
 │   │   ├── environment.md
 │   │   ├── acquisition.md
 │   │   ├── unpacker.md
+│   │   ├── photon_reconstruction.md
+│   │   ├── event_reconstruction.md
 │   │   ├── analysis.md
 │   │   ├── state-service.md
 │   │   ├── workflows.md
