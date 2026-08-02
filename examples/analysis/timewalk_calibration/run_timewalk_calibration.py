@@ -5,7 +5,7 @@ from pathlib import Path
 
 import yaml
 
-from hermes.analysis.hermes.timewalk_calibration import calibrate_timewalk
+from hermes.runner.analysis.hermes.timewalk_calibration import calibrate_timewalk
 from hermes.state.models.analysis.hermes_tpx3_spidr import (
     Tpx3PhotonClusteringSettings,
 )
