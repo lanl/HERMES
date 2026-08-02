@@ -92,9 +92,10 @@ HERMES/
 │       │       ├── environment.py              # Path fields for working, data, raw data, analyzed data, log, preview, config, and tool paths
 │       │       └── shared_models.py            # shared models and enums for the state models
 │       │
-│       ├── acquisition/        # acquisition mode packages such as hermes.acquisition.serval
-│       ├── analysis/           # analysis mode execution and wrappers
-│       ├── workflows/          # ordered acquisition and analysis steps
+│       ├── runner/             # operation runners; each executes one operation against the record
+│       │   ├── acquisition/    # acquisition mode packages such as hermes.runner.acquisition.serval
+│       │   └── analysis/       # analysis mode execution and wrappers
+│       ├── workflows/          # Workflow orchestrator: owns StateManager and dispatches to a runner
 │       └── logging.py          # setup for Loguru logging across the codebase
 │
 ├── tests/
