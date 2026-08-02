@@ -18,7 +18,7 @@ not require a Rust unpacker, Python execution wrapper, HERMES state updates, or
 performance optimization.
 
 Python should run the unpacker selected by the user as a separate command-line
-program. Code in `src/hermes/analysis/` should run the selected executable,
+program. Code in `src/hermes/runner/analysis/` should run the selected executable,
 check the summary JSON file, and save the results through
 `hermes.state_service`. It must not change the HERMES state directly.
 
