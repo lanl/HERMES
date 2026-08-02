@@ -6,22 +6,22 @@ from math import floor
 import psutil
 from loguru import logger
 
-from hermes.analysis.hermes.reconstruction import (
+from hermes.runner.analysis.hermes.reconstruction import (
     HermesReconstructionError,
     derive_output_path,
     execute_reconstruction,
     plan_reconstruction,
 )
-from hermes.analysis.hermes.reconstruction import (
+from hermes.runner.analysis.hermes.reconstruction import (
     log_overall_completion as log_reconstruction_completion,
 )
-from hermes.analysis.hermes.reconstruction import (
+from hermes.runner.analysis.hermes.reconstruction import (
     log_overall_failure as log_reconstruction_failure,
 )
-from hermes.analysis.hermes.reconstruction import (
+from hermes.runner.analysis.hermes.reconstruction import (
     log_skipped_input as log_reconstruction_skipped,
 )
-from hermes.analysis.hermes.unpacker import (
+from hermes.runner.analysis.hermes.unpacker import (
     HermesTpx3Error,
     execute_unpacker,
     log_overall_completion,
@@ -323,7 +323,7 @@ def _reconstruction_inputs(
     analysis: HermesTpx3AnalysisState,
 ) -> list[FileReference]:
     """Best-effort pixel-file list for failure reporting (never raises)."""
-    from hermes.analysis.hermes.reconstruction import resolve_pixel_files
+    from hermes.runner.analysis.hermes.reconstruction import resolve_pixel_files
 
     try:
         return resolve_pixel_files(analysis)

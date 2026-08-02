@@ -6,8 +6,8 @@ from typing import Any
 
 from loguru import logger
 
-from hermes.analysis.hermes.run import run_hermes_analysis
-from hermes.analysis.hermes.unpacker import derive_summary_path
+from hermes.runner.analysis.hermes.run import run_hermes_analysis
+from hermes.runner.analysis.hermes.unpacker import derive_summary_path
 from hermes.state.models.analysis.hermes_tpx3_spidr import (
     HermesTpx3AnalysisState,
     Tpx3SpidrSummary,

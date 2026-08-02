@@ -6,7 +6,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 
-from hermes.analysis.hermes.timewalk_calibration import (
+from hermes.runner.analysis.hermes.timewalk_calibration import (
     PixelCluster,
     PixelHit,
     RelativeDelayAccumulator,

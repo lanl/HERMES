@@ -10,7 +10,7 @@ from typing import Any
 
 import pytest
 
-from hermes.analysis.hermes.reconstruction import (
+from hermes.runner.analysis.hermes.reconstruction import (
     HermesReconstructionExecutionError,
     HermesReconstructionOutputError,
     HermesReconstructionPreflightError,
@@ -20,7 +20,7 @@ from hermes.analysis.hermes.reconstruction import (
     execute_reconstruction,
     plan_reconstruction,
 )
-from hermes.analysis.hermes.run import run_hermes_analysis
+from hermes.runner.analysis.hermes.run import run_hermes_analysis
 from hermes.state.models.analysis.hermes_tpx3_spidr import (
     HermesTpx3AnalysisState,
     Tpx3PhotonClusteringSettings,

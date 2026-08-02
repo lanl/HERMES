@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from loguru import logger
 
-from hermes.analysis.hermes.run import run_hermes_analysis
+from hermes.runner.analysis.hermes.run import run_hermes_analysis
 from hermes.logging import configure_logging
 from hermes.state.models.shared_models import FileReference
 from hermes.state.state import HermesRecord
