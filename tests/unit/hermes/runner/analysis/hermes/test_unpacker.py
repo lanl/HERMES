@@ -10,8 +10,8 @@ import pyarrow.parquet as pq
 import pytest
 from loguru import logger
 
-from hermes.analysis.hermes.run import HermesAnalysisError, run_hermes_analysis
-from hermes.analysis.hermes.unpacker import (
+from hermes.runner.analysis.hermes.run import HermesAnalysisError, run_hermes_analysis
+from hermes.runner.analysis.hermes.unpacker import (
     HermesTpx3ExecutionError,
     HermesTpx3OutputError,
     HermesTpx3PreflightError,
@@ -457,7 +457,7 @@ def test_run_marks_analysis_only_state_running_through_state_manager(
         state_logger=state_logger,
     )
     monkeypatch.setattr(
-        "hermes.analysis.hermes.run.execute_unpacker",
+        "hermes.runner.analysis.hermes.run.execute_unpacker",
         lambda analysis, raw_file, **kwargs: _summary(raw_file.path.stem),
     )
 
