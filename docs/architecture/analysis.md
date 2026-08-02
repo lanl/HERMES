@@ -1,6 +1,6 @@
 # Analysis
 
-`src/hermes/analysis/` contains the Python code that runs analysis. A HERMES
+`src/hermes/runner/analysis/` contains the Python code that runs analysis. A HERMES
 state file selects one complete analysis mode:
 
 ```yaml
@@ -28,7 +28,7 @@ and output paths required by that mode.
 Keep EMPIR and HERMES execution code in separate directories:
 
 ```text
-src/hermes/analysis/
+src/hermes/runner/analysis/
 ├── __init__.py
 ├── run.py                         # selects EMPIR or HERMES from analysis.mode
 │
@@ -60,7 +60,7 @@ src/hermes/state/models/analysis/
 
 ## Analysis Backend Structure
 
-Python code under `src/hermes/analysis/` runs the selected analysis mode. The
+Python code under `src/hermes/runner/analysis/` runs the selected analysis mode. The
 C++ and Rust programs that perform HERMES unpacking and reconstruction remain
 outside the Python package, under `src/backends/`:
 
@@ -108,7 +108,7 @@ EMPIR binaries and remains `mode="empir"`.
 
 `Workflow.run_analysis` is the entry point for analysis. It calls
 `run_hermes_analysis(state_manager)` directly. There is no separate
-`src/hermes/analysis/run.py` dispatcher, because HERMES is the only analysis
+`src/hermes/runner/analysis/run.py` dispatcher, because HERMES is the only analysis
 mode with a runner today.
 
 `run_hermes_analysis` reads the selected Pydantic model from `StateManager` and
