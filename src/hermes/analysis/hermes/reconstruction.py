@@ -84,7 +84,7 @@ def derive_output_path(
 
 
 def derive_summary_path(output_file: Path) -> Path:
-    """Return the reconstruction-summary sidecar the binary writes.
+    """Return the reconstruction-summary JSON file path written by the binary.
 
     The binary writes the summary to a ``logs/photons`` directory beside the
     photon output directory (the unpacker writes to ``logs/unpacker``), so it is
