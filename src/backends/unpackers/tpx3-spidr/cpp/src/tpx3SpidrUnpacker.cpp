@@ -31,7 +31,7 @@ void printHelp(const char* program_name) {
     std::cout << "      - globalTimestamps/   Global timestamp anchors\n";
     std::cout << "      - controlPackets/     Control packets\n";
     std::cout << "      - unknownPackets/     Unknown packets\n";
-    std::cout << "      - logs/               Input-specific summary JSON\n\n";
+    std::cout << "      - logs/unpacker/      Input-specific summary JSON\n\n";
     std::cout << "Examples:\n";
     std::cout << "  # Print summary only\n";
     std::cout << "  " << program_name << " --input data.tpx3\n\n";

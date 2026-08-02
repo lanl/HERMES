@@ -182,8 +182,10 @@ def _write_fake_clusterer(
         if write_summary:
             output_file.parent.mkdir(parents=True, exist_ok=True)
             output_file.write_bytes(b"")
+            logs_directory = output_file.parent.parent / "logs" / "photons"
+            logs_directory.mkdir(parents=True, exist_ok=True)
             summary_path = (
-                output_file.parent
+                logs_directory
                 / (output_file.stem + "-reconstruction-summary.json")
             )
             summary_path.write_text({summary_literal!r})
@@ -477,7 +479,7 @@ def _write_fake_unpacker(executable: Path) -> None:
                 }},
             }},
         }}
-        logs = analysis_dir / "logs"
+        logs = analysis_dir / "logs" / "unpacker"
         logs.mkdir(parents=True, exist_ok=True)
         (logs / (stem + "-unpacker-summary.json")).write_text(json.dumps(summary))
         sys.exit(0)

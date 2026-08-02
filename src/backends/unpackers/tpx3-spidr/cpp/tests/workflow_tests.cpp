@@ -66,12 +66,12 @@ void testWorkflowWithEmptyInput(TestContext& test) {
 
     for (const auto* directory : {"pixelHits", "tdcTriggers",
                                   "globalTimestamps", "controlPackets",
-                                  "unknownPackets", "logs"}) {
+                                  "unknownPackets", "logs/unpacker"}) {
         test.expect(std::filesystem::is_directory(analysis_directory / directory),
                     std::string("created shared directory ") + directory);
     }
     test.expect(std::filesystem::exists(
-                    analysis_directory / "logs/empty-unpacker-summary.json"),
+                    analysis_directory / "logs/unpacker/empty-unpacker-summary.json"),
                 "empty-input summary JSON written");
     test.expectEqual(result.summary.writer_diagnostics.pixel_hits.row_count,
                      std::uint64_t{0}, "empty pixel row count recorded");
@@ -105,9 +105,9 @@ void testSharedDirectoriesForTwoInputs(TestContext& test) {
     const auto second_parquet = analysis_directory /
         "pixelHits/DT_2p0V_000001-chip-0-part-00000.parquet";
     const auto first_summary = analysis_directory /
-        "logs/DT_2p0V_000000-unpacker-summary.json";
+        "logs/unpacker/DT_2p0V_000000-unpacker-summary.json";
     const auto second_summary = analysis_directory /
-        "logs/DT_2p0V_000001-unpacker-summary.json";
+        "logs/unpacker/DT_2p0V_000001-unpacker-summary.json";
 
     test.expect(std::filesystem::exists(first_parquet),
                 "first input-prefixed Parquet file exists");
@@ -154,7 +154,7 @@ void testExistingFilesAreNotOverwritten(TestContext& test) {
                 "existing summary reports an error");
 
     const auto summary_path =
-        analysis_directory / "logs/repeated-unpacker-summary.json";
+        analysis_directory / "logs/unpacker/repeated-unpacker-summary.json";
     std::filesystem::remove(summary_path);
 
     const auto parquet_path = analysis_directory /

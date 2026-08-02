@@ -285,7 +285,7 @@ constexpr std::array<const char*, 6> analysis_directories = {
     "globalTimestamps",
     "controlPackets",
     "unknownPackets",
-    "logs",
+    "logs/unpacker",
 };
 
 constexpr std::array<const char*, 5> parquet_directories = {
@@ -506,7 +506,7 @@ WorkflowResult runTwoPassWorkflow(std::istream& input,
     }
 
     const std::string summary_json_file =
-        "logs/" + raw_file_stem + "-unpacker-summary.json";
+        "logs/unpacker/" + raw_file_stem + "-unpacker-summary.json";
     const auto summary_path = std::filesystem::path(analysis_directory) /
                               summary_json_file;
 

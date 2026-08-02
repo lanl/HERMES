@@ -53,8 +53,12 @@ void printHelp(const char* program_name) {
     std::cout << "  Without --output:\n";
     std::cout << "    Prints summary counts only; writes no files.\n\n";
     std::cout << "  With --output:\n";
-    std::cout << "    Writes one photon file at the given path, a photon_pixels\n";
-    std::cout << "    sidecar when enabled, and a reconstruction-summary JSON.\n";
+    std::cout << "    Writes one photon file at the given path and a "
+                 "photon_pixels\n";
+    std::cout << "    sidecar when enabled. The reconstruction-summary JSON is "
+                 "written\n";
+    std::cout << "    to a logs/photons/ directory beside the output "
+                 "directory.\n";
 }
 
 void printVersion() {
@@ -201,21 +205,29 @@ int main(const int argc, char* argv[]) {
         const fs::path output_path(output_file);
         const fs::path parent = output_path.parent_path();
         const std::string stem = output_path.stem().string();
-        // Create the output directory up front so the summary is written even
-        // when reconstruction produces zero photons (no parquet files).
-        if (!parent.empty()) {
+        // The summary is a log artifact: it goes in a logs/photons/ directory
+        // beside the photon output directory (the unpacker writes to
+        // logs/unpacker/), while the photon file and its photon_pixels sidecar
+        // stay at the output path. Both directories are created up front so the
+        // summary is written even when reconstruction produces zero photons (no
+        // parquet files).
+        const fs::path logs_dir = parent.parent_path() / "logs" / "photons";
+        for (const fs::path& directory : {parent, logs_dir}) {
+            if (directory.empty()) {
+                continue;
+            }
             std::error_code ec;
-            fs::create_directories(parent, ec);
+            fs::create_directories(directory, ec);
             if (ec) {
-                std::cerr << "Error: cannot create output directory "
-                          << parent.string() << ": " << ec.message() << "\n";
+                std::cerr << "Error: cannot create directory "
+                          << directory.string() << ": " << ec.message() << "\n";
                 return 1;
             }
         }
         pixels_output_file =
             (parent / (stem + "-photon-pixels.parquet")).string();
         summary_path =
-            (parent / (stem + "-reconstruction-summary.json")).string();
+            (logs_dir / (stem + "-reconstruction-summary.json")).string();
     }
 
     const auto total_start = Clock::now();
