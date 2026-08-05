@@ -12,10 +12,10 @@ namespace {
 using hermes_event_reconstructor::clusterPhotons;
 using hermes_event_reconstructor::PhotonEvent;
 
-// Runs clustering and returns each component as a sorted list of member
-// photon_ids, with the components themselves sorted for order-independent
+// Runs clustering and returns each photon cluster as a sorted list of member
+// photon_ids, with the clusters themselves sorted for order-independent
 // comparison. Photons must already be in non-decreasing time order.
-std::vector<std::vector<std::uint64_t>> componentsOf(
+std::vector<std::vector<std::uint64_t>> clustersOf(
     const std::vector<PhotonEvent>& photons,
     double r_link,
     double dt_link,
@@ -43,27 +43,27 @@ int main() {
     const double dt_link = 100.0;
     const int cell_width = 16;
 
-    // Two photons within both bounds form one component.
+    // Two photons within both bounds form one photon cluster.
     {
         const std::vector<PhotonEvent> photons = {
             PhotonEvent{0, 10.0, 10.0, 0.0},
             PhotonEvent{1, 12.0, 10.0, 50.0},  // distance 2, dt 50
         };
-        const auto comps = componentsOf(photons, r_link, dt_link, cell_width);
-        test.expectEqual(comps.size(), std::size_t{1}, "within bounds: one component");
-        if (comps.size() == 1) {
-            test.expectEqual(comps[0].size(), std::size_t{2}, "both photons joined");
+        const auto clusters = clustersOf(photons, r_link, dt_link, cell_width);
+        test.expectEqual(clusters.size(), std::size_t{1}, "within bounds: one cluster");
+        if (clusters.size() == 1) {
+            test.expectEqual(clusters[0].size(), std::size_t{2}, "both photons joined");
         }
     }
 
-    // Just outside the spatial bound: two components.
+    // Just outside the spatial bound: two clusters.
     {
         const std::vector<PhotonEvent> photons = {
             PhotonEvent{0, 10.0, 10.0, 0.0},
             PhotonEvent{1, 15.0, 10.0, 10.0},  // distance 5 > r_link 4
         };
-        const auto comps = componentsOf(photons, r_link, dt_link, cell_width);
-        test.expectEqual(comps.size(), std::size_t{2}, "too far apart: two components");
+        const auto clusters = clustersOf(photons, r_link, dt_link, cell_width);
+        test.expectEqual(clusters.size(), std::size_t{2}, "too far apart: two clusters");
     }
 
     // Exactly on the spatial bound (distance == r_link) is inclusive: joined.
@@ -72,19 +72,19 @@ int main() {
             PhotonEvent{0, 10.0, 10.0, 0.0},
             PhotonEvent{1, 14.0, 10.0, 10.0},  // distance exactly 4
         };
-        const auto comps = componentsOf(photons, r_link, dt_link, cell_width);
-        test.expectEqual(comps.size(), std::size_t{1},
+        const auto clusters = clustersOf(photons, r_link, dt_link, cell_width);
+        test.expectEqual(clusters.size(), std::size_t{1},
                          "distance == r_link is inclusive");
     }
 
-    // Just outside the temporal bound: two components.
+    // Just outside the temporal bound: two clusters.
     {
         const std::vector<PhotonEvent> photons = {
             PhotonEvent{0, 10.0, 10.0, 0.0},
             PhotonEvent{1, 10.0, 10.0, 150.0},  // dt 150 > dt_link 100
         };
-        const auto comps = componentsOf(photons, r_link, dt_link, cell_width);
-        test.expectEqual(comps.size(), std::size_t{2}, "too far in time: two components");
+        const auto clusters = clustersOf(photons, r_link, dt_link, cell_width);
+        test.expectEqual(clusters.size(), std::size_t{2}, "too far in time: two clusters");
     }
 
     // Exactly on the temporal bound (dt == dt_link) is inclusive: joined.
@@ -93,8 +93,8 @@ int main() {
             PhotonEvent{0, 10.0, 10.0, 0.0},
             PhotonEvent{1, 10.0, 10.0, 100.0},  // dt exactly 100
         };
-        const auto comps = componentsOf(photons, r_link, dt_link, cell_width);
-        test.expectEqual(comps.size(), std::size_t{1}, "dt == dt_link is inclusive");
+        const auto clusters = clustersOf(photons, r_link, dt_link, cell_width);
+        test.expectEqual(clusters.size(), std::size_t{1}, "dt == dt_link is inclusive");
     }
 
     // Transitive chain: each step within bounds, so all three join even though
@@ -105,14 +105,14 @@ int main() {
             PhotonEvent{1, 13.0, 10.0, 20.0},
             PhotonEvent{2, 16.0, 10.0, 40.0},
         };
-        const auto comps = componentsOf(photons, r_link, dt_link, cell_width);
-        test.expectEqual(comps.size(), std::size_t{1}, "transitive chain: one component");
-        if (comps.size() == 1) {
-            test.expectEqual(comps[0].size(), std::size_t{3}, "all three chained");
+        const auto clusters = clustersOf(photons, r_link, dt_link, cell_width);
+        test.expectEqual(clusters.size(), std::size_t{1}, "transitive chain: one cluster");
+        if (clusters.size() == 1) {
+            test.expectEqual(clusters[0].size(), std::size_t{3}, "all three chained");
         }
     }
 
-    // A spatial gap in the middle of a chain keeps two components apart.
+    // A spatial gap in the middle of a chain keeps two clusters apart.
     {
         const std::vector<PhotonEvent> photons = {
             PhotonEvent{0, 10.0, 10.0, 0.0},
@@ -120,12 +120,12 @@ int main() {
             PhotonEvent{2, 30.0, 10.0, 40.0},   // far from the first pair
             PhotonEvent{3, 32.0, 10.0, 60.0},   // links to 2
         };
-        const auto comps = componentsOf(photons, r_link, dt_link, cell_width);
-        test.expectEqual(comps.size(), std::size_t{2}, "spatial gap: two components");
+        const auto clusters = clustersOf(photons, r_link, dt_link, cell_width);
+        test.expectEqual(clusters.size(), std::size_t{2}, "spatial gap: two clusters");
     }
 
     // Branching: a central photon links to three neighbors in different
-    // directions; all four form one component.
+    // directions; all four form one photon cluster.
     {
         const std::vector<PhotonEvent> photons = {
             PhotonEvent{0, 20.0, 20.0, 0.0},   // center
@@ -133,26 +133,26 @@ int main() {
             PhotonEvent{2, 17.0, 20.0, 20.0},  // left
             PhotonEvent{3, 20.0, 23.0, 30.0},  // up
         };
-        const auto comps = componentsOf(photons, r_link, dt_link, cell_width);
-        test.expectEqual(comps.size(), std::size_t{1}, "branching: one component");
-        if (comps.size() == 1) {
-            test.expectEqual(comps[0].size(), std::size_t{4}, "all four branches joined");
+        const auto clusters = clustersOf(photons, r_link, dt_link, cell_width);
+        test.expectEqual(clusters.size(), std::size_t{1}, "branching: one cluster");
+        if (clusters.size() == 1) {
+            test.expectEqual(clusters[0].size(), std::size_t{4}, "all four branches joined");
         }
     }
 
-    // Single photon yields a single-member component (never discarded).
+    // Single photon yields a single-member cluster (never discarded).
     {
         const std::vector<PhotonEvent> photons = {
             PhotonEvent{0, 100.0, 100.0, 0.0},
         };
-        const auto comps = componentsOf(photons, r_link, dt_link, cell_width);
-        test.expectEqual(comps.size(), std::size_t{1}, "single photon: one component");
-        if (comps.size() == 1) {
-            test.expectEqual(comps[0].size(), std::size_t{1}, "one member");
+        const auto clusters = clustersOf(photons, r_link, dt_link, cell_width);
+        test.expectEqual(clusters.size(), std::size_t{1}, "single photon: one cluster");
+        if (clusters.size() == 1) {
+            test.expectEqual(clusters[0].size(), std::size_t{1}, "one member");
         }
     }
 
-    // Invariance: the components must be identical for several cell widths at or
+    // Invariance: the clusters must be identical for several cell widths at or
     // above the linking radius. This guards the "cell size never changes
     // results" principle. Uses a mixed scene with a chain, a branch, a lone
     // photon, and a time-separated pair at the same location.
@@ -170,19 +170,19 @@ int main() {
         };
         // cell widths: 4 (== r_link), 8, 16, 52 (default 5 cells), 64, 256.
         const std::vector<int> widths = {4, 8, 16, 52, 64, 256};
-        const auto reference = componentsOf(photons, r_link, dt_link, widths[0]);
+        const auto reference = clustersOf(photons, r_link, dt_link, widths[0]);
         bool all_match = true;
         for (const int width : widths) {
-            if (componentsOf(photons, r_link, dt_link, width) != reference) {
+            if (clustersOf(photons, r_link, dt_link, width) != reference) {
                 all_match = false;
             }
         }
-        test.expect(all_match, "components are identical across cell widths");
-        // Sanity: the same-location pair split by time is two components, not one.
+        test.expect(all_match, "clusters are identical across cell widths");
+        // Sanity: the same-location pair split by time is two clusters, not one.
         bool found_lone_500 = false;
-        for (const auto& comp : reference) {
-            if (comp.size() == 1 &&
-                (comp[0] == 5 || comp[0] == 6)) {
+        for (const auto& cluster : reference) {
+            if (cluster.size() == 1 &&
+                (cluster[0] == 5 || cluster[0] == 6)) {
                 found_lone_500 = true;
             }
         }
@@ -190,7 +190,7 @@ int main() {
                     "same-location photons far apart in time stay separate");
     }
 
-    // Emission order: closed components are delivered in time order. Build two
+    // Emission order: closed clusters are delivered in time order. Build two
     // well-separated events; the earlier one must be emitted first.
     {
         const std::vector<PhotonEvent> photons = {
@@ -209,17 +209,17 @@ int main() {
                            }
                            first_times.push_back(earliest);
                        });
-        test.expectEqual(first_times.size(), std::size_t{2}, "two components emitted");
+        test.expectEqual(first_times.size(), std::size_t{2}, "two clusters emitted");
         if (first_times.size() == 2) {
             test.expect(first_times[0] <= first_times[1],
-                        "components emitted in time order");
+                        "clusters emitted in time order");
         }
     }
 
-    // Empty input produces no components.
+    // Empty input produces no clusters.
     {
-        const auto comps = componentsOf({}, r_link, dt_link, cell_width);
-        test.expectEqual(comps.size(), std::size_t{0}, "empty input: no components");
+        const auto clusters = clustersOf({}, r_link, dt_link, cell_width);
+        test.expectEqual(clusters.size(), std::size_t{0}, "empty input: no clusters");
     }
 
     return test.finish();
