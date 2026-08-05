@@ -34,6 +34,7 @@ add_library(hermes_event_reconstructor
     src/event_writer.cpp
     src/photon_reader.cpp
     src/settings.cpp
+    src/summary_writer.cpp
     src/version.cpp
 )
 
@@ -83,6 +84,10 @@ if(BUILD_TESTING)
     add_executable(event_tests tests/event_tests.cpp)
     target_link_libraries(event_tests PRIVATE hermes_event_reconstructor)
     add_test(NAME event_tests COMMAND event_tests)
+
+    add_executable(summary_writer_tests tests/summary_writer_tests.cpp)
+    target_link_libraries(summary_writer_tests PRIVATE hermes_event_reconstructor)
+    add_test(NAME summary_writer_tests COMMAND summary_writer_tests)
 
     if(Arrow_FOUND AND Parquet_FOUND)
         add_executable(photon_reader_tests tests/photon_reader_tests.cpp)
