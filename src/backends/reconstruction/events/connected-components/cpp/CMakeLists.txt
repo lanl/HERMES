@@ -38,6 +38,7 @@ endif()
 
 add_library(hermes_event_reconstructor
     src/clustering.cpp
+    src/reconstruction.cpp
     src/settings.cpp
     src/version.cpp
 )
@@ -91,4 +92,8 @@ if(BUILD_TESTING)
     add_executable(clustering_tests tests/clustering_tests.cpp)
     target_link_libraries(clustering_tests PRIVATE hermes_event_reconstructor)
     add_test(NAME clustering_tests COMMAND clustering_tests)
+
+    add_executable(reconstruction_tests tests/reconstruction_tests.cpp)
+    target_link_libraries(reconstruction_tests PRIVATE hermes_event_reconstructor)
+    add_test(NAME reconstruction_tests COMMAND reconstruction_tests)
 endif()
