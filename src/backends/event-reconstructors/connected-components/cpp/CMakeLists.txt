@@ -30,6 +30,7 @@ endif()
 
 add_library(hermes_event_reconstructor
     src/clustering.cpp
+    src/event.cpp
     src/photon_reader.cpp
     src/settings.cpp
     src/version.cpp
@@ -77,6 +78,10 @@ if(BUILD_TESTING)
     add_executable(clustering_tests tests/clustering_tests.cpp)
     target_link_libraries(clustering_tests PRIVATE hermes_event_reconstructor)
     add_test(NAME clustering_tests COMMAND clustering_tests)
+
+    add_executable(event_tests tests/event_tests.cpp)
+    target_link_libraries(event_tests PRIVATE hermes_event_reconstructor)
+    add_test(NAME event_tests COMMAND event_tests)
 
     if(Arrow_FOUND AND Parquet_FOUND)
         add_executable(photon_reader_tests tests/photon_reader_tests.cpp)
