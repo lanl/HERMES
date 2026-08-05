@@ -19,8 +19,12 @@ namespace hermes_event_reconstructor {
 // fields.
 struct ReconParams {
     // Physics linking radius in pixels: two photons are neighbors when their
-    // squared separation is at most spatial_link_radius_pixels^2.
-    double spatial_link_radius_pixels = 4.0;
+    // squared separation is at most spatial_link_radius_pixels^2. The default of
+    // 10 was chosen from a 9 mm microscope-FoV TaAtScraper run by inspecting
+    // cluster-colored movies of single beam pulses: 10 px keeps one neutron's
+    // scintillation light linked as a single event without merging neighboring
+    // neutrons. Setups with different optics will need a different value.
+    double spatial_link_radius_pixels = 10.0;
 
     // Number of spatial grid cells along each detector axis, giving an
     // n x n grid over the 256 x 256 field of view. Larger values make finer
@@ -30,10 +34,12 @@ struct ReconParams {
     // linking radius (enforced by validateReconParams).
     std::uint32_t spatial_cells_per_axis = 5;
 
-    // Maximum time difference between two connected photons, in canonical ticks.
-    // No principled default yet: this is a placeholder to be tuned by
-    // benchmarking against measured data. (~100 ns at 25 ns / 12288 per tick.)
-    double max_time_difference_ticks = 49152.0;  // TUNE ME
+    // Maximum time difference between two linked photons, in canonical ticks.
+    // The default of 245760 ticks is 500 ns (1 tick = 25 ns / 12288). Chosen
+    // from the same TaAtScraper run: consecutive photons within one neutron
+    // event arrive tens to hundreds of ns apart, so a 500 ns link chains a whole
+    // event together while keeping separate neutrons apart.
+    double max_time_difference_ticks = 245760.0;
 
     // Duration above which an event is flagged duration_exceeded, in canonical
     // ticks. Also a placeholder to be tuned by benchmarking. (~500 ns.)
