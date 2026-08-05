@@ -13,28 +13,32 @@ namespace {
 constexpr int kChipWidthPixels = 256;
 
 // Union-Find (disjoint-set) over photon indices with union by size and path
-// compression. Each set root also carries the data needed to close a component:
-// its member indices, its earliest photon time, and how many of its members are
-// still active in the rolling time window.
-class ComponentSets {
+// compression. Each cluster's root photon carries the data needed to close the
+// cluster: its member photon indices, its earliest photon time, and how many of
+// its members are still inside the current time window (see clusterPhotons). A
+// cluster can be finished once none of its photons remain in the window.
+class PhotonClusterSets {
   public:
-    explicit ComponentSets(std::size_t count)
-        : parent_(count), size_(count, 1), active_(count, 0) {
-        members_.resize(count);
-        min_time_.resize(count, 0.0);
-        for (std::size_t i = 0; i < count; ++i) {
+    explicit PhotonClusterSets(std::size_t photon_count)
+        : parent_(photon_count),
+          cluster_size_(photon_count, 1),
+          photons_in_window_count_(photon_count, 0) {
+        members_.resize(photon_count);
+        earliest_time_.resize(photon_count, 0.0);
+        for (std::size_t i = 0; i < photon_count; ++i) {
             parent_[i] = i;
         }
     }
 
-    // Starts photon i as its own single-member, single-active component.
-    void start(std::size_t i, double timestamp) {
+    // Starts photon i as its own single-member cluster. That one photon is
+    // currently inside the time window.
+    void startCluster(std::size_t i, double timestamp) {
         members_[i] = {i};
-        min_time_[i] = timestamp;
-        active_[i] = 1;
+        earliest_time_[i] = timestamp;
+        photons_in_window_count_[i] = 1;
     }
 
-    std::size_t find(std::size_t i) {
+    std::size_t findRoot(std::size_t i) {
         while (parent_[i] != i) {
             parent_[i] = parent_[parent_[i]];
             i = parent_[i];
@@ -42,52 +46,54 @@ class ComponentSets {
         return i;
     }
 
-    // Merges the components of a and b. The larger member list survives so the
-    // splice is cheap; earliest time and active count combine.
-    void unite(std::size_t a, std::size_t b) {
-        std::size_t ra = find(a);
-        std::size_t rb = find(b);
-        if (ra == rb) {
+    // Links the clusters of photons a and b into one. The larger member list
+    // survives so the splice is cheap; earliest time and active count combine.
+    void linkClusters(std::size_t a, std::size_t b) {
+        std::size_t root_a = findRoot(a);
+        std::size_t root_b = findRoot(b);
+        if (root_a == root_b) {
             return;
         }
-        if (members_[ra].size() < members_[rb].size()) {
-            std::swap(ra, rb);
+        if (members_[root_a].size() < members_[root_b].size()) {
+            std::swap(root_a, root_b);
         }
-        auto& survivor = members_[ra];
-        auto& merged = members_[rb];
-        survivor.insert(survivor.end(), merged.begin(), merged.end());
-        merged.clear();
-        min_time_[ra] = std::min(min_time_[ra], min_time_[rb]);
-        active_[ra] += active_[rb];
-        active_[rb] = 0;
-        size_[ra] += size_[rb];
-        parent_[rb] = ra;
+        auto& survivor = members_[root_a];
+        auto& absorbed = members_[root_b];
+        survivor.insert(survivor.end(), absorbed.begin(), absorbed.end());
+        absorbed.clear();
+        earliest_time_[root_a] =
+            std::min(earliest_time_[root_a], earliest_time_[root_b]);
+        photons_in_window_count_[root_a] += photons_in_window_count_[root_b];
+        photons_in_window_count_[root_b] = 0;
+        cluster_size_[root_a] += cluster_size_[root_b];
+        parent_[root_b] = root_a;
     }
 
-    // Records that one member of i's component has left the time window. Returns
-    // true when the component now has no active members and can be closed.
-    bool deactivateOne(std::size_t i) {
-        const std::size_t r = find(i);
-        --active_[r];
-        return active_[r] == 0;
+    // Records that one photon of i's cluster has dropped out of the time window.
+    // Returns true when the cluster now has no photons left in the window, so it
+    // can never grow again and is finished.
+    bool removeOnePhotonFromWindow(std::size_t i) {
+        const std::size_t root = findRoot(i);
+        --photons_in_window_count_[root];
+        return photons_in_window_count_[root] == 0;
     }
 
-    double minTime(std::size_t i) { return min_time_[find(i)]; }
+    double earliestTime(std::size_t i) { return earliest_time_[findRoot(i)]; }
 
-    // Removes and returns the member indices of i's component, ascending.
+    // Removes and returns the member photon indices of i's cluster, ascending.
     std::vector<std::size_t> takeMembers(std::size_t i) {
-        const std::size_t r = find(i);
-        std::vector<std::size_t> members = std::move(members_[r]);
-        members_[r].clear();
+        const std::size_t root = findRoot(i);
+        std::vector<std::size_t> members = std::move(members_[root]);
+        members_[root].clear();
         std::sort(members.begin(), members.end());
         return members;
     }
 
   private:
     std::vector<std::size_t> parent_;
-    std::vector<std::size_t> size_;
-    std::vector<std::size_t> active_;
-    std::vector<double> min_time_;
+    std::vector<std::size_t> cluster_size_;
+    std::vector<std::size_t> photons_in_window_count_;
+    std::vector<double> earliest_time_;
     std::vector<std::vector<std::size_t>> members_;
 };
 
@@ -98,7 +104,7 @@ void clusterPhotons(
     double spatial_link_radius_pixels,
     double max_time_difference_ticks,
     int cell_width,
-    const std::function<void(std::vector<std::size_t>&&)>& on_component) {
+    const std::function<void(std::vector<std::size_t>&&)>& on_photon_cluster) {
     if (photons.empty()) {
         return;
     }
@@ -120,17 +126,23 @@ void clusterPhotons(
         return index;
     };
 
-    // Fixed spatial grid over active photons, and the cell each photon occupies.
+    // The spatial grid indexes only the photons currently inside the time
+    // window, so a photon is added when it arrives and removed once it falls out
+    // of the window. Each grid cell holds the indices of the windowed photons
+    // whose (x, y) lands in that cell; photon_cell records which cell each
+    // photon was put in so it can be removed later.
     std::vector<std::vector<std::size_t>> cells(
         static_cast<std::size_t>(cells_per_axis) * cells_per_axis);
     std::vector<int> photon_cell(photons.size(), 0);
 
-    // Rolling time window: active photon indices in insertion (time) order.
-    std::deque<std::size_t> active_by_time;
+    // The photons currently inside the time window, in arrival (time) order.
+    // The oldest is at the front, so expired photons are dropped from the front.
+    std::deque<std::size_t> photons_in_window;
 
-    ComponentSets components(photons.size());
+    PhotonClusterSets clusters(photons.size());
 
-    // Removes a photon from its spatial cell (swap-and-pop; cells are small).
+    // Removes a photon from the grid cell it was put in (swap-and-pop; each cell
+    // holds only a handful of windowed photons).
     auto removeFromCell = [&](std::size_t index) {
         auto& cell = cells[static_cast<std::size_t>(photon_cell[index])];
         for (std::size_t k = 0; k < cell.size(); ++k) {
@@ -145,30 +157,35 @@ void clusterPhotons(
     for (std::size_t i = 0; i < photons.size(); ++i) {
         const double t_i = photons[i].timestamp_canonical;
 
-        // 1. Expire photons outside the inclusive time gate, and close any
-        //    component whose last active member just expired. Expired photons
-        //    can never connect to this or any later photon, so a component with
-        //    no active members is final and is emitted in close order.
-        while (!active_by_time.empty()) {
-            const std::size_t oldest = active_by_time.front();
+        // 1. Drop photons that are now more than max_time_difference_ticks
+        //    behind photon i. Because photons arrive in time order, such a
+        //    photon is too far back in time to link with photon i or with any
+        //    photon after it, so it leaves the time window: remove it from its
+        //    grid cell. Removing it may empty its cluster's window count, which
+        //    means that cluster can no longer gain photons and is finished, so
+        //    hand its members to on_photon_cluster. Because the front of the
+        //    deque is the oldest photon, clusters finish in time order.
+        while (!photons_in_window.empty()) {
+            const std::size_t oldest = photons_in_window.front();
             if (t_i - photons[oldest].timestamp_canonical <=
                 max_time_difference_ticks) {
                 break;
             }
-            active_by_time.pop_front();
+            photons_in_window.pop_front();
             removeFromCell(oldest);
-            if (components.deactivateOne(oldest)) {
-                on_component(components.takeMembers(oldest));
+            if (clusters.removeOnePhotonFromWindow(oldest)) {
+                on_photon_cluster(clusters.takeMembers(oldest));
             }
         }
 
-        // Start photon i as its own component before linking, so unions have a
-        // valid set to join.
-        components.start(i, t_i);
+        // Start photon i as its own cluster before linking, so links have a
+        // valid cluster to join.
+        clusters.startCluster(i, t_i);
 
-        // 2. Search photon i's own cell and the 3x3 neighborhood. Every photon
-        //    still in the grid is active and already satisfies the time gate,
-        //    so only the exact squared-distance test is applied.
+        // 2. Look for photons within the linking radius of photon i by scanning
+        //    its own grid cell and the eight cells around it. Every photon still
+        //    in the grid is inside the time window, so it already passes the
+        //    time bound and only the squared-distance bound has to be checked.
         const int cx = cellIndexOnAxis(photons[i].x);
         const int cy = cellIndexOnAxis(photons[i].y);
         for (int dy = -1; dy <= 1; ++dy) {
@@ -187,41 +204,42 @@ void clusterPhotons(
                     const double ddx = photons[i].x - photons[j].x;
                     const double ddy = photons[i].y - photons[j].y;
                     if (ddx * ddx + ddy * ddy <= radius_squared) {
-                        components.unite(i, j);
+                        clusters.linkClusters(i, j);
                     }
                 }
             }
         }
 
-        // 3. Insert photon i into its cell and the rolling time window.
+        // 3. Photon i is now inside the time window: record which grid cell it
+        //    went into and add it to the back of the window (the newest photon).
         const int cell_index = cy * cells_per_axis + cx;
         photon_cell[i] = cell_index;
         cells[static_cast<std::size_t>(cell_index)].push_back(i);
-        active_by_time.push_back(i);
+        photons_in_window.push_back(i);
     }
 
-    // Flush every still-open component in earliest-photon-time order. Ties are
-    // broken by smallest member index so the order is deterministic.
-    std::vector<std::size_t> remaining(active_by_time.begin(),
-                                       active_by_time.end());
-    std::vector<std::size_t> roots;
-    for (const std::size_t index : remaining) {
-        const std::size_t root = components.find(index);
-        if (std::find(roots.begin(), roots.end(), root) == roots.end()) {
-            roots.push_back(root);
+    // Every remaining photon is still inside the window, so its cluster was
+    // never finished above. Emit those leftover clusters in earliest-photon-time
+    // order, breaking ties by smallest member index so the order is fixed.
+    std::vector<std::size_t> cluster_roots;
+    for (const std::size_t index : photons_in_window) {
+        const std::size_t root = clusters.findRoot(index);
+        if (std::find(cluster_roots.begin(), cluster_roots.end(), root) ==
+            cluster_roots.end()) {
+            cluster_roots.push_back(root);
         }
     }
-    std::sort(roots.begin(), roots.end(),
+    std::sort(cluster_roots.begin(), cluster_roots.end(),
               [&](std::size_t a, std::size_t b) {
-                  const double ta = components.minTime(a);
-                  const double tb = components.minTime(b);
+                  const double ta = clusters.earliestTime(a);
+                  const double tb = clusters.earliestTime(b);
                   if (ta != tb) {
                       return ta < tb;
                   }
                   return a < b;
               });
-    for (const std::size_t root : roots) {
-        on_component(components.takeMembers(root));
+    for (const std::size_t root : cluster_roots) {
+        on_photon_cluster(clusters.takeMembers(root));
     }
 }
 
