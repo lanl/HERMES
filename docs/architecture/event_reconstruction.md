@@ -7,7 +7,7 @@ Each clustering algorithm is its own program in its own directory, and C++ and
 Rust versions live beside each other:
 
 ```text
-src/backends/event-reconstructors/
+src/backends/reconstruction/events/
 ├── common/                 shared, algorithm-neutral pieces
 │   └── cpp/
 └── connected-components/   one clustering algorithm
