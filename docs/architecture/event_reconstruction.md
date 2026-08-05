@@ -3,11 +3,14 @@
 Event reconstruction is a separate analysis step, not part of the unpacker or
 photon reconstruction. A user-selected HERMES program reads photon Parquet files
 from `analysis/photons/` and writes event Parquet files under `analysis/events/`.
-C++ and Rust versions live beside each other:
+Each clustering algorithm is its own program in its own directory, and C++ and
+Rust versions live beside each other:
 
 ```text
 src/backends/event-reconstructors/
-└── connected-components/
+├── common/                 shared, algorithm-neutral pieces
+│   └── cpp/
+└── connected-components/   one clustering algorithm
     ├── cpp/
     └── rust/
 ```
@@ -16,6 +19,31 @@ src/backends/event-reconstructors/
 and a later Rust program must accept the same required inputs and settings and
 write the same columns, filenames, metadata, summary fields, warnings, errors,
 and exit codes. The C++ program is implemented first.
+
+## Modular Algorithms
+
+Clustering (grouping photons into events) is the only algorithm-specific step.
+Everything around it is the same regardless of how photons are grouped: reading
+`photon_events`, building a candidate event's properties from a group of member
+photons, writing the event Parquet files, and writing the summary JSON. Those
+neutral pieces live in the `common/` library; each clustering program links it
+and supplies only the clustering step and its own settings.
+
+The contract between the two halves is deliberately narrow: **a group of photons
+is a list of member indices.** The clustering algorithm decides which photons
+belong together and hands each group to the shared event builder as a plain list
+of indices into the photon vector. Connected components, DBSCAN, or any other
+method all produce the same thing, so a new algorithm reuses the entire common
+library unchanged.
+
+Different algorithms need different parameters — connected components uses a
+linking radius and a time window, while DBSCAN would use an epsilon and a
+minimum sample count. Rather than force a shared settings shape, each program
+owns its own settings struct and serializes it to a JSON object string. The
+shared summary writer and the event-file metadata carry that string and render
+it verbatim, so they never need to know any algorithm's fields. A new algorithm
+is therefore a new sibling directory with its own settings and clustering step,
+plus a link against `common/`.
 
 The goal of this first program is **reliable candidate event identification**,
 not optimal event reconstruction. It groups detected photons into candidate
@@ -363,10 +391,18 @@ hermes-event-reconstructor --input <photon_events_file> [--output <event_file>]
 - Exit code 0 on success, 2 on argument or settings errors.
 
 The build mirrors `src/backends/reconstruction/photons/cpp/`: CMake with
-`cxx_std_17`, `-Wall -Wextra -Wpedantic`, Arrow and Parquet for Parquet I/O,
-`nlohmann_json` for settings and the summary, a `hermes_event_reconstructor`
-static library, the `hermes-event-reconstructor` executable, and CTest targets
-per translation unit under `tests/`.
+`cxx_std_17`, `-Wall -Wextra -Wpedantic`, Arrow and Parquet for Parquet I/O, and
+`nlohmann_json` for settings and the summary. It is split across two libraries:
+
+- `hermes_event_recon_common` in `common/cpp/` holds the algorithm-neutral
+  modules (`photon_reader`, `event`, `event_writer`, `summary_writer`) and their
+  tests. It builds and tests standalone.
+- `hermes_event_reconstructor` in `connected-components/cpp/` holds only the
+  clustering step (`clustering`) and this algorithm's settings (`settings`,
+  including `clusteringSettingsJson`), links the common library with
+  `add_subdirectory`, and produces the `hermes-event-reconstructor` executable.
+
+Both use CTest targets per translation unit under their own `tests/`.
 
 ## Future Work
 
