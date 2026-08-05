@@ -53,6 +53,13 @@ struct ReconParams {
     // Optional analysis threshold recorded for downstream use. It is NOT applied
     // during clustering; the reconstruction stage never discards events.
     std::uint32_t min_photon_count = 1;
+
+    // When true, also write an event_photons Parquet file mapping each member
+    // photon to its event (event_id, photon_id, x, y, timestamp_canonical). It is
+    // a diagnostic for inspecting how photons were grouped into events; it is off
+    // by default because it is larger than event_candidates and not needed for
+    // routine analysis. Mirrors the photon stage's save_photon_pixels.
+    bool save_event_photons = false;
 };
 
 // Loads settings starting from the defaults and overriding any field present in
