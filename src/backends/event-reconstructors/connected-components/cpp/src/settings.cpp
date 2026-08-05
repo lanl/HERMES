@@ -43,6 +43,18 @@ void overrideDouble(const json& document, const char* key, double& target) {
     target = value.get<double>();
 }
 
+void overrideBool(const json& document, const char* key, bool& target) {
+    if (!document.contains(key)) {
+        return;
+    }
+    const auto& value = document.at(key);
+    if (!value.is_boolean()) {
+        throw std::runtime_error(std::string("settings field '") + key +
+                                 "' must be a boolean");
+    }
+    target = value.get<bool>();
+}
+
 }  // namespace
 
 void validateReconParams(const ReconParams& s) {
@@ -116,6 +128,7 @@ ReconParams loadReconParams(const std::string& path) {
         "max_time_difference_ticks",
         "max_event_duration_ticks",
         "min_photon_count",
+        "save_event_photons",
     };
     for (const auto& item : document.items()) {
         if (known_keys.find(item.key()) == known_keys.end()) {
@@ -134,6 +147,7 @@ ReconParams loadReconParams(const std::string& path) {
     overrideDouble(document, "max_event_duration_ticks",
                    settings.max_event_duration_ticks);
     overrideUnsigned(document, "min_photon_count", settings.min_photon_count);
+    overrideBool(document, "save_event_photons", settings.save_event_photons);
 
     validateReconParams(settings);
     return settings;
