@@ -202,6 +202,7 @@ out-of-range values throw and cause a nonzero exit before any output is written.
 | `max_time_difference_ticks` | float64 | 4915200.0 | Maximum time difference between two linked photons, in canonical ticks (10 us). |
 | `max_event_duration_ticks` | float64 | 14745600.0 | Duration above which an event is flagged `duration_exceeded` (30 us). |
 | `min_photon_count` | uint32 | 1 | Analysis threshold recorded for downstream use; not applied during clustering. |
+| `save_event_photons` | bool | false | When true, also write the `event_photons` file mapping each member photon to its event. Diagnostic only. |
 
 `spatial_link_radius_pixels` (10) and `max_time_difference_ticks` (10 us) were
 chosen from a 9 mm microscope-FoV TaAtScraper run by inspecting cluster-colored
@@ -222,15 +223,23 @@ the unpacker and photon reconstruction.
 
 ## Event Parquet Files
 
-The `analysis/events/` directory contains one filename group:
+The `analysis/events/` directory contains up to two filename groups:
 
 ```text
 <raw-file-stem>-chip-<chip-index>-event-candidates-part-<five-digit-part-index>.parquet
+<raw-file-stem>-chip-<chip-index>-event-photons-part-<five-digit-part-index>.parquet
 ```
 
 Part numbers start at zero independently for each raw input and chip.
 `event_candidates` is written whenever events exist. An empty group has zero
 files and a zero row count in the summary.
+
+`event_photons` is a diagnostic file written only when `save_event_photons`
+is true. It records one row per member photon, tying each photon to the event it
+was grouped into, so cluster membership can be inspected or plotted without
+rerunning the clustering. It is the event-stage counterpart of the photon stage's
+`photon_pixels` output. It is off by default because it is larger than
+`event_candidates` and not needed for routine analysis.
 
 ### `event_candidates`
 
@@ -252,6 +261,22 @@ recover how the events were produced without the summary JSON:
 - event algorithm name and complete event settings as JSON
 - position rule (`arithmetic`)
 - event time estimator (`earliest_photon`)
+
+### `event_photons`
+
+Written only when `save_event_photons` is true. One row per member photon; the
+`x`, `y`, and `timestamp_canonical` are copied from the source photon so
+membership can be plotted without joining back to the photon file.
+
+| Column | Arrow type | Nullable | Description |
+| --- | --- | --- | --- |
+| `event_id` | `uint64` | no | Event this photon was grouped into |
+| `photon_id` | `uint64` | no | Source photon identifier from the photon file |
+| `x` | `float64` | no | Member-photon x |
+| `y` | `float64` | no | Member-photon y |
+| `timestamp_canonical` | `float64` | no | Member-photon time in canonical ticks |
+
+The `event_photons` file carries the same string metadata as `event_candidates`.
 
 ## Reconstruction Summary JSON File
 
@@ -302,8 +327,8 @@ processing_times_seconds:
 
 The saved settings include `spatial_link_radius_pixels`,
 `spatial_cells_per_axis`, `max_time_difference_ticks`, `max_event_duration_ticks`,
-and `min_photon_count`. The derived cell width is recorded alongside them for
-diagnostics. Per-input
+`min_photon_count`, and `save_event_photons`. The derived cell width is recorded
+alongside them for diagnostics. Per-input
 counts, filenames, warnings, errors, timing, and throughput stay in this summary
 and are not copied into the HERMES YAML file.
 
