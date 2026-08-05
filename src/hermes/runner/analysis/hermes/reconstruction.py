@@ -3,7 +3,7 @@
 Reconstruction is 1:1: each pixel Parquet file produces one photon file at the
 matching path (input basename kept). plan_reconstruction decides which files
 still need work, execute_reconstruction runs the binary on one file and reads
-its sidecar summary for the per-file counts.
+its summary JSON for the per-file counts.
 """
 
 from __future__ import annotations
@@ -329,7 +329,7 @@ def _validate_program_and_algorithm(
 
 
 def _load_summary(summary_path: Path) -> Tpx3PhotonReconstructionSummary:
-    """Read and parse a reconstruction-summary sidecar into a model object."""
+    """Read and parse a reconstruction-summary JSON file into a model object."""
     if not summary_path.is_file():
         raise HermesReconstructionOutputError(
             f"reconstruction summary is missing: {summary_path}"
