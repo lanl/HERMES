@@ -304,7 +304,14 @@ reconstruction:
 
 clustering:
   algorithm: connected_components
-  settings: {}
+  settings:
+    spatial_link_radius_pixels: 10.0
+    spatial_cells_per_axis: 5
+    max_time_difference_ticks: 4915200.0
+    max_event_duration_ticks: 14745600.0
+    min_photon_count: 1
+    save_event_photons: false
+    derived_cell_width: 52
 
 event_timing:
   estimator: earliest_photon
@@ -312,6 +319,10 @@ event_timing:
 parquet:
   input_photon_events_files: []
   event_candidates:
+    row_count: 0
+    files: []
+  # event_photons appears only when save_event_photons is true
+  event_photons:
     row_count: 0
     files: []
 
