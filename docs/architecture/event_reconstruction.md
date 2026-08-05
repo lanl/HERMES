@@ -197,19 +197,22 @@ out-of-range values throw and cause a nonzero exit before any output is written.
 
 | Setting | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `spatial_link_radius_pixels` | float64 | 20.0 | Physics linking radius in pixels. |
+| `spatial_link_radius_pixels` | float64 | 10.0 | Physics linking radius in pixels. |
 | `spatial_cells_per_axis` | uint32 | 5 | Number of neighbor-lookup grid cells along each detector axis. Accelerator only; must not be so large that the derived cell width falls below the linking radius. |
-| `max_time_difference_ticks` | float64 | 245760.0 | Maximum time difference between two linked photons, in canonical ticks (500 ns). |
-| `max_event_duration_ticks` | float64 | (tune) | Duration above which an event is flagged `duration_exceeded`. |
+| `max_time_difference_ticks` | float64 | 4915200.0 | Maximum time difference between two linked photons, in canonical ticks (10 us). |
+| `max_event_duration_ticks` | float64 | 14745600.0 | Duration above which an event is flagged `duration_exceeded` (30 us). |
 | `min_photon_count` | uint32 | 1 | Analysis threshold recorded for downstream use; not applied during clustering. |
 
-`spatial_link_radius_pixels` (20) and `max_time_difference_ticks` (500 ns) were
-chosen from a 9 mm microscope-FoV TaAtScraper run, where a single neutron's
-scintillation light spreads over roughly 13-23 pixels and its photons arrive tens
-to hundreds of ns apart, so a 500 ns link chains one neutron event together while
-keeping separate neutrons apart. These suit that optical setup; other setups will
-need different values. `max_event_duration_ticks` still has no principled default
-and must be chosen by benchmarking before the `duration_exceeded` flag is trusted.
+`spatial_link_radius_pixels` (10) and `max_time_difference_ticks` (10 us) were
+chosen from a 9 mm microscope-FoV TaAtScraper run by inspecting cluster-colored
+movies of single beam pulses. At tighter windows a single neutron event visibly
+fragmented into several separately colored clusters; 10 px and a 10 us link were
+the smallest values that kept each neutron's scintillation light linked as one
+event while still separating distinct neutrons. These suit that optical setup;
+other setups will need different values. `max_event_duration_ticks` (30 us) was
+chosen from the same run: multi-photon event durations there run to ~56 us with a
+median near 6 us, so a 30 us threshold flags only the long tail (~1 %) of events
+that are unusually long-lived and may be two neutrons chained together.
 `spatial_cells_per_axis` is an implementation accelerator that the user tunes for
 the optical setup; the cell width in pixels is derived from it as described above
 and is not itself a setting.
