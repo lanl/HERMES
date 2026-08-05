@@ -46,10 +46,18 @@ parameter, and they are chosen independently:
 - The **spatial linking radius** (`spatial_link_radius_pixels`) decides when two
   photons are neighbors. It is a physics choice driven by detector light spread
   and optical blur.
-- The **cell width** of the spatial grid is only a lookup accelerator. Changing
-  it must never change which events are produced; it may change only runtime,
-  memory use, and the number of distance tests. In this program the cell width
-  is **derived**, not a setting (see "Spatial Grid" below).
+- The **number of grid cells per axis** (`spatial_cells_per_axis`) sets how
+  finely the field of view is divided for the neighbor-lookup grid. It is only a
+  lookup accelerator: changing it must never change which events are produced; it
+  may change only runtime, memory use, and the number of distance tests. The cell
+  width in pixels is **derived** from it (see "Spatial Grid" below).
+
+Both are user settings because event size depends on the optical setup. A
+microscope objective may image a field under one centimeter, while a single-lens
+system may cover roughly ten centimeters; the apparent size of an event, and so
+the useful grid granularity, differs between them. The user adjusts
+`spatial_cells_per_axis` alongside `spatial_link_radius_pixels` to match the
+setup, subject to the one correctness constraint below.
 
 ## Connected Components over Space and Time
 
@@ -116,29 +124,29 @@ cell_x = static_cast<int>(x) / cell_width;
 cell_y = static_cast<int>(y) / cell_width;
 ```
 
-The cell width is **derived** from the linking radius and the fixed chip width,
-so there is no cell-width knob to tune. The rule is:
+The cell width in pixels is **derived** from `spatial_cells_per_axis` and the
+fixed 256-pixel chip width, so the user sets a cell count rather than a raw width:
 
-- Let `R = ceil(spatial_link_radius_pixels)`.
-- The cell width is the largest integer multiple of `R` that is at most
-  `4 * spatial_link_radius_pixels` and divides 256 without remainder. If no such
-  multiple exists, the cell width is `R`.
+```text
+cell_width = ceil(256 / spatial_cells_per_axis)
+```
 
-This keeps the cell width at least the linking radius and aligns cell boundaries
-with the chip edges, so a fixed **3 x 3** cell neighborhood search is always
-sufficient and exact. Because the cell width is at least the linking radius, a
-photon within the radius can only fall in the same cell or an immediately
-adjacent one. Worked examples: `spatial_link_radius_pixels = 4` gives cell width
-16 (a 16 x 16 grid of 256 cells); `= 8` gives 32; `= 6` gives 6 (no multiple of
-6 within `[6, 24]` divides 256). For sparse TPX3Cam data a wider cell reduces
-bookkeeping at the cost of a few more distance tests, which are cheap at low
-photon density.
+Rounding up guarantees exactly `spatial_cells_per_axis` cells span the chip along
+each axis; the last cell on each axis may be a little narrower than the rest,
+which does not affect correctness. Worked examples:
+`spatial_cells_per_axis = 5` (the default) gives cell width 52; `= 4` gives 64;
+`= 3` gives 86; `= 2` gives 128; `= 1` gives 256.
 
-> Open point for review: the derived-cell-width rule above is one concrete
-> reading of "the nearest integer multiple of `r_link` that matches the width of
-> the field of view." It is correctness-preserving for any rule that keeps cell
-> width at or above the linking radius, so this can be adjusted without changing
-> results.
+The one correctness constraint is that the derived cell width must be **at least
+the linking radius**. When it is, a photon within the radius can only fall in the
+same cell or an immediately adjacent one, so a fixed **3 x 3** cell neighborhood
+search is always sufficient and exact. A grid fine enough to make the cell width
+smaller than the linking radius would let the 3 x 3 search miss genuine neighbors
+and silently change the clustering result; such a combination of
+`spatial_cells_per_axis` and `spatial_link_radius_pixels` is rejected during
+settings validation rather than accepted. For sparse TPX3Cam data a wider cell
+(fewer cells per axis) reduces bookkeeping at the cost of a few more distance
+tests, which are cheap at low photon density.
 
 This design avoids an O(N^2) all-pairs search while producing identical events
 regardless of cell width.
@@ -190,14 +198,17 @@ out-of-range values throw and cause a nonzero exit before any output is written.
 | Setting | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `spatial_link_radius_pixels` | float64 | 4.0 | Physics linking radius in pixels. |
+| `spatial_cells_per_axis` | uint32 | 5 | Number of neighbor-lookup grid cells along each detector axis. Accelerator only; must not be so large that the derived cell width falls below the linking radius. |
 | `max_time_difference_ticks` | float64 | (tune) | Maximum time difference between two connected photons, in canonical ticks. |
 | `max_event_duration_ticks` | float64 | (tune) | Duration above which an event is flagged `duration_exceeded`. |
 | `min_photon_count` | uint32 | 1 | Analysis threshold recorded for downstream use; not applied during clustering. |
 
 `max_time_difference_ticks` and `max_event_duration_ticks` have no principled
 default yet and must be chosen by benchmarking against measured data before the
-program is trusted; the initial values are placeholders. The cell width is not a
-setting; it is derived as described above.
+program is trusted; the initial values are placeholders. `spatial_cells_per_axis`
+is an implementation accelerator that the user tunes for the optical setup; the
+cell width in pixels is derived from it as described above and is not itself a
+setting.
 
 Times are in canonical ticks. One canonical tick is `25 ns / 12288`, matching
 the unpacker and photon reconstruction.
@@ -283,8 +294,9 @@ processing_times_seconds:
 ```
 
 The saved settings include `spatial_link_radius_pixels`,
-`max_time_difference_ticks`, `max_event_duration_ticks`, and `min_photon_count`.
-The derived cell width is recorded alongside them for diagnostics. Per-input
+`spatial_cells_per_axis`, `max_time_difference_ticks`, `max_event_duration_ticks`,
+and `min_photon_count`. The derived cell width is recorded alongside them for
+diagnostics. Per-input
 counts, filenames, warnings, errors, timing, and throughput stay in this summary
 and are not copied into the HERMES YAML file.
 
