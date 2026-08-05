@@ -116,6 +116,40 @@ class Tpx3PhotonClusteringSettings(StrictBaseModel):
         return self
 
 
+# Fixed detector width in pixels; the event grid spans one 256 x 256 chip. Used
+# to derive the spatial-grid cell width the same way the C++ binary does.
+EVENT_CHIP_WIDTH_PIXELS = 256
+
+
+class Tpx3EventReconstructionSettings(StrictBaseModel):
+    # One field per key the event-reconstructor binary reads, with the same
+    # bounds its validateReconParams enforces. model_dump(mode="json") produces
+    # exactly these keys, which is what is written to the binary's settings file.
+    spatial_link_radius_pixels: float = Field(gt=0)
+    spatial_cells_per_axis: int = Field(ge=1, le=EVENT_CHIP_WIDTH_PIXELS)
+    max_time_difference_ticks: float = Field(gt=0)
+    max_event_duration_ticks: float = Field(gt=0)
+    min_photon_count: int = Field(ge=1)
+    save_event_photons: bool = False
+
+    @model_validator(mode="after")
+    def require_cell_width_at_least_link_radius(
+        self,
+    ) -> Tpx3EventReconstructionSettings:
+        # The binary rejects a grid so fine that the derived cell width falls
+        # below the linking radius, because its fixed 3x3 cell search would then
+        # miss genuine neighbors. Mirror that here so an invalid grid is caught
+        # before the binary runs. The cell width rounds up, matching the binary.
+        cell_width = -(-EVENT_CHIP_WIDTH_PIXELS // self.spatial_cells_per_axis)
+        if cell_width < self.spatial_link_radius_pixels:
+            raise ValueError(
+                "spatial_cells_per_axis is too large for "
+                "spatial_link_radius_pixels: the derived cell width would be "
+                "smaller than the linking radius"
+            )
+        return self
+
+
 # ---------------------------------------------------------------------------
 # Unpacker summary (parsed from the unpacker binary's sidecar JSON)
 # ---------------------------------------------------------------------------
@@ -302,6 +336,103 @@ class Tpx3PhotonReconstructionSummary(StrictBaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Event reconstruction summary (parsed from the event-reconstructor binary JSON)
+# ---------------------------------------------------------------------------
+
+
+class Tpx3EventQualityFlagCountsSummary(StrictBaseModel):
+    single_photon: int = Field(ge=0)
+    duration_exceeded: int = Field(ge=0)
+
+
+class Tpx3EventReconstructionCountsSummary(StrictBaseModel):
+    photons_read: int = Field(ge=0)
+    components_formed: int = Field(ge=0)
+    event_count: int = Field(ge=0)
+    quality_flag_counts: Tpx3EventQualityFlagCountsSummary
+    min_photon_count_below: int = Field(ge=0)
+    warnings: list[str]
+    errors: list[str]
+
+    @model_validator(mode="after")
+    def require_event_counts_to_match(
+        self,
+    ) -> Tpx3EventReconstructionCountsSummary:
+        # Every closed component becomes exactly one event; the stage records
+        # min_photon_count_below but never discards, so these counts are equal.
+        if self.event_count != self.components_formed:
+            raise ValueError("event_count must equal components_formed")
+        # Components partition the photons and each holds at least one photon, so
+        # there can be no more events than photons.
+        if self.event_count > self.photons_read:
+            raise ValueError("event_count cannot exceed photons_read")
+        # Each per-event count is a subset of the events.
+        for name, value in (
+            ("single_photon", self.quality_flag_counts.single_photon),
+            ("duration_exceeded", self.quality_flag_counts.duration_exceeded),
+            ("min_photon_count_below", self.min_photon_count_below),
+        ):
+            if value > self.event_count:
+                raise ValueError(f"{name} cannot exceed event_count")
+        return self
+
+
+class Tpx3EventClusteringSummary(StrictBaseModel):
+    algorithm: ClusteringAlgorithm
+    # The binary owns its settings shape and renders it verbatim, so this is kept
+    # as a plain mapping rather than re-validated field by field. For
+    # connected_components it carries the six settings keys plus the derived cell
+    # width the binary reports for diagnostics.
+    settings: dict[str, float | int | bool]
+
+
+class Tpx3EventTimingSummary(StrictBaseModel):
+    estimator: Literal["earliest_photon"] = "earliest_photon"
+
+
+class Tpx3EventParquetCategorySummary(StrictBaseModel):
+    row_count: int = Field(ge=0)
+    files: list[Path]
+
+    @model_validator(mode="after")
+    def require_files_for_saved_rows(self) -> Tpx3EventParquetCategorySummary:
+        if self.row_count == 0 and self.files:
+            raise ValueError("a category with zero rows cannot list Parquet files")
+        if self.row_count > 0 and not self.files:
+            raise ValueError("a category with saved rows must list a Parquet file")
+        return self
+
+
+class Tpx3EventParquetSummary(StrictBaseModel):
+    input_photon_events_files: list[Path]
+    event_candidates: Tpx3EventParquetCategorySummary
+    # event_photons is present only when save_event_photons was set.
+    event_photons: Tpx3EventParquetCategorySummary | None = None
+
+
+class Tpx3EventThroughputSummary(StrictBaseModel):
+    photons_per_second: float = Field(ge=0)
+    events_per_second: float = Field(ge=0)
+
+
+class Tpx3EventProcessingTimesSummary(StrictBaseModel):
+    photon_reading: float = Field(ge=0)
+    clustering: float = Field(ge=0)
+    parquet_writing: float = Field(ge=0)
+    total: float = Field(ge=0)
+    throughput: Tpx3EventThroughputSummary
+
+
+class Tpx3EventReconstructionSummary(StrictBaseModel):
+    schema_version: Literal[1] = 1
+    reconstruction: Tpx3EventReconstructionCountsSummary
+    clustering: Tpx3EventClusteringSummary
+    event_timing: Tpx3EventTimingSummary
+    parquet: Tpx3EventParquetSummary
+    processing_times_seconds: Tpx3EventProcessingTimesSummary
+
+
+# ---------------------------------------------------------------------------
 # Per-file results
 # ---------------------------------------------------------------------------
 
@@ -320,6 +451,15 @@ class HermesTpx3ReconstructionResult(StrictBaseModel):
     started_at: datetime | None = None
     completed_at: datetime | None = None
     counts: Tpx3PhotonReconstructionCountsSummary | None = None
+
+
+class HermesTpx3EventReconstructionResult(StrictBaseModel):
+    input_file: FileReference
+    output_file: Path
+    status: HermesTpx3RunStatus = "planned"
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    counts: Tpx3EventReconstructionCountsSummary | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -392,6 +532,40 @@ class Tpx3PhotonReconstruction(StrictBaseModel):
         return value
 
 
+class Tpx3EventReconstructionRuntimeOptions(StrictBaseModel):
+    overwrite: bool = False
+
+
+class Tpx3EventReconstruction(StrictBaseModel):
+    program: BinaryProgram
+    # "auto" gathers photon files from the photon reconstruction stage's output;
+    # a list names specific photon_events Parquet files to reconstruct.
+    photon_parquet_files: Literal["auto"] | list[FileReference] = "auto"
+    output_directory: Path | None = None
+    clustering_algorithm: ClusteringAlgorithm = "connected_components"
+    settings: Tpx3EventReconstructionSettings
+    runtime_options: Tpx3EventReconstructionRuntimeOptions = Field(
+        default_factory=Tpx3EventReconstructionRuntimeOptions
+    )
+    results: list[HermesTpx3EventReconstructionResult] = Field(
+        default_factory=list
+    )
+
+    @field_validator("photon_parquet_files", mode="before")
+    @classmethod
+    def expand_photon_file_list(cls, value: object) -> object:
+        return _expand_file_list(value)
+
+    @field_validator("photon_parquet_files", mode="after")
+    @classmethod
+    def require_non_empty_file_list(cls, value: object) -> object:
+        if isinstance(value, list) and not value:
+            raise ValueError(
+                "photon_parquet_files must be 'auto' or a non-empty file list"
+            )
+        return value
+
+
 # ---------------------------------------------------------------------------
 # Analysis state
 # ---------------------------------------------------------------------------
@@ -403,6 +577,7 @@ class HermesTpx3AnalysisState(StrictBaseModel):
     resource_limit_percent: int = Field(default=90, ge=1, le=100)
     unpacking: Tpx3Unpacking
     photon_reconstruction: Tpx3PhotonReconstruction | None = None
+    event_reconstruction: Tpx3EventReconstruction | None = None
 
     @model_validator(mode="after")
     def derive_output_directories(self) -> HermesTpx3AnalysisState:
@@ -411,4 +586,12 @@ class HermesTpx3AnalysisState(StrictBaseModel):
         reconstruction = self.photon_reconstruction
         if reconstruction is not None and reconstruction.output_directory is None:
             reconstruction.output_directory = self.analysis_directory / "photons"
+        event_reconstruction = self.event_reconstruction
+        if (
+            event_reconstruction is not None
+            and event_reconstruction.output_directory is None
+        ):
+            event_reconstruction.output_directory = (
+                self.analysis_directory / "events"
+            )
         return self
