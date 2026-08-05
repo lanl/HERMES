@@ -29,6 +29,7 @@ else()
 endif()
 
 add_library(hermes_event_reconstructor
+    src/settings.cpp
     src/version.cpp
 )
 
@@ -67,5 +68,7 @@ add_executable(hermes-event-reconstructor
 target_link_libraries(hermes-event-reconstructor PRIVATE hermes_event_reconstructor)
 
 if(BUILD_TESTING)
-    # Per-file CTest targets are added as each stage introduces its module.
+    add_executable(settings_tests tests/settings_tests.cpp)
+    target_link_libraries(settings_tests PRIVATE hermes_event_reconstructor)
+    add_test(NAME settings_tests COMMAND settings_tests)
 endif()
