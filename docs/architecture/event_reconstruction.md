@@ -197,18 +197,22 @@ out-of-range values throw and cause a nonzero exit before any output is written.
 
 | Setting | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `spatial_link_radius_pixels` | float64 | 4.0 | Physics linking radius in pixels. |
+| `spatial_link_radius_pixels` | float64 | 20.0 | Physics linking radius in pixels. |
 | `spatial_cells_per_axis` | uint32 | 5 | Number of neighbor-lookup grid cells along each detector axis. Accelerator only; must not be so large that the derived cell width falls below the linking radius. |
-| `max_time_difference_ticks` | float64 | (tune) | Maximum time difference between two connected photons, in canonical ticks. |
+| `max_time_difference_ticks` | float64 | 245760.0 | Maximum time difference between two linked photons, in canonical ticks (500 ns). |
 | `max_event_duration_ticks` | float64 | (tune) | Duration above which an event is flagged `duration_exceeded`. |
 | `min_photon_count` | uint32 | 1 | Analysis threshold recorded for downstream use; not applied during clustering. |
 
-`max_time_difference_ticks` and `max_event_duration_ticks` have no principled
-default yet and must be chosen by benchmarking against measured data before the
-program is trusted; the initial values are placeholders. `spatial_cells_per_axis`
-is an implementation accelerator that the user tunes for the optical setup; the
-cell width in pixels is derived from it as described above and is not itself a
-setting.
+`spatial_link_radius_pixels` (20) and `max_time_difference_ticks` (500 ns) were
+chosen from a 9 mm microscope-FoV TaAtScraper run, where a single neutron's
+scintillation light spreads over roughly 13-23 pixels and its photons arrive tens
+to hundreds of ns apart, so a 500 ns link chains one neutron event together while
+keeping separate neutrons apart. These suit that optical setup; other setups will
+need different values. `max_event_duration_ticks` still has no principled default
+and must be chosen by benchmarking before the `duration_exceeded` flag is trusted.
+`spatial_cells_per_axis` is an implementation accelerator that the user tunes for
+the optical setup; the cell width in pixels is derived from it as described above
+and is not itself a setting.
 
 Times are in canonical ticks. One canonical tick is `25 ns / 12288`, matching
 the unpacker and photon reconstruction.
