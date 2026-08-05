@@ -104,6 +104,21 @@ int deriveCellWidth(std::uint32_t spatial_cells_per_axis) {
     return (kChipWidthPixels + n - 1) / n;
 }
 
+std::string clusteringSettingsJson(const ReconParams& settings,
+                                   int derived_cell_width) {
+    // Ordered so the rendered settings object keeps a stable, readable field
+    // order in both the summary JSON and the event-file metadata.
+    nlohmann::ordered_json s;
+    s["spatial_link_radius_pixels"] = settings.spatial_link_radius_pixels;
+    s["spatial_cells_per_axis"] = settings.spatial_cells_per_axis;
+    s["max_time_difference_ticks"] = settings.max_time_difference_ticks;
+    s["max_event_duration_ticks"] = settings.max_event_duration_ticks;
+    s["min_photon_count"] = settings.min_photon_count;
+    s["save_event_photons"] = settings.save_event_photons;
+    s["derived_cell_width"] = derived_cell_width;
+    return s.dump();
+}
+
 ReconParams loadReconParams(const std::string& path) {
     std::ifstream input(path);
     if (!input.is_open()) {
