@@ -84,6 +84,15 @@ void validateReconParams(const ReconParams& settings);
 // form.
 int deriveCellWidth(std::uint32_t spatial_cells_per_axis);
 
+// Serializes the settings to a JSON object string for provenance: the same
+// fields shown in the Settings table, plus the derived cell width for
+// diagnostics. The algorithm-neutral summary writer renders this string verbatim
+// under clustering.settings, and the event-file metadata carries it as
+// event_settings_json, so this one function is the single source of the
+// connected-components settings shape. Other algorithms provide their own.
+std::string clusteringSettingsJson(const ReconParams& settings,
+                                   int derived_cell_width);
+
 }  // namespace hermes_event_reconstructor
 
 #endif
