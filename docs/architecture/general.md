@@ -62,9 +62,9 @@ HERMES/
 │   │   │           │   ├── lib.rs
 │   │   │           │   └── main.rs
 │   │   │           └── tests/
-│   │   ├── reconstruction/
-│   │   │   └── photons/
-│   │   └── event-reconstructors/
+│   │   └── reconstruction/
+│   │       ├── photons/          # pixels → photons
+│   │       └── events/           # photons → events
 │   │
 │   └── hermes/
 │       ├── __init__.py         # makes hermes the Python import package
