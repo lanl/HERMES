@@ -29,6 +29,7 @@ else()
 endif()
 
 add_library(hermes_event_reconstructor
+    src/photon_reader.cpp
     src/settings.cpp
     src/version.cpp
 )
@@ -71,4 +72,10 @@ if(BUILD_TESTING)
     add_executable(settings_tests tests/settings_tests.cpp)
     target_link_libraries(settings_tests PRIVATE hermes_event_reconstructor)
     add_test(NAME settings_tests COMMAND settings_tests)
+
+    if(Arrow_FOUND AND Parquet_FOUND)
+        add_executable(photon_reader_tests tests/photon_reader_tests.cpp)
+        target_link_libraries(photon_reader_tests PRIVATE hermes_event_reconstructor)
+        add_test(NAME photon_reader_tests COMMAND photon_reader_tests)
+    endif()
 endif()
