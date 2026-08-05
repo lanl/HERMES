@@ -35,15 +35,20 @@ struct ReconParams {
     std::uint32_t spatial_cells_per_axis = 5;
 
     // Maximum time difference between two linked photons, in canonical ticks.
-    // The default of 245760 ticks is 500 ns (1 tick = 25 ns / 12288). Chosen
-    // from the same TaAtScraper run: consecutive photons within one neutron
-    // event arrive tens to hundreds of ns apart, so a 500 ns link chains a whole
-    // event together while keeping separate neutrons apart.
-    double max_time_difference_ticks = 245760.0;
+    // The default of 4915200 ticks is 10000 ns / 10 us (1 tick = 25 ns / 12288).
+    // Chosen from the same TaAtScraper run: at shorter windows a single neutron
+    // event visibly fragmented into several separately colored clusters in the
+    // pulse movies, and 10 us was the smallest window that kept each event linked
+    // as one cluster while still separating distinct neutrons.
+    double max_time_difference_ticks = 4915200.0;
 
     // Duration above which an event is flagged duration_exceeded, in canonical
-    // ticks. Also a placeholder to be tuned by benchmarking. (~500 ns.)
-    double max_event_duration_ticks = 245760.0;  // TUNE ME
+    // ticks. The default of 14745600 ticks is 30000 ns / 30 us. Chosen from the
+    // same TaAtScraper run: multi-photon event durations there run to ~56 us with
+    // a median near 6 us, so a 30 us threshold flags only the long tail (~1 %) of
+    // events that are unusually long-lived and may be two neutrons chained
+    // together, without flagging typical events. The flag never discards.
+    double max_event_duration_ticks = 14745600.0;
 
     // Optional analysis threshold recorded for downstream use. It is NOT applied
     // during clustering; the reconstruction stage never discards events.
