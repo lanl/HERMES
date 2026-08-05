@@ -31,6 +31,7 @@ endif()
 add_library(hermes_event_reconstructor
     src/clustering.cpp
     src/event.cpp
+    src/event_writer.cpp
     src/photon_reader.cpp
     src/settings.cpp
     src/version.cpp
@@ -87,5 +88,9 @@ if(BUILD_TESTING)
         add_executable(photon_reader_tests tests/photon_reader_tests.cpp)
         target_link_libraries(photon_reader_tests PRIVATE hermes_event_reconstructor)
         add_test(NAME photon_reader_tests COMMAND photon_reader_tests)
+
+        add_executable(event_writer_tests tests/event_writer_tests.cpp)
+        target_link_libraries(event_writer_tests PRIVATE hermes_event_reconstructor)
+        add_test(NAME event_writer_tests COMMAND event_writer_tests)
     endif()
 endif()
