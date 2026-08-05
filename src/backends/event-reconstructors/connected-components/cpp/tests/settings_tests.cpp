@@ -56,6 +56,8 @@ int main() {
                          "default is 5 cells per axis");
         test.expectEqual(defaults.min_photon_count, 1u,
                          "default min_photon_count is 1");
+        test.expect(!defaults.save_event_photons,
+                    "event_photons file is off by default");
     }
 
     // A partial file overrides only the named fields; the rest keep defaults.
@@ -77,13 +79,20 @@ int main() {
             " \"spatial_cells_per_axis\": 8,"
             " \"max_time_difference_ticks\": 1000.0,"
             " \"max_event_duration_ticks\": 5000.0,"
-            " \"min_photon_count\": 3}"));
+            " \"min_photon_count\": 3,"
+            " \"save_event_photons\": true}"));
         test.expectEqual(s.spatial_link_radius_pixels, 6.0, "link radius set");
         test.expectEqual(s.spatial_cells_per_axis, 8u, "cells per axis set");
         test.expectEqual(s.max_time_difference_ticks, 1000.0, "dt set");
         test.expectEqual(s.max_event_duration_ticks, 5000.0, "duration set");
         test.expectEqual(s.min_photon_count, 3u, "min_photon_count set");
+        test.expect(s.save_event_photons, "save_event_photons set");
     }
+
+    // save_event_photons must be a boolean, not a number or string.
+    test.expect(loadThrows("bad_bool.json",
+                           "{\"save_event_photons\": 1}"),
+                "non-boolean save_event_photons is rejected");
 
     // Rejection: unknown key.
     test.expect(loadThrows("unknown.json", "{\"not_a_field\": 1}"),
