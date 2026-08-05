@@ -46,8 +46,10 @@ int main() {
     {
         ReconParams defaults;
         test.expect(validates(defaults), "built-in defaults validate");
-        test.expectEqual(defaults.spatial_link_radius_pixels, 4.0,
-                         "default link radius is 4");
+        test.expectEqual(defaults.spatial_link_radius_pixels, 20.0,
+                         "default link radius is 20");
+        test.expectEqual(defaults.max_time_difference_ticks, 245760.0,
+                         "default time link is 500 ns");
         test.expectEqual(defaults.spatial_cells_per_axis, 5u,
                          "default is 5 cells per axis");
         test.expectEqual(defaults.min_photon_count, 1u,
