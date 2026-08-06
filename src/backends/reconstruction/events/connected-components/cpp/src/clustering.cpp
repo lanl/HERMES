@@ -221,11 +221,12 @@ void clusterPhotons(
     // Every remaining photon is still inside the window, so its cluster was
     // never finished above. Emit those leftover clusters in earliest-photon-time
     // order, breaking ties by smallest member index so the order is fixed.
+    std::vector<bool> root_seen(photons.size(), false);
     std::vector<std::size_t> cluster_roots;
     for (const std::size_t index : photons_in_window) {
         const std::size_t root = clusters.findRoot(index);
-        if (std::find(cluster_roots.begin(), cluster_roots.end(), root) ==
-            cluster_roots.end()) {
+        if (!root_seen[root]) {
+            root_seen[root] = true;
             cluster_roots.push_back(root);
         }
     }
