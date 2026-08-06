@@ -21,6 +21,7 @@ from hermes.runner.analysis.hermes.event_reconstruction import (
     plan_event_reconstruction,
     resolve_photon_files,
 )
+from hermes.runner.analysis.hermes.run import run_hermes_analysis
 from hermes.state.models.analysis.hermes_tpx3_spidr import (
     HermesTpx3AnalysisState,
     Tpx3EventReconstruction,
@@ -29,7 +30,12 @@ from hermes.state.models.analysis.hermes_tpx3_spidr import (
     Tpx3PhotonReconstruction,
     Tpx3Unpacking,
 )
+from hermes.state.models.environment import RuntimeEnvironment
+from hermes.state.models.measurement import MeasurementInfo
 from hermes.state.models.shared_models import BinaryProgram, FileReference
+from hermes.state.state import HermesRecord
+from hermes.state_service.shared_types import StateServiceConfig
+from hermes.state_service.state_manager import StateManager
 
 
 def _settings(**overrides: Any) -> Tpx3EventReconstructionSettings:
@@ -462,3 +468,238 @@ def test_execute_raises_on_missing_summary(tmp_path: Path) -> None:
     )
     with pytest.raises(HermesEventReconstructionOutputError):
         execute_event_reconstruction(analysis, input_file)
+
+
+# ---- status flow through run_hermes_analysis ----------------------------
+
+
+def _write_fake_unpacker(executable: Path) -> None:
+    """A minimal unpacker that writes one pixel_data file and a valid summary."""
+    script = textwrap.dedent(
+        f"""\
+        #!{sys.executable}
+        import json
+        import sys
+        from pathlib import Path
+
+        import pyarrow as pa
+        import pyarrow.parquet as pq
+
+        args = sys.argv[1:]
+        raw_file = Path(args[args.index("--input") + 1])
+        analysis_dir = Path(args[args.index("--output") + 1])
+        stem = raw_file.stem
+
+        pixel_hits = analysis_dir / "pixelHits"
+        pixel_hits.mkdir(parents=True, exist_ok=True)
+        pq.write_table(
+            pa.table({{
+                "local_x": pa.array([0], pa.uint16()),
+                "local_y": pa.array([0], pa.uint16()),
+                "tot_raw": pa.array([10], pa.uint16()),
+                "timestamp_canonical": pa.array([1], pa.uint64()),
+            }}),
+            pixel_hits / (stem + "-chip-0-part-00000.parquet"),
+        )
+        summary = {{
+            "unpacking": {{
+                "bytes_read": 0, "chunks_read": 0, "packets_read": 1,
+                "pixel_data_packets": 1, "tdc_timestamps": 0,
+                "heartbeat_packets": 0, "spidr_control_packets": 0,
+                "tpx3_control_packets": 0, "unrecognized_packets": 0,
+                "tdc1_rising": 0, "tdc1_falling": 0, "tdc2_rising": 0,
+                "tdc2_falling": 0, "unknown_tdc_edges": 0,
+                "errors": [], "warnings": [],
+            }},
+            "timestamp_processing": {{
+                "heartbeat_pairs": {{"number_of_beats": 0}},
+                "time_adjustments": {{
+                    "pixel_packets": 1, "tdc_packets": 0,
+                    "control_packets": 0, "failed": 0,
+                }},
+            }},
+            "sorting": {{
+                "strategy": "in_memory", "memory_budget_bytes": 0,
+                "estimated_memory_bytes": 0, "temporary_runs_created": 0,
+            }},
+            "parquet": {{
+                "pixel_data": {{
+                    "row_count": 1,
+                    "files": ["pixelHits/" + stem + "-chip-0-part-00000.parquet"],
+                }},
+                "tdc_timestamps": {{"row_count": 0, "files": []}},
+                "heartbeat_packets": {{"row_count": 0, "files": []}},
+                "control_packets": {{"row_count": 0, "files": []}},
+                "unrecognized_packets": {{"row_count": 0, "files": []}},
+                "errors": [],
+            }},
+            "processing_times_seconds": {{
+                "canonical_time_seconds": 2.0345e-12, "unpacking": 0,
+                "canonical_conversion": 0, "time_adjustments": 0,
+                "sorting": 0, "parquet_writing": 0, "total": 0,
+                "throughput": {{
+                    "packets_per_second": 0, "megabytes_per_second": 0,
+                }},
+            }},
+        }}
+        logs = analysis_dir / "logs" / "unpacker"
+        logs.mkdir(parents=True, exist_ok=True)
+        (logs / (stem + "-unpacker-summary.json")).write_text(json.dumps(summary))
+        sys.exit(0)
+        """
+    )
+    executable.write_text(script, encoding="utf-8")
+    executable.chmod(executable.stat().st_mode | stat.S_IEXEC | stat.S_IRWXU)
+
+
+def _write_fake_clusterer(executable: Path) -> None:
+    """A minimal clusterer that writes one photon file and a valid summary."""
+    summary_literal = json.dumps(
+        {
+            "schema_version": 1,
+            "reconstruction": {
+                "pixel_rows_read": 1,
+                "pixel_rows_below_min_tot": 0,
+                "components_formed": 1,
+                "photon_count": 1,
+                "rejected_component_count": 0,
+                "rejection_counts": {
+                    "below_min_cluster_size": 0,
+                    "above_max_cluster_size": 0,
+                    "below_min_cluster_tot": 0,
+                    "above_max_cluster_tot": 0,
+                    "above_max_aspect_ratio": 0,
+                    "below_min_filled_fraction": 0,
+                },
+                "quality_flag_counts": {
+                    "saturated_pixel": 0,
+                    "bridged_components": 0,
+                },
+                "warnings": [],
+                "errors": [],
+            },
+            "processing_times_seconds": {
+                "parquet_reading": 0.1,
+                "clustering_and_filtering": 0.2,
+                "parquet_writing": 0.1,
+                "total": 0.4,
+                "throughput": {
+                    "pixels_per_second": 2.5,
+                    "photons_per_second": 2.5,
+                },
+            },
+        }
+    )
+    script = textwrap.dedent(
+        f"""\
+        #!{sys.executable}
+        import json
+        import sys
+        from pathlib import Path
+
+        args = sys.argv[1:]
+        values = {{}}
+        i = 0
+        while i < len(args):
+            flag = args[i]
+            if flag == "--overwrite":
+                values[flag] = True
+                i += 1
+                continue
+            values[flag] = args[i + 1]
+            i += 2
+
+        output_file = Path(values["--output"])
+        json.loads(Path(values["--settings"]).read_text())
+
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+        output_file.write_bytes(b"")
+        logs_directory = output_file.parent.parent / "logs" / "photons"
+        logs_directory.mkdir(parents=True, exist_ok=True)
+        summary_path = (
+            logs_directory / (output_file.stem + "-reconstruction-summary.json")
+        )
+        summary_path.write_text({summary_literal!r})
+        sys.exit(0)
+        """
+    )
+    executable.write_text(script, encoding="utf-8")
+    executable.chmod(executable.stat().st_mode | stat.S_IEXEC | stat.S_IRWXU)
+
+
+def _manager(analysis: HermesTpx3AnalysisState, tmp_path: Path) -> StateManager:
+    return StateManager(
+        HermesRecord(
+            measurement_info=MeasurementInfo(
+                measurement_id="stage-9c",
+                run_number=1,
+            ),
+            environment=RuntimeEnvironment(working_dir=tmp_path),
+            acquisition=None,
+            analysis=analysis,
+        ),
+        config=StateServiceConfig(allow_trusted_workflow_bypass=True),
+    )
+
+
+def test_run_hermes_analysis_completes_event_reconstruction(
+    tmp_path: Path,
+) -> None:
+    analysis = _analysis(tmp_path)
+    _write_fake_unpacker(analysis.unpacking.program.executable_path)
+    _write_fake_clusterer(analysis.photon_reconstruction.program.executable_path)
+    _write_fake_reconstructor(
+        analysis.event_reconstruction.program.executable_path,
+        event_count=4,
+    )
+    manager = _manager(analysis, tmp_path)
+
+    run_hermes_analysis(manager)
+
+    result_analysis = manager.get_state().analysis
+    assert result_analysis.unpacking.results[0].status == "completed"
+    assert result_analysis.photon_reconstruction.results[0].status == "completed"
+    event_results = result_analysis.event_reconstruction.results
+    assert len(event_results) == 1
+    assert event_results[0].status == "completed"
+    assert event_results[0].started_at is not None
+    assert event_results[0].completed_at is not None
+    assert event_results[0].counts.event_count == 4
+
+
+def test_run_hermes_analysis_marks_event_reconstruction_failed(
+    tmp_path: Path,
+) -> None:
+    analysis = _analysis(tmp_path)
+    _write_fake_unpacker(analysis.unpacking.program.executable_path)
+    _write_fake_clusterer(analysis.photon_reconstruction.program.executable_path)
+    _write_fake_reconstructor(
+        analysis.event_reconstruction.program.executable_path,
+        exit_code=1,
+        write_summary=False,
+    )
+    manager = _manager(analysis, tmp_path)
+
+    with pytest.raises(HermesEventReconstructionExecutionError):
+        run_hermes_analysis(manager)
+
+    result_analysis = manager.get_state().analysis
+    assert result_analysis.photon_reconstruction.results[0].status == "completed"
+    event_results = result_analysis.event_reconstruction.results
+    assert event_results
+    assert event_results[0].status == "failed"
+
+
+def test_run_hermes_analysis_without_event_reconstruction_leaves_none(
+    tmp_path: Path,
+) -> None:
+    analysis = _analysis(tmp_path, with_event_reconstruction=False)
+    _write_fake_unpacker(analysis.unpacking.program.executable_path)
+    _write_fake_clusterer(analysis.photon_reconstruction.program.executable_path)
+    manager = _manager(analysis, tmp_path)
+
+    run_hermes_analysis(manager)
+
+    result_analysis = manager.get_state().analysis
+    assert result_analysis.photon_reconstruction.results[0].status == "completed"
+    assert result_analysis.event_reconstruction is None
