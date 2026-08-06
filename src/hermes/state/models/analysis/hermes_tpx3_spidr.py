@@ -575,13 +575,15 @@ class HermesTpx3AnalysisState(StrictBaseModel):
     mode: Literal["hermes"] = "hermes"
     analysis_directory: Path
     resource_limit_percent: int = Field(default=90, ge=1, le=100)
-    unpacking: Tpx3Unpacking
+    # Optional so reconstruction can run on its own when unpacking is already
+    # done and the pixel/photon files it needs are already on disk.
+    unpacking: Tpx3Unpacking | None = None
     photon_reconstruction: Tpx3PhotonReconstruction | None = None
     event_reconstruction: Tpx3EventReconstruction | None = None
 
     @model_validator(mode="after")
     def derive_output_directories(self) -> HermesTpx3AnalysisState:
-        if self.unpacking.output_directory is None:
+        if self.unpacking is not None and self.unpacking.output_directory is None:
             self.unpacking.output_directory = self.analysis_directory
         reconstruction = self.photon_reconstruction
         if reconstruction is not None and reconstruction.output_directory is None:
