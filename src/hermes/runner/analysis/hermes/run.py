@@ -191,52 +191,56 @@ def run_hermes_analysis(
         )
         raise HermesAnalysisError(error)
 
-    unpack_overwrite = overwrite or analysis.unpacking.runtime_options.overwrite
+    unpacked_files: list[FileReference] = []
     try:
-        unpacking_plan = plan_unpacking(analysis, overwrite=unpack_overwrite)
-        files_to_run = [
-            raw_file
-            for raw_file, action in unpacking_plan
-            if action == "run"
-        ]
+        if analysis.unpacking is not None:
+            unpack_overwrite = (
+                overwrite or analysis.unpacking.runtime_options.overwrite
+            )
+            unpacking_plan = plan_unpacking(analysis, overwrite=unpack_overwrite)
+            files_to_run = [
+                raw_file
+                for raw_file, action in unpacking_plan
+                if action == "run"
+            ]
 
-        for raw_file, action in unpacking_plan:
-            if action == "skip":
-                log_skipped_input(analysis, raw_file)
+            for raw_file, action in unpacking_plan:
+                if action == "skip":
+                    log_skipped_input(analysis, raw_file)
 
-        started_at = utc_now()
-        if files_to_run:
-            worker_count = _calculate_worker_count(analysis, files_to_run)
-            completed = _run_parallel(
-                lambda raw_file: execute_unpacker(
-                    analysis, raw_file, overwrite=unpack_overwrite
+            started_at = utc_now()
+            if files_to_run:
+                worker_count = _calculate_worker_count(analysis, files_to_run)
+                completed = _run_parallel(
+                    lambda raw_file: execute_unpacker(
+                        analysis, raw_file, overwrite=unpack_overwrite
+                    ),
+                    files_to_run,
+                    worker_count,
+                )
+                unpacked_files = [files_to_run[i] for i in sorted(completed)]
+
+            completed_at = utc_now()
+            unpacking_results = [
+                HermesTpx3UnpackingResult(
+                    input_file=raw_file,
+                    status="completed" if action == "run" else "skipped",
+                    started_at=started_at if action == "run" else None,
+                    completed_at=completed_at if action == "run" else None,
+                )
+                for raw_file, action in unpacking_plan
+            ]
+            _apply_unpacking_results(
+                state_manager,
+                unpacking_results,
+                justification=(
+                    "unpacked new raw TPX3 files; revalidated existing outputs"
                 ),
-                files_to_run,
-                worker_count,
             )
-            unpacked_files = [files_to_run[i] for i in sorted(completed)]
-        else:
-            unpacked_files = []
-
-        completed_at = utc_now()
-        unpacking_results = [
-            HermesTpx3UnpackingResult(
-                input_file=raw_file,
-                status="completed" if action == "run" else "skipped",
-                started_at=started_at if action == "run" else None,
-                completed_at=completed_at if action == "run" else None,
+            log_overall_completion(
+                raw_file_count=len(unpacking_plan),
+                unpacked_file_count=len(files_to_run),
             )
-            for raw_file, action in unpacking_plan
-        ]
-        _apply_unpacking_results(
-            state_manager,
-            unpacking_results,
-            justification="unpacked new raw TPX3 files; revalidated existing outputs",
-        )
-        log_overall_completion(
-            raw_file_count=len(unpacking_plan),
-            unpacked_file_count=len(files_to_run),
-        )
 
         current_analysis = _current_hermes_analysis(state_manager)
         if current_analysis.photon_reconstruction is not None:
@@ -253,7 +257,10 @@ def run_hermes_analysis(
         return unpacked_files
     except HermesTpx3Error as exc:
         current_analysis = state_manager.get_state().analysis
-        if isinstance(current_analysis, HermesTpx3AnalysisState):
+        if (
+            isinstance(current_analysis, HermesTpx3AnalysisState)
+            and current_analysis.unpacking is not None
+        ):
             _apply_unpacking_results(
                 state_manager,
                 [
