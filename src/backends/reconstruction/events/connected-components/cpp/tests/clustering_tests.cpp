@@ -216,6 +216,36 @@ int main() {
         }
     }
 
+    // Final-flush order: cluster A starts first but its oldest photon expires,
+    // so cluster B appears first in the remaining time window. The final flush
+    // must still emit A first based on the clusters' earliest photon times.
+    {
+        const std::vector<PhotonEvent> photons = {
+            PhotonEvent{0, 10.0, 10.0, 0.0},
+            PhotonEvent{1, 200.0, 200.0, 50.0},
+            PhotonEvent{2, 10.0, 10.0, 75.0},
+            PhotonEvent{3, 10.0, 10.0, 150.0},
+        };
+        std::vector<double> first_times;
+        clusterPhotons(photons, r_link, dt_link, cell_width,
+                       [&](std::vector<std::size_t>&& members) {
+                           double earliest = photons[members[0]].timestamp_canonical;
+                           for (const std::size_t index : members) {
+                               earliest = std::min(
+                                   earliest, photons[index].timestamp_canonical);
+                           }
+                           first_times.push_back(earliest);
+                       });
+        test.expectEqual(first_times.size(), std::size_t{2},
+                         "final flush emits two clusters");
+        if (first_times.size() == 2) {
+            test.expectEqual(first_times[0], 0.0,
+                             "final flush emits earliest cluster first");
+            test.expectEqual(first_times[1], 50.0,
+                             "final flush emits later cluster second");
+        }
+    }
+
     // Empty input produces no clusters.
     {
         const auto clusters = clustersOf({}, r_link, dt_link, cell_width);
