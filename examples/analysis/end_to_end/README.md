@@ -63,16 +63,21 @@ data/examples/analysis/end_to_end/
     ├── pixelHits/
     │   └── Tantalum_IronPowder-chip-0-part-00000.parquet
     ├── photons/
-    │   ├── Tantalum_IronPowder-chip-0-photon-events-part-00000.parquet
-    │   └── Tantalum_IronPowder-chip-0-photon-pixels-part-00000.parquet
+    │   ├── Tantalum_IronPowder-chip-0-part-00000.parquet
+    │   └── Tantalum_IronPowder-chip-0-part-00000-photon-pixels.parquet
     ├── events/
-    │   └── Tantalum_IronPowder-chip-0-photon-events-part-00000.parquet
+    │   └── Tantalum_IronPowder-chip-0-part-00000.parquet
     └── logs/
-        ├── Tantalum_IronPowder-unpacker-summary.json
-        ├── Tantalum_IronPowder-reconstruction-summary.json
+        ├── unpacker/
+        │   └── Tantalum_IronPowder-unpacker-summary.json
+        ├── photons/
+        │   └── Tantalum_IronPowder-chip-0-part-00000-reconstruction-summary.json
         └── events/
-            └── ...-reconstruction-summary.json
+            └── Tantalum_IronPowder-chip-0-part-00000-reconstruction-summary.json
 ```
+
+(The unpacker also writes `controlPackets/`, `globalTimestamps/`, and
+`tdcTriggers/` Parquet files under `analysis/`, omitted here for brevity.)
 
 Each stage writes its own Parquet files and a summary JSON. Running the example
 again validates the existing summaries, skips complete work, and refreshes
