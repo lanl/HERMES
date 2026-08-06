@@ -6,6 +6,23 @@ from math import floor
 import psutil
 from loguru import logger
 
+from hermes.runner.analysis.hermes.event_reconstruction import (
+    HermesEventReconstructionError,
+    execute_event_reconstruction,
+    plan_event_reconstruction,
+)
+from hermes.runner.analysis.hermes.event_reconstruction import (
+    derive_output_path as derive_event_output_path,
+)
+from hermes.runner.analysis.hermes.event_reconstruction import (
+    log_overall_completion as log_event_reconstruction_completion,
+)
+from hermes.runner.analysis.hermes.event_reconstruction import (
+    log_overall_failure as log_event_reconstruction_failure,
+)
+from hermes.runner.analysis.hermes.event_reconstruction import (
+    log_skipped_input as log_event_reconstruction_skipped,
+)
 from hermes.runner.analysis.hermes.reconstruction import (
     HermesReconstructionError,
     derive_output_path,
@@ -32,6 +49,7 @@ from hermes.runner.analysis.hermes.unpacker import (
 from hermes.state.models.analysis.empir import EmpirAnalysisState
 from hermes.state.models.analysis.hermes_tpx3_spidr import (
     HermesTpx3AnalysisState,
+    HermesTpx3EventReconstructionResult,
     HermesTpx3ReconstructionResult,
     HermesTpx3UnpackingResult,
 )
@@ -226,6 +244,12 @@ def run_hermes_analysis(
                 state_manager, current_analysis, overwrite=overwrite
             )
 
+        current_analysis = _current_hermes_analysis(state_manager)
+        if current_analysis.event_reconstruction is not None:
+            _run_event_reconstruction(
+                state_manager, current_analysis, overwrite=overwrite
+            )
+
         return unpacked_files
     except HermesTpx3Error as exc:
         current_analysis = state_manager.get_state().analysis
@@ -331,6 +355,97 @@ def _reconstruction_inputs(
         return []
 
 
+def _run_event_reconstruction(
+    state_manager: StateManager,
+    analysis: HermesTpx3AnalysisState,
+    *,
+    overwrite: bool = False,
+) -> None:
+    """Reconstruct events file-by-file in parallel, recording per-file results."""
+    event_reconstruction = analysis.event_reconstruction
+    assert event_reconstruction is not None
+    event_overwrite = overwrite or event_reconstruction.runtime_options.overwrite
+    try:
+        event_plan = plan_event_reconstruction(
+            analysis, overwrite=event_overwrite
+        )
+        files_to_run = [
+            input_file
+            for input_file, action in event_plan
+            if action == "run"
+        ]
+
+        skipped_results: list[HermesTpx3EventReconstructionResult] = []
+        for input_file, action in event_plan:
+            if action == "skip":
+                output_file = derive_event_output_path(
+                    event_reconstruction, input_file
+                )
+                log_event_reconstruction_skipped(input_file, output_file)
+                skipped_results.append(
+                    HermesTpx3EventReconstructionResult(
+                        input_file=input_file,
+                        output_file=output_file,
+                        status="skipped",
+                    )
+                )
+
+        if files_to_run:
+            worker_count = _calculate_worker_count(analysis, files_to_run)
+            completed = _run_parallel(
+                lambda input_file: execute_event_reconstruction(
+                    analysis, input_file, overwrite=event_overwrite
+                ),
+                files_to_run,
+                worker_count,
+            )
+            run_results = [completed[i] for i in sorted(completed)]
+        else:
+            run_results = []
+
+        _apply_event_reconstruction_results(
+            state_manager,
+            skipped_results + run_results,
+            justification="every photon file passed event reconstruction",
+        )
+        log_event_reconstruction_completion(
+            photon_file_count=len(event_plan),
+            reconstructed_file_count=len(files_to_run),
+        )
+    except HermesEventReconstructionError as exc:
+        _apply_event_reconstruction_results(
+            state_manager,
+            [
+                HermesTpx3EventReconstructionResult(
+                    input_file=input_file,
+                    output_file=derive_event_output_path(
+                        event_reconstruction, input_file
+                    ),
+                    status="failed",
+                    completed_at=utc_now(),
+                )
+                for input_file in _event_reconstruction_inputs(analysis)
+            ],
+            justification=f"event reconstruction failed: {exc}",
+        )
+        log_event_reconstruction_failure(exc)
+        raise
+
+
+def _event_reconstruction_inputs(
+    analysis: HermesTpx3AnalysisState,
+) -> list[FileReference]:
+    """Best-effort photon-file list for failure reporting (never raises)."""
+    from hermes.runner.analysis.hermes.event_reconstruction import (
+        resolve_photon_files,
+    )
+
+    try:
+        return resolve_photon_files(analysis)
+    except Exception:
+        return []
+
+
 def _current_hermes_analysis(
     state_manager: StateManager,
 ) -> HermesTpx3AnalysisState:
@@ -369,6 +484,22 @@ def _apply_reconstruction_results(
         results,
         origin="trusted_workflow",
         proposer="tpx3_spidr_reconstruction",
+        justification=justification,
+    )
+    state_manager.apply_change(change.change_id)
+
+
+def _apply_event_reconstruction_results(
+    state_manager: StateManager,
+    results: list[HermesTpx3EventReconstructionResult],
+    *,
+    justification: str,
+) -> None:
+    change = state_manager.propose_change(
+        "analysis.event_reconstruction.results",
+        results,
+        origin="trusted_workflow",
+        proposer="tpx3_spidr_event_reconstruction",
         justification=justification,
     )
     state_manager.apply_change(change.change_id)
