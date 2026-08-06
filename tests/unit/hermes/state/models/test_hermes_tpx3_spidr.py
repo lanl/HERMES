@@ -835,3 +835,28 @@ def test_hermes_analysis_state_accepts_event_reconstruction(
         state.event_reconstruction.output_directory
         == analysis_directory / "events"
     )
+
+
+def test_hermes_analysis_state_allows_no_unpacking(tmp_path: Path) -> None:
+    # Reconstruction can run on its own when unpacking is already done, so the
+    # unpacking stage is optional and its output directory is not derived.
+    analysis_directory = tmp_path / "analysis"
+    state = HermesTpx3AnalysisState(
+        analysis_directory=analysis_directory,
+        event_reconstruction=Tpx3EventReconstruction(
+            program=BinaryProgram(
+                name="connected-components-cpp",
+                executable_path=tmp_path / "bin/hermes-event-reconstructor",
+            ),
+            settings=Tpx3EventReconstructionSettings.model_validate(
+                _event_settings_data()
+            ),
+        ),
+    )
+
+    assert state.unpacking is None
+    assert state.event_reconstruction is not None
+    assert (
+        state.event_reconstruction.output_directory
+        == analysis_directory / "events"
+    )

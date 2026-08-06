@@ -703,3 +703,45 @@ def test_run_hermes_analysis_without_event_reconstruction_leaves_none(
     result_analysis = manager.get_state().analysis
     assert result_analysis.photon_reconstruction.results[0].status == "completed"
     assert result_analysis.event_reconstruction is None
+
+
+def test_run_hermes_analysis_event_only_without_unpacking(
+    tmp_path: Path,
+) -> None:
+    # Unpacking is already done: the photon file is on disk and no unpacking or
+    # photon-reconstruction stage is configured, so only events are built.
+    analysis_directory = tmp_path / "analysis"
+    photon_path = (
+        analysis_directory / "photons" / "run_000000-chip-0-part-00000.parquet"
+    )
+    photon_path.parent.mkdir(parents=True, exist_ok=True)
+    photon_path.touch()
+
+    event_exe = tmp_path / "bin/hermes-event-reconstructor"
+    event_exe.parent.mkdir(parents=True, exist_ok=True)
+    event_exe.touch()
+
+    analysis = HermesTpx3AnalysisState(
+        analysis_directory=analysis_directory,
+        event_reconstruction=Tpx3EventReconstruction(
+            program=BinaryProgram(
+                name="event-reconstructor-cpp",
+                executable_path=event_exe,
+                version="0.1.0",
+            ),
+            settings=_settings(),
+        ),
+    )
+    _write_fake_reconstructor(event_exe, event_count=4)
+    manager = _manager(analysis, tmp_path)
+
+    unpacked_files = run_hermes_analysis(manager)
+
+    assert unpacked_files == []
+    result_analysis = manager.get_state().analysis
+    assert result_analysis.unpacking is None
+    assert result_analysis.photon_reconstruction is None
+    event_results = result_analysis.event_reconstruction.results
+    assert len(event_results) == 1
+    assert event_results[0].status == "completed"
+    assert event_results[0].counts.event_count == 4
