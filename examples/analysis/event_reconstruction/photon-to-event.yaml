@@ -1,0 +1,23 @@
+measurement_info:
+  measurement_id: example-tpx3-event-reconstruction
+  run_number: 1
+
+environment:
+  working_dir: data/examples/analysis/event_reconstruction
+
+analysis:
+  mode: hermes
+  analysis_directory: data/examples/analysis/event_reconstruction/analysis
+  event_reconstruction:
+    program:
+      name: event-reconstructor-cpp
+      executable_path: build/backends/event-reconstructor/hermes-event-reconstructor
+    photon_parquet_files: auto
+    clustering_algorithm: connected_components
+    settings:
+      spatial_link_radius_pixels: 10.0
+      spatial_cells_per_axis: 5
+      max_time_difference_ticks: 4915200.0
+      max_event_duration_ticks: 14745600.0
+      min_photon_count: 1
+      save_event_photons: false

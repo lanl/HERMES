@@ -1,0 +1,49 @@
+measurement_info:
+  measurement_id: example-tpx3-end-to-end
+  run_number: 1
+
+environment:
+  working_dir: data/examples/analysis/end_to_end
+
+analysis:
+  mode: hermes
+  analysis_directory: data/examples/analysis/end_to_end/analysis
+  unpacking:
+    program:
+      name: tpx3-spidr-cpp
+      executable_path: build/backends/tpx3-spidr/hermes-tpx3-spidr
+    tpx3_files:
+      - path: data/examples/analysis/end_to_end/rawTpx3/Tantalum_IronPowder.tpx3
+  photon_reconstruction:
+    program:
+      name: photon-clusterer-cpp
+      executable_path: build/backends/photon-clusterer/hermes-photon-clusterer
+    pixel_parquet_files: auto
+    clustering_algorithm: connected_components
+    settings:
+      max_time_spread_ticks: 491520
+      min_cluster_size: 2
+      max_cluster_size: 64
+      min_pixel_tot_raw: 1
+      min_cluster_tot_raw: 2
+      max_cluster_tot_raw: 65472
+      max_aspect_ratio: 3.0
+      min_filled_fraction: 0.5
+      adjacency: 8
+      position_averaging: arithmetic
+      photon_time_estimator: leading_edge
+      timewalk_calibration_file: calibrations/tpx3/time-walk_example.json
+      save_photon_pixels: true
+  event_reconstruction:
+    program:
+      name: event-reconstructor-cpp
+      executable_path: build/backends/event-reconstructor/hermes-event-reconstructor
+    photon_parquet_files: auto
+    clustering_algorithm: connected_components
+    settings:
+      spatial_link_radius_pixels: 10.0
+      spatial_cells_per_axis: 5
+      max_time_difference_ticks: 4915200.0
+      max_event_duration_ticks: 14745600.0
+      min_photon_count: 1
+      save_event_photons: false

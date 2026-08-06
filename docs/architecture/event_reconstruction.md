@@ -3,11 +3,14 @@
 Event reconstruction is a separate analysis step, not part of the unpacker or
 photon reconstruction. A user-selected HERMES program reads photon Parquet files
 from `analysis/photons/` and writes event Parquet files under `analysis/events/`.
-C++ and Rust versions live beside each other:
+Each clustering algorithm is its own program in its own directory, and C++ and
+Rust versions live beside each other:
 
 ```text
-src/backends/event-reconstructors/
-└── connected-components/
+src/backends/reconstruction/events/
+├── common/                 shared, algorithm-neutral pieces
+│   └── cpp/
+└── connected-components/   one clustering algorithm
     ├── cpp/
     └── rust/
 ```
@@ -16,6 +19,31 @@ src/backends/event-reconstructors/
 and a later Rust program must accept the same required inputs and settings and
 write the same columns, filenames, metadata, summary fields, warnings, errors,
 and exit codes. The C++ program is implemented first.
+
+## Modular Algorithms
+
+Clustering (grouping photons into events) is the only algorithm-specific step.
+Everything around it is the same regardless of how photons are grouped: reading
+`photon_events`, building a candidate event's properties from a group of member
+photons, writing the event Parquet files, and writing the summary JSON. Those
+neutral pieces live in the `common/` library; each clustering program links it
+and supplies only the clustering step and its own settings.
+
+The contract between the two halves is deliberately narrow: **a group of photons
+is a list of member indices.** The clustering algorithm decides which photons
+belong together and hands each group to the shared event builder as a plain list
+of indices into the photon vector. Connected components, DBSCAN, or any other
+method all produce the same thing, so a new algorithm reuses the entire common
+library unchanged.
+
+Different algorithms need different parameters — connected components uses a
+linking radius and a time window, while DBSCAN would use an epsilon and a
+minimum sample count. Rather than force a shared settings shape, each program
+owns its own settings struct and serializes it to a JSON object string. The
+shared summary writer and the event-file metadata carry that string and render
+it verbatim, so they never need to know any algorithm's fields. A new algorithm
+is therefore a new sibling directory with its own settings and clustering step,
+plus a link against `common/`.
 
 The goal of this first program is **reliable candidate event identification**,
 not optimal event reconstruction. It groups detected photons into candidate
@@ -46,10 +74,18 @@ parameter, and they are chosen independently:
 - The **spatial linking radius** (`spatial_link_radius_pixels`) decides when two
   photons are neighbors. It is a physics choice driven by detector light spread
   and optical blur.
-- The **cell width** of the spatial grid is only a lookup accelerator. Changing
-  it must never change which events are produced; it may change only runtime,
-  memory use, and the number of distance tests. In this program the cell width
-  is **derived**, not a setting (see "Spatial Grid" below).
+- The **number of grid cells per axis** (`spatial_cells_per_axis`) sets how
+  finely the field of view is divided for the neighbor-lookup grid. It is only a
+  lookup accelerator: changing it must never change which events are produced; it
+  may change only runtime, memory use, and the number of distance tests. The cell
+  width in pixels is **derived** from it (see "Spatial Grid" below).
+
+Both are user settings because event size depends on the optical setup. A
+microscope objective may image a field under one centimeter, while a single-lens
+system may cover roughly ten centimeters; the apparent size of an event, and so
+the useful grid granularity, differs between them. The user adjusts
+`spatial_cells_per_axis` alongside `spatial_link_radius_pixels` to match the
+setup, subject to the one correctness constraint below.
 
 ## Connected Components over Space and Time
 
@@ -116,29 +152,29 @@ cell_x = static_cast<int>(x) / cell_width;
 cell_y = static_cast<int>(y) / cell_width;
 ```
 
-The cell width is **derived** from the linking radius and the fixed chip width,
-so there is no cell-width knob to tune. The rule is:
+The cell width in pixels is **derived** from `spatial_cells_per_axis` and the
+fixed 256-pixel chip width, so the user sets a cell count rather than a raw width:
 
-- Let `R = ceil(spatial_link_radius_pixels)`.
-- The cell width is the largest integer multiple of `R` that is at most
-  `4 * spatial_link_radius_pixels` and divides 256 without remainder. If no such
-  multiple exists, the cell width is `R`.
+```text
+cell_width = ceil(256 / spatial_cells_per_axis)
+```
 
-This keeps the cell width at least the linking radius and aligns cell boundaries
-with the chip edges, so a fixed **3 x 3** cell neighborhood search is always
-sufficient and exact. Because the cell width is at least the linking radius, a
-photon within the radius can only fall in the same cell or an immediately
-adjacent one. Worked examples: `spatial_link_radius_pixels = 4` gives cell width
-16 (a 16 x 16 grid of 256 cells); `= 8` gives 32; `= 6` gives 6 (no multiple of
-6 within `[6, 24]` divides 256). For sparse TPX3Cam data a wider cell reduces
-bookkeeping at the cost of a few more distance tests, which are cheap at low
-photon density.
+Rounding up guarantees exactly `spatial_cells_per_axis` cells span the chip along
+each axis; the last cell on each axis may be a little narrower than the rest,
+which does not affect correctness. Worked examples:
+`spatial_cells_per_axis = 5` (the default) gives cell width 52; `= 4` gives 64;
+`= 3` gives 86; `= 2` gives 128; `= 1` gives 256.
 
-> Open point for review: the derived-cell-width rule above is one concrete
-> reading of "the nearest integer multiple of `r_link` that matches the width of
-> the field of view." It is correctness-preserving for any rule that keeps cell
-> width at or above the linking radius, so this can be adjusted without changing
-> results.
+The one correctness constraint is that the derived cell width must be **at least
+the linking radius**. When it is, a photon within the radius can only fall in the
+same cell or an immediately adjacent one, so a fixed **3 x 3** cell neighborhood
+search is always sufficient and exact. A grid fine enough to make the cell width
+smaller than the linking radius would let the 3 x 3 search miss genuine neighbors
+and silently change the clustering result; such a combination of
+`spatial_cells_per_axis` and `spatial_link_radius_pixels` is rejected during
+settings validation rather than accepted. For sparse TPX3Cam data a wider cell
+(fewer cells per axis) reduces bookkeeping at the cost of a few more distance
+tests, which are cheap at low photon density.
 
 This design avoids an O(N^2) all-pairs search while producing identical events
 regardless of cell width.
@@ -189,30 +225,49 @@ out-of-range values throw and cause a nonzero exit before any output is written.
 
 | Setting | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `spatial_link_radius_pixels` | float64 | 4.0 | Physics linking radius in pixels. |
-| `max_time_difference_ticks` | float64 | (tune) | Maximum time difference between two connected photons, in canonical ticks. |
-| `max_event_duration_ticks` | float64 | (tune) | Duration above which an event is flagged `duration_exceeded`. |
+| `spatial_link_radius_pixels` | float64 | 10.0 | Physics linking radius in pixels. |
+| `spatial_cells_per_axis` | uint32 | 5 | Number of neighbor-lookup grid cells along each detector axis. Accelerator only; must not be so large that the derived cell width falls below the linking radius. |
+| `max_time_difference_ticks` | float64 | 4915200.0 | Maximum time difference between two linked photons, in canonical ticks (10 us). |
+| `max_event_duration_ticks` | float64 | 14745600.0 | Duration above which an event is flagged `duration_exceeded` (30 us). |
 | `min_photon_count` | uint32 | 1 | Analysis threshold recorded for downstream use; not applied during clustering. |
+| `save_event_photons` | bool | false | When true, also write the `event_photons` file mapping each member photon to its event. Diagnostic only. |
 
-`max_time_difference_ticks` and `max_event_duration_ticks` have no principled
-default yet and must be chosen by benchmarking against measured data before the
-program is trusted; the initial values are placeholders. The cell width is not a
-setting; it is derived as described above.
+`spatial_link_radius_pixels` (10) and `max_time_difference_ticks` (10 us) were
+chosen from a 9 mm microscope-FoV TaAtScraper run by inspecting cluster-colored
+movies of single beam pulses. At tighter windows a single neutron event visibly
+fragmented into several separately colored clusters; 10 px and a 10 us link were
+the smallest values that kept each neutron's scintillation light linked as one
+event while still separating distinct neutrons. These suit that optical setup;
+other setups will need different values. `max_event_duration_ticks` (30 us) was
+chosen from the same run: multi-photon event durations there run to ~56 us with a
+median near 6 us, so a 30 us threshold flags only the long tail (~1 %) of events
+that are unusually long-lived and may be two neutrons chained together.
+`spatial_cells_per_axis` is an implementation accelerator that the user tunes for
+the optical setup; the cell width in pixels is derived from it as described above
+and is not itself a setting.
 
 Times are in canonical ticks. One canonical tick is `25 ns / 12288`, matching
 the unpacker and photon reconstruction.
 
 ## Event Parquet Files
 
-The `analysis/events/` directory contains one filename group:
+The `analysis/events/` directory contains up to two filename groups:
 
 ```text
 <raw-file-stem>-chip-<chip-index>-event-candidates-part-<five-digit-part-index>.parquet
+<raw-file-stem>-chip-<chip-index>-event-photons-part-<five-digit-part-index>.parquet
 ```
 
 Part numbers start at zero independently for each raw input and chip.
 `event_candidates` is written whenever events exist. An empty group has zero
 files and a zero row count in the summary.
+
+`event_photons` is a diagnostic file written only when `save_event_photons`
+is true. It records one row per member photon, tying each photon to the event it
+was grouped into, so cluster membership can be inspected or plotted without
+rerunning the clustering. It is the event-stage counterpart of the photon stage's
+`photon_pixels` output. It is off by default because it is larger than
+`event_candidates` and not needed for routine analysis.
 
 ### `event_candidates`
 
@@ -234,6 +289,22 @@ recover how the events were produced without the summary JSON:
 - event algorithm name and complete event settings as JSON
 - position rule (`arithmetic`)
 - event time estimator (`earliest_photon`)
+
+### `event_photons`
+
+Written only when `save_event_photons` is true. One row per member photon; the
+`x`, `y`, and `timestamp_canonical` are copied from the source photon so
+membership can be plotted without joining back to the photon file.
+
+| Column | Arrow type | Nullable | Description |
+| --- | --- | --- | --- |
+| `event_id` | `uint64` | no | Event this photon was grouped into |
+| `photon_id` | `uint64` | no | Source photon identifier from the photon file |
+| `x` | `float64` | no | Member-photon x |
+| `y` | `float64` | no | Member-photon y |
+| `timestamp_canonical` | `float64` | no | Member-photon time in canonical ticks |
+
+The `event_photons` file carries the same string metadata as `event_candidates`.
 
 ## Reconstruction Summary JSON File
 
@@ -261,7 +332,14 @@ reconstruction:
 
 clustering:
   algorithm: connected_components
-  settings: {}
+  settings:
+    spatial_link_radius_pixels: 10.0
+    spatial_cells_per_axis: 5
+    max_time_difference_ticks: 4915200.0
+    max_event_duration_ticks: 14745600.0
+    min_photon_count: 1
+    save_event_photons: false
+    derived_cell_width: 52
 
 event_timing:
   estimator: earliest_photon
@@ -269,6 +347,10 @@ event_timing:
 parquet:
   input_photon_events_files: []
   event_candidates:
+    row_count: 0
+    files: []
+  # event_photons appears only when save_event_photons is true
+  event_photons:
     row_count: 0
     files: []
 
@@ -283,8 +365,9 @@ processing_times_seconds:
 ```
 
 The saved settings include `spatial_link_radius_pixels`,
-`max_time_difference_ticks`, `max_event_duration_ticks`, and `min_photon_count`.
-The derived cell width is recorded alongside them for diagnostics. Per-input
+`spatial_cells_per_axis`, `max_time_difference_ticks`, `max_event_duration_ticks`,
+`min_photon_count`, and `save_event_photons`. The derived cell width is recorded
+alongside them for diagnostics. Per-input
 counts, filenames, warnings, errors, timing, and throughput stay in this summary
 and are not copied into the HERMES YAML file.
 
@@ -308,10 +391,18 @@ hermes-event-reconstructor --input <photon_events_file> [--output <event_file>]
 - Exit code 0 on success, 2 on argument or settings errors.
 
 The build mirrors `src/backends/reconstruction/photons/cpp/`: CMake with
-`cxx_std_17`, `-Wall -Wextra -Wpedantic`, Arrow and Parquet for Parquet I/O,
-`nlohmann_json` for settings and the summary, a `hermes_event_reconstructor`
-static library, the `hermes-event-reconstructor` executable, and CTest targets
-per translation unit under `tests/`.
+`cxx_std_17`, `-Wall -Wextra -Wpedantic`, Arrow and Parquet for Parquet I/O, and
+`nlohmann_json` for settings and the summary. It is split across two libraries:
+
+- `hermes_event_recon_common` in `common/cpp/` holds the algorithm-neutral
+  modules (`photon_reader`, `event`, `event_writer`, `summary_writer`) and their
+  tests. It builds and tests standalone.
+- `hermes_event_reconstructor` in `connected-components/cpp/` holds only the
+  clustering step (`clustering`) and this algorithm's settings (`settings`,
+  including `clusteringSettingsJson`), links the common library with
+  `add_subdirectory`, and produces the `hermes-event-reconstructor` executable.
+
+Both use CTest targets per translation unit under their own `tests/`.
 
 ## Future Work
 

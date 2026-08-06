@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -10,6 +11,9 @@ from hermes.state.models.analysis.hermes_tpx3_spidr import (
     HermesTpx3AnalysisState,
     HermesTpx3ReconstructionResult,
     HermesTpx3UnpackingResult,
+    Tpx3EventReconstruction,
+    Tpx3EventReconstructionSettings,
+    Tpx3EventReconstructionSummary,
     Tpx3PhotonClusteringSettings,
     Tpx3PhotonReconstruction,
     Tpx3PhotonReconstructionSummary,
@@ -590,3 +594,269 @@ def test_photon_reconstruction_summary_rejects_quality_flags_over_photons() -> (
 
     with pytest.raises(ValidationError, match="quality flag counts cannot exceed"):
         Tpx3PhotonReconstructionSummary.model_validate(summary_data)
+
+
+# ---------------------------------------------------------------------------
+# Event reconstruction models
+# ---------------------------------------------------------------------------
+
+
+def _event_settings_data() -> dict[str, object]:
+    return {
+        "spatial_link_radius_pixels": 10.0,
+        "spatial_cells_per_axis": 5,
+        "max_time_difference_ticks": 4_915_200.0,
+        "max_event_duration_ticks": 14_745_600.0,
+        "min_photon_count": 1,
+        "save_event_photons": False,
+    }
+
+
+def _event_summary_data() -> dict[str, object]:
+    return {
+        "schema_version": 1,
+        "reconstruction": {
+            "photons_read": 10,
+            "components_formed": 4,
+            "event_count": 4,
+            "quality_flag_counts": {
+                "single_photon": 2,
+                "duration_exceeded": 1,
+            },
+            "min_photon_count_below": 1,
+            "warnings": [],
+            "errors": [],
+        },
+        "clustering": {
+            "algorithm": "connected_components",
+            "settings": {
+                "spatial_link_radius_pixels": 10.0,
+                "spatial_cells_per_axis": 5,
+                "max_time_difference_ticks": 4_915_200.0,
+                "max_event_duration_ticks": 14_745_600.0,
+                "min_photon_count": 1,
+                "save_event_photons": False,
+                "derived_cell_width": 52,
+            },
+        },
+        "event_timing": {"estimator": "earliest_photon"},
+        "parquet": {
+            "input_photon_events_files": [
+                "photons/raw-chip-0-photon-events-part-00000.parquet",
+            ],
+            "event_candidates": {
+                "row_count": 4,
+                "files": [
+                    "events/raw-chip-0-event-candidates-part-00000.parquet",
+                ],
+            },
+        },
+        "processing_times_seconds": {
+            "photon_reading": 0.1,
+            "clustering": 0.2,
+            "parquet_writing": 0.1,
+            "total": 0.4,
+            "throughput": {
+                "photons_per_second": 25.0,
+                "events_per_second": 10.0,
+            },
+        },
+    }
+
+
+def test_event_settings_dump_matches_binary_keys() -> None:
+    settings = Tpx3EventReconstructionSettings.model_validate(
+        _event_settings_data()
+    )
+    dumped = settings.model_dump(mode="json")
+
+    assert set(dumped) == {
+        "spatial_link_radius_pixels",
+        "spatial_cells_per_axis",
+        "max_time_difference_ticks",
+        "max_event_duration_ticks",
+        "min_photon_count",
+        "save_event_photons",
+    }
+    assert dumped == _event_settings_data()
+
+
+def test_event_settings_default_save_event_photons_is_false() -> None:
+    data = _event_settings_data()
+    del data["save_event_photons"]
+
+    settings = Tpx3EventReconstructionSettings.model_validate(data)
+
+    assert settings.save_event_photons is False
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "error"),
+    [
+        ("spatial_link_radius_pixels", 0, "greater than 0"),
+        ("spatial_cells_per_axis", 0, "greater than or equal to 1"),
+        ("spatial_cells_per_axis", 257, "less than or equal to 256"),
+        ("max_time_difference_ticks", 0, "greater than 0"),
+        ("max_event_duration_ticks", 0, "greater than 0"),
+        ("min_photon_count", 0, "greater than or equal to 1"),
+    ],
+)
+def test_event_settings_reject_invalid_ranges(
+    field: str,
+    value: object,
+    error: str,
+) -> None:
+    data = _event_settings_data()
+    data[field] = value
+
+    with pytest.raises(ValidationError, match=error):
+        Tpx3EventReconstructionSettings.model_validate(data)
+
+
+def test_event_settings_reject_grid_finer_than_link_radius() -> None:
+    data = _event_settings_data()
+    # 256 / 32 = 8-pixel cells, narrower than the 10-pixel linking radius.
+    data["spatial_cells_per_axis"] = 32
+    data["spatial_link_radius_pixels"] = 10.0
+
+    with pytest.raises(ValidationError, match="derived cell width"):
+        Tpx3EventReconstructionSettings.model_validate(data)
+
+
+def test_event_summary_round_trips_from_json() -> None:
+    summary = Tpx3EventReconstructionSummary.model_validate_json(
+        json.dumps(_event_summary_data())
+    )
+
+    assert summary.schema_version == 1
+    assert summary.reconstruction.event_count == 4
+    assert summary.reconstruction.quality_flag_counts.single_photon == 2
+    assert summary.clustering.algorithm == "connected_components"
+    assert summary.clustering.settings["derived_cell_width"] == 52
+    assert summary.event_timing.estimator == "earliest_photon"
+    assert summary.parquet.event_candidates.row_count == 4
+    assert summary.parquet.event_photons is None
+    assert summary.processing_times_seconds.throughput.events_per_second == 10.0
+
+
+def test_event_summary_round_trips_with_event_photons() -> None:
+    data = _event_summary_data()
+    parquet = data["parquet"]
+    assert isinstance(parquet, dict)
+    parquet["event_photons"] = {
+        "row_count": 10,
+        "files": ["events/raw-chip-0-event-photons-part-00000.parquet"],
+    }
+
+    summary = Tpx3EventReconstructionSummary.model_validate_json(
+        json.dumps(data)
+    )
+
+    assert summary.parquet.event_photons is not None
+    assert summary.parquet.event_photons.row_count == 10
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "error"),
+    [
+        ("components_formed", 5, "event_count must equal components_formed"),
+        ("photons_read", 3, "event_count cannot exceed photons_read"),
+    ],
+)
+def test_event_summary_rejects_inconsistent_counts(
+    field: str,
+    value: object,
+    error: str,
+) -> None:
+    data = _event_summary_data()
+    reconstruction = data["reconstruction"]
+    assert isinstance(reconstruction, dict)
+    reconstruction[field] = value
+
+    with pytest.raises(ValidationError, match=error):
+        Tpx3EventReconstructionSummary.model_validate(data)
+
+
+def test_event_summary_rejects_flag_count_over_events() -> None:
+    data = _event_summary_data()
+    reconstruction = data["reconstruction"]
+    assert isinstance(reconstruction, dict)
+    quality_flag_counts = reconstruction["quality_flag_counts"]
+    assert isinstance(quality_flag_counts, dict)
+    quality_flag_counts["single_photon"] = 99
+
+    with pytest.raises(ValidationError, match="single_photon cannot exceed"):
+        Tpx3EventReconstructionSummary.model_validate(data)
+
+
+def test_event_summary_category_requires_files_for_saved_rows() -> None:
+    data = _event_summary_data()
+    parquet = data["parquet"]
+    assert isinstance(parquet, dict)
+    event_candidates = parquet["event_candidates"]
+    assert isinstance(event_candidates, dict)
+    event_candidates["files"] = []
+
+    with pytest.raises(ValidationError, match="must list a Parquet file"):
+        Tpx3EventReconstructionSummary.model_validate(data)
+
+
+def test_hermes_analysis_state_accepts_event_reconstruction(
+    tmp_path: Path,
+) -> None:
+    analysis_directory = tmp_path / "analysis"
+    state = HermesTpx3AnalysisState(
+        analysis_directory=analysis_directory,
+        unpacking=Tpx3Unpacking(
+            program=BinaryProgram(
+                name="tpx3-spidr-cpp",
+                executable_path=tmp_path / "bin/hermes-tpx3-spidr",
+            ),
+            tpx3_files=[FileReference(path=tmp_path / "rawTpx3/raw.tpx3")],
+        ),
+        event_reconstruction=Tpx3EventReconstruction(
+            program=BinaryProgram(
+                name="connected-components-cpp",
+                executable_path=tmp_path / "bin/hermes-event-reconstructor",
+            ),
+            settings=Tpx3EventReconstructionSettings.model_validate(
+                _event_settings_data()
+            ),
+        ),
+    )
+
+    assert state.event_reconstruction is not None
+    assert state.event_reconstruction.clustering_algorithm == (
+        "connected_components"
+    )
+    assert state.event_reconstruction.photon_parquet_files == "auto"
+    assert state.event_reconstruction.runtime_options.overwrite is False
+    assert (
+        state.event_reconstruction.output_directory
+        == analysis_directory / "events"
+    )
+
+
+def test_hermes_analysis_state_allows_no_unpacking(tmp_path: Path) -> None:
+    # Reconstruction can run on its own when unpacking is already done, so the
+    # unpacking stage is optional and its output directory is not derived.
+    analysis_directory = tmp_path / "analysis"
+    state = HermesTpx3AnalysisState(
+        analysis_directory=analysis_directory,
+        event_reconstruction=Tpx3EventReconstruction(
+            program=BinaryProgram(
+                name="connected-components-cpp",
+                executable_path=tmp_path / "bin/hermes-event-reconstructor",
+            ),
+            settings=Tpx3EventReconstructionSettings.model_validate(
+                _event_settings_data()
+            ),
+        ),
+    )
+
+    assert state.unpacking is None
+    assert state.event_reconstruction is not None
+    assert (
+        state.event_reconstruction.output_directory
+        == analysis_directory / "events"
+    )

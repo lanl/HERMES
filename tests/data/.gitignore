@@ -1,0 +1,17 @@
+# Ignore everything in this directory by default...
+*
+
+# ...but keep this ignore file and the README
+!.gitignore
+!README.md
+
+# Descend into the data subdirectories
+!photons/
+!pixelHits/
+!tpx3/
+
+# Track only these specific data files (the "!" overrides the root *.tpx3 rule)
+!tpx3/Example_1kHz_5frames.tpx3
+!tpx3/Tantalum_IronPowder.tpx3
+!photons/Tantalum_IronPowder.parquet
+!pixelHits/Tantalum_IronPowder.parquet
