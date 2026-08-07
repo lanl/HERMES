@@ -35,7 +35,7 @@ def build_event_to_image_command(
     command = [
         str(resolved_executable_path),
         "-i",
-        ",".join(str(file.path) for file in stage.input_event_files),
+        ",".join(str(file.path) for file in stage.event_files),
         "-o",
         str(stage.tiff_file),
         "-x",
@@ -68,7 +68,7 @@ def execute_event_to_image(
     resolved_executable_path: Path,
 ) -> EmpirEventToImageResult:
     """Run event-to-image once and return its verified TIFF result."""
-    input_paths = [file.path for file in stage.input_event_files]
+    input_paths = [file.path for file in stage.event_files]
     output_path = stage.tiff_file
     validate_step_paths(_STEP_NAME, input_paths, output_path)
     command = build_event_to_image_command(stage, resolved_executable_path)
@@ -121,7 +121,7 @@ def execute_event_to_image(
         completed_at=outcome.completed_at,
         elapsed_seconds=outcome.elapsed_seconds,
         exit_code=outcome.exit_code,
-        saved_tiff_file=FileReference(path=output_path),
+        tiff_file=FileReference(path=output_path),
     )
 
 
@@ -133,7 +133,7 @@ def _log_failure(
 ) -> None:
     """Log a bounded event-to-image process failure."""
     outcome = error.outcome
-    input_paths = [file.path for file in stage.input_event_files]
+    input_paths = [file.path for file in stage.event_files]
     _ANALYSIS_LOGGER.error(
         "EMPIR event-to-image failed: {error}",
         event_type=f"{_EVENT_PREFIX}.failed",
