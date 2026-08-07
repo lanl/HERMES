@@ -102,14 +102,17 @@ data/examples/analysis/empir/
 ├── hermes-record_final.yaml
 ├── rawTpx3/
 │   └── Tantalum_IronPowder.tpx3
-├── out/
-│   ├── Tantalum_IronPowder.empirphot
-│   ├── Tantalum_IronPowder.empirevent
-│   └── Tantalum_IronPowder.tiff
+├── results/
+│   ├── photons/
+│   │   └── Tantalum_IronPowder.empirphot
+│   ├── events/
+│   │   └── Tantalum_IronPowder.empirevent
+│   └── final/
+│       └── Tantalum_IronPowder.tiff
 └── logs/
     └── analysis.jsonl
 ```
 
 The completed `hermes-record_final.yaml` records the exact command arguments and
 the timed result for each stage. Re-running the example fails fast if an output
-already exists, so remove the `out/` directory before a fresh run.
+already exists, so remove the `results/` directory before a fresh run.
