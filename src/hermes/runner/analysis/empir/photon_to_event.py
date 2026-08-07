@@ -37,7 +37,7 @@ def build_photon_to_event_command(
     return [
         str(resolved_executable_path),
         "-i",
-        str(run.input_photon_file.path),
+        str(run.photon_file.path),
         "-o",
         str(run.event_file),
         "-s",
@@ -55,7 +55,7 @@ def execute_photon_to_event(
     resolved_executable_path: Path,
 ) -> EmpirPhotonToEventResult:
     """Run photon-to-event once and return its verified result."""
-    input_path = run.input_photon_file.path
+    input_path = run.photon_file.path
     output_path = run.event_file
     validate_step_paths(_STEP_NAME, [input_path], output_path)
     command = build_photon_to_event_command(
@@ -112,7 +112,7 @@ def execute_photon_to_event(
         completed_at=outcome.completed_at,
         elapsed_seconds=outcome.elapsed_seconds,
         exit_code=outcome.exit_code,
-        saved_event_file=FileReference(path=output_path),
+        event_file=FileReference(path=output_path),
     )
 
 
@@ -134,9 +134,9 @@ def _log_failure(
         executable_version=stage.program.version,
         command=command,
         command_args=command[1:],
-        input_file=str(run.input_photon_file.path),
+        input_file=str(run.photon_file.path),
         requested_output_file=str(run.event_file),
-        input_size_bytes=run.input_photon_file.path.stat().st_size,
+        input_size_bytes=run.photon_file.path.stat().st_size,
         exit_code=outcome.exit_code,
         elapsed_seconds=outcome.elapsed_seconds,
         stdout_excerpt=outcome.stdout_excerpt,
