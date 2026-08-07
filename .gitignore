@@ -188,6 +188,10 @@ __pycache__/
 *.tiff
 *.tif
 
+# ignore any EMPIR intermediate files
+*.empirphot
+*.empirevent
+
 # ignore all .o files
 *.o
 
