@@ -39,7 +39,7 @@ def build_pixel_to_photon_command(
         "-i",
         str(run.input_tpx3_file.path),
         "-o",
-        str(run.requested_photon_file),
+        str(run.photon_file),
         "-s",
         str(settings.spatial_distance_pixels),
         "-t",
@@ -59,7 +59,7 @@ def execute_pixel_to_photon(
 ) -> EmpirPixelToPhotonResult:
     """Run pixel-to-photon once and return its verified result."""
     input_path = run.input_tpx3_file.path
-    output_path = run.requested_photon_file
+    output_path = run.photon_file
     validate_step_paths(_STEP_NAME, [input_path], output_path)
     command = build_pixel_to_photon_command(
         stage,
@@ -138,7 +138,7 @@ def _log_failure(
         command=command,
         command_args=command[1:],
         input_file=str(run.input_tpx3_file.path),
-        requested_output_file=str(run.requested_photon_file),
+        requested_output_file=str(run.photon_file),
         input_size_bytes=run.input_tpx3_file.path.stat().st_size,
         exit_code=outcome.exit_code,
         elapsed_seconds=outcome.elapsed_seconds,
