@@ -255,9 +255,9 @@ def _validate_initial_inputs(analysis: EmpirAnalysisState) -> None:
 def _validate_path_collisions(analysis: EmpirAnalysisState) -> None:
     input_paths = [run.input_tpx3_file.path for run in analysis.pixel_to_photon.runs]
     output_paths = [
-        *(run.requested_photon_file for run in analysis.pixel_to_photon.runs),
-        *(run.requested_event_file for run in analysis.photon_to_event.runs),
-        analysis.event_to_image.requested_tiff_file,
+        *(run.photon_file for run in analysis.pixel_to_photon.runs),
+        *(run.event_file for run in analysis.photon_to_event.runs),
+        analysis.event_to_image.tiff_file,
     ]
     all_paths = input_paths + output_paths
     normalized = [_normalized_path(path) for path in all_paths]
@@ -271,9 +271,9 @@ def _validate_path_collisions(analysis: EmpirAnalysisState) -> None:
 
 def _prepare_output_parents(analysis: EmpirAnalysisState) -> None:
     output_paths = [
-        *(run.requested_photon_file for run in analysis.pixel_to_photon.runs),
-        *(run.requested_event_file for run in analysis.photon_to_event.runs),
-        analysis.event_to_image.requested_tiff_file,
+        *(run.photon_file for run in analysis.pixel_to_photon.runs),
+        *(run.event_file for run in analysis.photon_to_event.runs),
+        analysis.event_to_image.tiff_file,
     ]
     for output_path in output_paths:
         parent = output_path.parent
