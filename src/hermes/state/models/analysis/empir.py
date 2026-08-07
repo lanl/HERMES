@@ -283,10 +283,12 @@ class EmpirAnalysisState(StrictBaseModel):
 
         # List order connects each upstream run to its downstream run.
         photon_files_written = [
-            run.photon_file for run in self.pixel_to_photon.runs
+            run.photon_file.expanduser().resolve(strict=False)
+            for run in self.pixel_to_photon.runs
         ]
         photon_files_read = [
-            run.photon_file.path for run in self.photon_to_event.runs
+            run.photon_file.path.expanduser().resolve(strict=False)
+            for run in self.photon_to_event.runs
         ]
         if photon_files_written != photon_files_read:
             msg = (
@@ -296,10 +298,12 @@ class EmpirAnalysisState(StrictBaseModel):
             raise ValueError(msg)
 
         event_files_written = [
-            run.event_file for run in self.photon_to_event.runs
+            run.event_file.expanduser().resolve(strict=False)
+            for run in self.photon_to_event.runs
         ]
         event_files_read = [
-            file.path for file in self.event_to_image.event_files
+            file.path.expanduser().resolve(strict=False)
+            for file in self.event_to_image.event_files
         ]
         if event_files_written != event_files_read:
             msg = (
