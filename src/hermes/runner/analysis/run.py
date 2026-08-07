@@ -5,10 +5,7 @@ from __future__ import annotations
 from loguru import logger
 
 from hermes.runner.analysis.empir.run import run_empir_analysis
-from hermes.runner.analysis.hermes.run import (
-    HermesAnalysisError,
-    run_hermes_analysis,
-)
+from hermes.runner.analysis.hermes.run import run_hermes_analysis
 from hermes.state.models.analysis.empir import EmpirAnalysisState
 from hermes.state.models.analysis.hermes_tpx3_spidr import (
     HermesTpx3AnalysisState,
