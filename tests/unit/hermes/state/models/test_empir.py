@@ -1,3 +1,5 @@
+"""Tests for EMPIR analysis settings, paths, and saved results."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -23,6 +25,7 @@ from hermes.state.models.shared_models import BinaryProgram, FileReference
 
 
 def _valid_empir_analysis_values(tmp_path: Path) -> dict[str, object]:
+    """Build valid EMPIR values that individual tests can change."""
     photon_path = tmp_path / "raw.empirphot"
     event_path = tmp_path / "raw.empirevent"
     state = EmpirAnalysisState(
@@ -76,6 +79,7 @@ def _valid_empir_analysis_values(tmp_path: Path) -> dict[str, object]:
 def test_empir_analysis_state_serializes_direct_binary_pipeline(
     tmp_path: Path,
 ) -> None:
+    """Serialize a complete EMPIR pipeline with empty runner commands."""
     raw_file = FileReference(path=tmp_path / "raw.tpx3")
     photon_path = tmp_path / "raw.empirphot"
     event_path = tmp_path / "raw.empirevent"
@@ -140,6 +144,7 @@ def test_empir_analysis_state_serializes_direct_binary_pipeline(
         ),
     )
 
+    # JSON mode matches the form written to a HERMES YAML file.
     dumped = state.model_dump(mode="json")
 
     assert dumped["mode"] == "empir"
@@ -176,6 +181,7 @@ def test_empir_results_require_nonnegative_elapsed_seconds(
         | EmpirEventToImageResult
     ],
 ) -> None:
+    """Accept zero duration and reject negative duration for every step."""
     assert result_model(elapsed_seconds=0).elapsed_seconds == 0
 
     with pytest.raises(ValidationError, match="greater than or equal to 0"):
@@ -223,7 +229,9 @@ def test_empir_analysis_rejects_invalid_filename_suffixes(
     invalid_name: str,
     message: str,
 ) -> None:
+    """Reject an invalid input or output suffix at each pipeline step."""
     values = _valid_empir_analysis_values(tmp_path)
+    # Walk to the selected nested field so one parameter table covers all steps.
     target: object = values
     for part in path_parts[:-1]:
         target = target[part]  # type: ignore[index]
@@ -254,7 +262,9 @@ def test_empir_analysis_rejects_disconnected_pipeline_paths(
     replacement: str,
     message: str,
 ) -> None:
+    """Reject downstream inputs that differ from requested upstream files."""
     values = _valid_empir_analysis_values(tmp_path)
+    # Change only the downstream input while leaving the upstream output valid.
     target: object = values
     for part in path_parts[:-1]:
         target = target[part]  # type: ignore[index]
@@ -280,11 +290,13 @@ def test_event_to_image_settings_reject_invalid_combinations(
     overrides: dict[str, int | float],
     message: str,
 ) -> None:
+    """Reject reversed ranges and incomplete time-bin pairs."""
     with pytest.raises(ValidationError, match=message):
         EmpirEventToImageSettings(image_width_pixels=512, **overrides)
 
 
 def test_empir_stage_requires_at_least_one_file(tmp_path: Path) -> None:
+    """Require at least one configured run for a file-processing step."""
     with pytest.raises(ValidationError, match="at least 1 item"):
         EmpirPixelToPhotonState(
             program=BinaryProgram(
@@ -301,6 +313,7 @@ def test_empir_stage_requires_at_least_one_file(tmp_path: Path) -> None:
 
 
 def test_empir_settings_reject_unknown_fields() -> None:
+    """Reject settings that are not part of the typed EMPIR options."""
     with pytest.raises(ValidationError, match="extra_forbidden"):
         EmpirPhotonToEventSettings(
             spatial_distance_pixels=4,
