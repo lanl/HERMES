@@ -60,15 +60,15 @@ class EmpirPixelToPhotonResult(StrictBaseModel):
     completed_at: datetime | None = None
     elapsed_seconds: float | None = Field(default=None, ge=0)
     exit_code: int | None = None
-    saved_photon_file: FileReference | None = None
+    photon_file: FileReference | None = None
     warnings: list[str] = Field(default_factory=list)
     errors: list[str] = Field(default_factory=list)
 
 
 class EmpirPixelToPhotonRun(StrictBaseModel):
-    """Input, requested output, command, and result for one raw TPX3 file."""
+    """Input, output, command, and result for one raw TPX3 file."""
 
-    input_tpx3_file: FileReference
+    tpx3_file: FileReference
     photon_file: Path
     command_args: list[str] = Field(
         default_factory=list,
@@ -78,14 +78,14 @@ class EmpirPixelToPhotonRun(StrictBaseModel):
         default_factory=EmpirPixelToPhotonResult
     )
 
-    @field_validator("input_tpx3_file")
+    @field_validator("tpx3_file")
     @classmethod
-    def validate_input_tpx3_file(
+    def validate_tpx3_file(
         cls, value: FileReference
     ) -> FileReference:
         """Require the pixel-to-photon input to be a TPX3 file."""
         return _validate_file_reference_suffix(
-            value, (".tpx3",), "input_tpx3_file"
+            value, (".tpx3",), "tpx3_file"
         )
 
     @field_validator("photon_file")
@@ -121,15 +121,15 @@ class EmpirPhotonToEventResult(StrictBaseModel):
     completed_at: datetime | None = None
     elapsed_seconds: float | None = Field(default=None, ge=0)
     exit_code: int | None = None
-    saved_event_file: FileReference | None = None
+    event_file: FileReference | None = None
     warnings: list[str] = Field(default_factory=list)
     errors: list[str] = Field(default_factory=list)
 
 
 class EmpirPhotonToEventRun(StrictBaseModel):
-    """Input, requested output, command, and result for one photon file."""
+    """Input, output, command, and result for one photon file."""
 
-    input_photon_file: FileReference
+    photon_file: FileReference
     event_file: Path
     command_args: list[str] = Field(
         default_factory=list,
@@ -139,14 +139,14 @@ class EmpirPhotonToEventRun(StrictBaseModel):
         default_factory=EmpirPhotonToEventResult
     )
 
-    @field_validator("input_photon_file")
+    @field_validator("photon_file")
     @classmethod
-    def validate_input_photon_file(
+    def validate_photon_file(
         cls, value: FileReference
     ) -> FileReference:
         """Require the photon-to-event input to be an EMPIR photon file."""
         return _validate_file_reference_suffix(
-            value, (".empirphot",), "input_photon_file"
+            value, (".empirphot",), "photon_file"
         )
 
     @field_validator("event_file")
@@ -215,17 +215,17 @@ class EmpirEventToImageResult(StrictBaseModel):
     completed_at: datetime | None = None
     elapsed_seconds: float | None = Field(default=None, ge=0)
     exit_code: int | None = None
-    saved_tiff_file: FileReference | None = None
+    tiff_file: FileReference | None = None
     warnings: list[str] = Field(default_factory=list)
     errors: list[str] = Field(default_factory=list)
 
 
 class EmpirEventToImageState(StrictBaseModel):
-    """Inputs, settings, requested TIFF, command, and image result."""
+    """Inputs, settings, output TIFF, command, and image result."""
 
     program: BinaryProgram
     settings: EmpirEventToImageSettings
-    input_event_files: list[FileReference] = Field(min_length=1)
+    event_files: list[FileReference] = Field(min_length=1)
     tiff_file: Path
     command_args: list[str] = Field(
         default_factory=list,
@@ -233,15 +233,15 @@ class EmpirEventToImageState(StrictBaseModel):
     )
     result: EmpirEventToImageResult = Field(default_factory=EmpirEventToImageResult)
 
-    @field_validator("input_event_files")
+    @field_validator("event_files")
     @classmethod
-    def validate_input_event_files(
+    def validate_event_files(
         cls, value: list[FileReference]
     ) -> list[FileReference]:
         """Require every image input to be an EMPIR event file."""
         for file in value:
             _validate_file_reference_suffix(
-                file, (".empirevent",), "input_event_files"
+                file, (".empirevent",), "event_files"
             )
         return value
 
@@ -282,29 +282,29 @@ class EmpirAnalysisState(StrictBaseModel):
             return self
 
         # List order connects each upstream run to its downstream run.
-        photon_files = [
+        photon_files_written = [
             run.photon_file for run in self.pixel_to_photon.runs
         ]
-        input_photon_files = [
-            run.input_photon_file.path for run in self.photon_to_event.runs
+        photon_files_read = [
+            run.photon_file.path for run in self.photon_to_event.runs
         ]
-        if photon_files != input_photon_files:
+        if photon_files_written != photon_files_read:
             msg = (
                 "photon_to_event input files must match pixel_to_photon "
-                "requested output files in order"
+                "output files in order"
             )
             raise ValueError(msg)
 
-        event_files = [
+        event_files_written = [
             run.event_file for run in self.photon_to_event.runs
         ]
-        input_event_files = [
-            file.path for file in self.event_to_image.input_event_files
+        event_files_read = [
+            file.path for file in self.event_to_image.event_files
         ]
-        if event_files != input_event_files:
+        if event_files_written != event_files_read:
             msg = (
                 "event_to_image input files must match photon_to_event "
-                "requested output files in order"
+                "output files in order"
             )
             raise ValueError(msg)
 
