@@ -217,7 +217,9 @@ def _preflight(analysis: EmpirAnalysisState) -> _ResolvedExecutables:
             analysis.model_dump(mode="python")
         )
     except ValueError as exc:
-        raise EmpirPreflightError("EMPIR analysis settings are invalid") from exc
+        raise EmpirPreflightError(
+            f"EMPIR analysis settings are invalid: {exc}"
+        ) from exc
 
     resolved = _ResolvedExecutables(
         pixel_to_photon=_resolve_step_executable(
