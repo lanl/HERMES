@@ -121,13 +121,13 @@ def _analysis(
         pixel_runs.append(
             EmpirPixelToPhotonRun(
                 input_tpx3_file=FileReference(path=raw_path),
-                requested_photon_file=photon_path,
+                photon_file=photon_path,
             )
         )
         photon_runs.append(
             EmpirPhotonToEventRun(
                 input_photon_file=FileReference(path=photon_path),
-                requested_event_file=event_path,
+                event_file=event_path,
             )
         )
         event_files.append(FileReference(path=event_path))
@@ -166,7 +166,7 @@ def _analysis(
             ),
             settings=EmpirEventToImageSettings(image_width_pixels=512),
             input_event_files=event_files,
-            requested_tiff_file=tmp_path / "out/final.tiff",
+            tiff_file=tmp_path / "out/final.tiff",
         ),
     )
 
@@ -267,11 +267,11 @@ def test_run_empir_analysis_rejects_preflight_without_state_changes(
     """Reject existing outputs before any running result is saved."""
     executables = _install_fake_programs(tmp_path)
     analysis = _analysis(tmp_path, executables)
-    analysis.pixel_to_photon.runs[0].requested_photon_file.parent.mkdir(
+    analysis.pixel_to_photon.runs[0].photon_file.parent.mkdir(
         parents=True,
         exist_ok=True,
     )
-    analysis.pixel_to_photon.runs[0].requested_photon_file.write_text(
+    analysis.pixel_to_photon.runs[0].photon_file.write_text(
         "already here",
         encoding="utf-8",
     )

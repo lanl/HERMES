@@ -40,7 +40,7 @@ def _stage(
                 input_photon_file=FileReference(
                     path=tmp_path / "raw.empirphot"
                 ),
-                requested_event_file=tmp_path / "raw.empirevent",
+                event_file=tmp_path / "raw.empirevent",
             )
         ],
     )
@@ -122,7 +122,7 @@ def test_execute_photon_to_event_records_result_and_logs(tmp_path: Path) -> None
 
     assert result.status == "completed"
     assert result.saved_event_file is not None
-    assert result.saved_event_file.path == run.requested_event_file
+    assert result.saved_event_file.path == run.event_file
     event_types = [
         record["extra"].get("event_type") for record in records
     ]

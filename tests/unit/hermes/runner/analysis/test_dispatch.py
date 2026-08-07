@@ -63,7 +63,7 @@ def _empir_analysis(tmp_path: Path) -> EmpirAnalysisState:
             runs=[
                 EmpirPixelToPhotonRun(
                     input_tpx3_file=FileReference(path=tmp_path / "raw.tpx3"),
-                    requested_photon_file=photon_path,
+                    photon_file=photon_path,
                 )
             ],
         ),
@@ -80,7 +80,7 @@ def _empir_analysis(tmp_path: Path) -> EmpirAnalysisState:
             runs=[
                 EmpirPhotonToEventRun(
                     input_photon_file=FileReference(path=photon_path),
-                    requested_event_file=event_path,
+                    event_file=event_path,
                 )
             ],
         ),
@@ -91,7 +91,7 @@ def _empir_analysis(tmp_path: Path) -> EmpirAnalysisState:
             ),
             settings=EmpirEventToImageSettings(image_width_pixels=512),
             input_event_files=[FileReference(path=event_path)],
-            requested_tiff_file=tmp_path / "out/final.tiff",
+            tiff_file=tmp_path / "out/final.tiff",
         ),
     )
 

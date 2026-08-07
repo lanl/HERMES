@@ -34,7 +34,7 @@ def _stage(
             FileReference(path=tmp_path / f"input-{index}.empirevent")
             for index in range(input_count)
         ],
-        requested_tiff_file=tmp_path / "image.tiff",
+        tiff_file=tmp_path / "image.tiff",
     )
 
 
@@ -135,7 +135,7 @@ def test_execute_event_to_image_records_result_and_logs(tmp_path: Path) -> None:
 
     assert result.status == "completed"
     assert result.saved_tiff_file is not None
-    assert result.saved_tiff_file.path == stage.requested_tiff_file
+    assert result.saved_tiff_file.path == stage.tiff_file
     completed = next(
         record["extra"]
         for record in records

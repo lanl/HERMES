@@ -39,7 +39,7 @@ def _stage(tmp_path: Path, *, include_tdc1: bool) -> EmpirPixelToPhotonState:
         runs=[
             EmpirPixelToPhotonRun(
                 input_tpx3_file=FileReference(path=tmp_path / "raw.tpx3"),
-                requested_photon_file=tmp_path / "raw.empirphot",
+                photon_file=tmp_path / "raw.empirphot",
             )
         ],
     )
@@ -98,7 +98,7 @@ def test_execute_pixel_to_photon_records_result_and_logs(tmp_path: Path) -> None
     assert result.elapsed_seconds is not None
     assert result.elapsed_seconds >= 0
     assert result.saved_photon_file is not None
-    assert result.saved_photon_file.path == run.requested_photon_file
+    assert result.saved_photon_file.path == run.photon_file
     events = [
         record["extra"]
         for record in records

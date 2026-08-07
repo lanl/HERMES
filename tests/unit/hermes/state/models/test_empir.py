@@ -42,7 +42,7 @@ def _valid_empir_analysis_values(tmp_path: Path) -> dict[str, object]:
             runs=[
                 EmpirPixelToPhotonRun(
                     input_tpx3_file=FileReference(path=tmp_path / "raw.tpx3"),
-                    requested_photon_file=photon_path,
+                    photon_file=photon_path,
                 )
             ],
         ),
@@ -59,7 +59,7 @@ def _valid_empir_analysis_values(tmp_path: Path) -> dict[str, object]:
             runs=[
                 EmpirPhotonToEventRun(
                     input_photon_file=FileReference(path=photon_path),
-                    requested_event_file=event_path,
+                    event_file=event_path,
                 )
             ],
         ),
@@ -70,7 +70,7 @@ def _valid_empir_analysis_values(tmp_path: Path) -> dict[str, object]:
             ),
             settings=EmpirEventToImageSettings(image_width_pixels=512),
             input_event_files=[FileReference(path=event_path)],
-            requested_tiff_file=tmp_path / "image.tiff",
+            tiff_file=tmp_path / "image.tiff",
         ),
     )
     return state.model_dump()
@@ -102,7 +102,7 @@ def test_empir_analysis_state_serializes_direct_binary_pipeline(
             runs=[
                 EmpirPixelToPhotonRun(
                     input_tpx3_file=raw_file,
-                    requested_photon_file=photon_path,
+                    photon_file=photon_path,
                 )
             ],
         ),
@@ -119,7 +119,7 @@ def test_empir_analysis_state_serializes_direct_binary_pipeline(
             runs=[
                 EmpirPhotonToEventRun(
                     input_photon_file=FileReference(path=photon_path),
-                    requested_event_file=event_path,
+                    event_file=event_path,
                 )
             ],
         ),
@@ -140,7 +140,7 @@ def test_empir_analysis_state_serializes_direct_binary_pipeline(
                 parallel=True,
             ),
             input_event_files=[FileReference(path=event_path)],
-            requested_tiff_file=tmp_path / "final/image.tiff",
+            tiff_file=tmp_path / "final/image.tiff",
         ),
     )
 
@@ -154,7 +154,7 @@ def test_empir_analysis_state_serializes_direct_binary_pipeline(
     assert dumped["pixel_to_photon"]["runs"][0]["result"]["status"] == (
         "planned"
     )
-    assert dumped["photon_to_event"]["runs"][0]["requested_event_file"].endswith(
+    assert dumped["photon_to_event"]["runs"][0]["event_file"].endswith(
         "raw.empirevent"
     )
     assert dumped["event_to_image"]["settings"]["external_trigger_mode"] == (
@@ -197,9 +197,9 @@ def test_empir_results_require_nonnegative_elapsed_seconds(
             "input_tpx3_file",
         ),
         (
-            ("pixel_to_photon", "runs", 0, "requested_photon_file"),
+            ("pixel_to_photon", "runs", 0, "photon_file"),
             "raw.photons",
-            "requested_photon_file",
+            "photon_file",
         ),
         (
             ("photon_to_event", "runs", 0, "input_photon_file", "path"),
@@ -207,9 +207,9 @@ def test_empir_results_require_nonnegative_elapsed_seconds(
             "input_photon_file",
         ),
         (
-            ("photon_to_event", "runs", 0, "requested_event_file"),
+            ("photon_to_event", "runs", 0, "event_file"),
             "raw.events",
-            "requested_event_file",
+            "event_file",
         ),
         (
             ("event_to_image", "input_event_files", 0, "path"),
@@ -217,9 +217,9 @@ def test_empir_results_require_nonnegative_elapsed_seconds(
             "input_event_files",
         ),
         (
-            ("event_to_image", "requested_tiff_file"),
+            ("event_to_image", "tiff_file"),
             "image.png",
-            "requested_tiff_file",
+            "tiff_file",
         ),
     ],
 )
