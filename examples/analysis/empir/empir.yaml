@@ -32,10 +32,11 @@ analysis:
     runs:
       - input_tpx3_file:
           path: data/examples/analysis/empir/rawTpx3/Tantalum_IronPowder.tpx3
-        requested_photon_file: data/examples/analysis/empir/out/Tantalum_IronPowder.empirphot
+        photon_file: data/examples/analysis/empir/results/photons/Tantalum_IronPowder.empirphot
 
   # Stage 2: each .empirphot file -> one .empirevent file. Each input_photon_file
-  # must match a requested_photon_file from stage 1.
+  # must match a photon_file from stage 1.
+  # (The photon_file written in stage 1 is read back here as input_photon_file.)
   photon_to_event:
     program:
       name: empir_photon2event
@@ -46,11 +47,11 @@ analysis:
       maximum_duration_seconds: 25.0e-6
     runs:
       - input_photon_file:
-          path: data/examples/analysis/empir/out/Tantalum_IronPowder.empirphot
-        requested_event_file: data/examples/analysis/empir/out/Tantalum_IronPowder.empirevent
+          path: data/examples/analysis/empir/results/photons/Tantalum_IronPowder.empirphot
+        event_file: data/examples/analysis/empir/results/events/Tantalum_IronPowder.empirevent
 
   # Stage 3: the .empirevent files -> one TIFF image. Each input_event_files
-  # entry must match a requested_event_file from stage 2.
+  # entry must match a event_file from stage 2.
   event_to_image:
     program:
       name: empir_event2image
@@ -58,5 +59,5 @@ analysis:
     settings:
       image_width_pixels: 512
     input_event_files:
-      - path: data/examples/analysis/empir/out/Tantalum_IronPowder.empirevent
-    requested_tiff_file: data/examples/analysis/empir/out/Tantalum_IronPowder.tiff
+      - path: data/examples/analysis/empir/results/events/Tantalum_IronPowder.empirevent
+    tiff_file: data/examples/analysis/empir/results/final/Tantalum_IronPowder.tiff
