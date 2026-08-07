@@ -120,13 +120,13 @@ def _analysis(
         raw_path.write_text(mode, encoding="utf-8")
         pixel_runs.append(
             EmpirPixelToPhotonRun(
-                input_tpx3_file=FileReference(path=raw_path),
+                tpx3_file=FileReference(path=raw_path),
                 photon_file=photon_path,
             )
         )
         photon_runs.append(
             EmpirPhotonToEventRun(
-                input_photon_file=FileReference(path=photon_path),
+                photon_file=FileReference(path=photon_path),
                 event_file=event_path,
             )
         )
@@ -165,7 +165,7 @@ def _analysis(
                 executable_path=executables["image"],
             ),
             settings=EmpirEventToImageSettings(image_width_pixels=512),
-            input_event_files=event_files,
+            event_files=event_files,
             tiff_file=tmp_path / "out/final.tiff",
         ),
     )
@@ -193,8 +193,8 @@ def test_run_empir_analysis_completes_and_removes_intermediates(
     assert current.photon_to_event.runs[0].result.status == "completed"
     assert current.event_to_image.result.status == "completed"
     assert current.pixel_to_photon.runs[0].command_args[0] == "-i"
-    assert current.photon_to_event.runs[0].input_photon_file.path.exists() is False
-    assert current.event_to_image.input_event_files[0].path.exists() is False
+    assert current.photon_to_event.runs[0].photon_file.path.exists() is False
+    assert current.event_to_image.event_files[0].path.exists() is False
     assert initial_analysis.pixel_to_photon.runs[0].result.status == "planned"
     assert [change.status for change in state_logger.changes].count("applied") == 6
     event_types = [
@@ -324,7 +324,7 @@ def test_run_empir_analysis_retains_photon_after_downstream_failure(
 
     current = manager.get_state().analysis
     assert isinstance(current, EmpirAnalysisState)
-    assert current.photon_to_event.runs[0].input_photon_file.path.is_file()
+    assert current.photon_to_event.runs[0].photon_file.path.is_file()
     assert current.photon_to_event.runs[0].result.status == "failed"
     assert current.event_to_image.result.status == "planned"
 
@@ -348,5 +348,5 @@ def test_run_empir_analysis_keeps_intermediates_when_configured(
 
     current = manager.get_state().analysis
     assert isinstance(current, EmpirAnalysisState)
-    assert current.photon_to_event.runs[0].input_photon_file.path.is_file()
-    assert current.event_to_image.input_event_files[0].path.is_file()
+    assert current.photon_to_event.runs[0].photon_file.path.is_file()
+    assert current.event_to_image.event_files[0].path.is_file()

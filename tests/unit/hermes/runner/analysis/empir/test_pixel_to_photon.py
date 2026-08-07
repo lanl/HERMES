@@ -38,7 +38,7 @@ def _stage(tmp_path: Path, *, include_tdc1: bool) -> EmpirPixelToPhotonState:
         ),
         runs=[
             EmpirPixelToPhotonRun(
-                input_tpx3_file=FileReference(path=tmp_path / "raw.tpx3"),
+                tpx3_file=FileReference(path=tmp_path / "raw.tpx3"),
                 photon_file=tmp_path / "raw.empirphot",
             )
         ],
@@ -82,7 +82,7 @@ def test_execute_pixel_to_photon_records_result_and_logs(tmp_path: Path) -> None
     """Record verified output, timing, and bounded process text on success."""
     stage = _stage(tmp_path, include_tdc1=True)
     run = stage.runs[0]
-    run.input_tpx3_file.path.write_text("success", encoding="utf-8")
+    run.tpx3_file.path.write_text("success", encoding="utf-8")
     executable = tmp_path / "bin/empir_pixel2photon_tpx3spidr"
     write_fake_empir_program(executable)
     records: list[dict[str, object]] = []
@@ -97,8 +97,8 @@ def test_execute_pixel_to_photon_records_result_and_logs(tmp_path: Path) -> None
     assert result.exit_code == 0
     assert result.elapsed_seconds is not None
     assert result.elapsed_seconds >= 0
-    assert result.saved_photon_file is not None
-    assert result.saved_photon_file.path == run.photon_file
+    assert result.photon_file is not None
+    assert result.photon_file.path == run.photon_file
     events = [
         record["extra"]
         for record in records
@@ -138,7 +138,7 @@ def test_execute_pixel_to_photon_reports_process_failure(
     """Report nonzero exits and zero exits without the requested output."""
     stage = _stage(tmp_path, include_tdc1=False)
     run = stage.runs[0]
-    run.input_tpx3_file.path.write_text(mode, encoding="utf-8")
+    run.tpx3_file.path.write_text(mode, encoding="utf-8")
     executable = tmp_path / "bin/empir_pixel2photon_tpx3spidr"
     write_fake_empir_program(executable)
     records: list[dict[str, object]] = []
@@ -167,7 +167,7 @@ def test_execute_pixel_to_photon_reports_launch_failure(tmp_path: Path) -> None:
     """Record elapsed time and no exit code when process launch fails."""
     stage = _stage(tmp_path, include_tdc1=False)
     run = stage.runs[0]
-    run.input_tpx3_file.path.write_text("success", encoding="utf-8")
+    run.tpx3_file.path.write_text("success", encoding="utf-8")
     missing_executable = tmp_path / "bin/missing"
 
     with pytest.raises(EmpirExecutionError, match="failed to launch") as raised:

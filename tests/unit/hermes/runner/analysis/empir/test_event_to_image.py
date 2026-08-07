@@ -30,7 +30,7 @@ def _stage(
             executable_path="empir_event2image",
         ),
         settings=settings,
-        input_event_files=[
+        event_files=[
             FileReference(path=tmp_path / f"input-{index}.empirevent")
             for index in range(input_count)
         ],
@@ -121,7 +121,7 @@ def test_execute_event_to_image_records_result_and_logs(tmp_path: Path) -> None:
         EmpirEventToImageSettings(image_width_pixels=512),
         input_count=2,
     )
-    for input_file in stage.input_event_files:
+    for input_file in stage.event_files:
         input_file.path.write_text("success", encoding="utf-8")
     executable = tmp_path / "bin/empir_event2image"
     write_fake_empir_program(executable)
@@ -134,8 +134,8 @@ def test_execute_event_to_image_records_result_and_logs(tmp_path: Path) -> None:
         logger.remove(sink_id)
 
     assert result.status == "completed"
-    assert result.saved_tiff_file is not None
-    assert result.saved_tiff_file.path == stage.tiff_file
+    assert result.tiff_file is not None
+    assert result.tiff_file.path == stage.tiff_file
     completed = next(
         record["extra"]
         for record in records
@@ -143,6 +143,6 @@ def test_execute_event_to_image_records_result_and_logs(tmp_path: Path) -> None:
         == "analysis.empir.event_to_image.completed"
     )
     assert completed["input_files"] == [
-        str(file.path) for file in stage.input_event_files
+        str(file.path) for file in stage.event_files
     ]
     assert completed["input_file_count"] == 2

@@ -37,7 +37,7 @@ def _stage(
         ),
         runs=[
             EmpirPhotonToEventRun(
-                input_photon_file=FileReference(
+                photon_file=FileReference(
                     path=tmp_path / "raw.empirphot"
                 ),
                 event_file=tmp_path / "raw.empirevent",
@@ -109,7 +109,7 @@ def test_execute_photon_to_event_records_result_and_logs(tmp_path: Path) -> None
         maximum_duration=500e-6,
     )
     run = stage.runs[0]
-    run.input_photon_file.path.write_text("success", encoding="utf-8")
+    run.photon_file.path.write_text("success", encoding="utf-8")
     executable = tmp_path / "bin/empir_photon2event"
     write_fake_empir_program(executable)
     records: list[dict[str, object]] = []
@@ -121,8 +121,8 @@ def test_execute_photon_to_event_records_result_and_logs(tmp_path: Path) -> None
         logger.remove(sink_id)
 
     assert result.status == "completed"
-    assert result.saved_event_file is not None
-    assert result.saved_event_file.path == run.event_file
+    assert result.event_file is not None
+    assert result.event_file.path == run.event_file
     event_types = [
         record["extra"].get("event_type") for record in records
     ]

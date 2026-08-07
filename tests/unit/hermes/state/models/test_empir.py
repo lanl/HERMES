@@ -41,7 +41,7 @@ def _valid_empir_analysis_values(tmp_path: Path) -> dict[str, object]:
             ),
             runs=[
                 EmpirPixelToPhotonRun(
-                    input_tpx3_file=FileReference(path=tmp_path / "raw.tpx3"),
+                    tpx3_file=FileReference(path=tmp_path / "raw.tpx3"),
                     photon_file=photon_path,
                 )
             ],
@@ -58,7 +58,7 @@ def _valid_empir_analysis_values(tmp_path: Path) -> dict[str, object]:
             ),
             runs=[
                 EmpirPhotonToEventRun(
-                    input_photon_file=FileReference(path=photon_path),
+                    photon_file=FileReference(path=photon_path),
                     event_file=event_path,
                 )
             ],
@@ -69,7 +69,7 @@ def _valid_empir_analysis_values(tmp_path: Path) -> dict[str, object]:
                 executable_path="empir_event2image",
             ),
             settings=EmpirEventToImageSettings(image_width_pixels=512),
-            input_event_files=[FileReference(path=event_path)],
+            event_files=[FileReference(path=event_path)],
             tiff_file=tmp_path / "image.tiff",
         ),
     )
@@ -101,7 +101,7 @@ def test_empir_analysis_state_serializes_direct_binary_pipeline(
             ),
             runs=[
                 EmpirPixelToPhotonRun(
-                    input_tpx3_file=raw_file,
+                    tpx3_file=raw_file,
                     photon_file=photon_path,
                 )
             ],
@@ -118,7 +118,7 @@ def test_empir_analysis_state_serializes_direct_binary_pipeline(
             ),
             runs=[
                 EmpirPhotonToEventRun(
-                    input_photon_file=FileReference(path=photon_path),
+                    photon_file=FileReference(path=photon_path),
                     event_file=event_path,
                 )
             ],
@@ -139,7 +139,7 @@ def test_empir_analysis_state_serializes_direct_binary_pipeline(
                 tiff_format="tiff_w8",
                 parallel=True,
             ),
-            input_event_files=[FileReference(path=event_path)],
+            event_files=[FileReference(path=event_path)],
             tiff_file=tmp_path / "final/image.tiff",
         ),
     )
@@ -148,7 +148,7 @@ def test_empir_analysis_state_serializes_direct_binary_pipeline(
     dumped = state.model_dump(mode="json")
 
     assert dumped["mode"] == "empir"
-    assert dumped["pixel_to_photon"]["runs"][0]["input_tpx3_file"][
+    assert dumped["pixel_to_photon"]["runs"][0]["tpx3_file"][
         "path"
     ].endswith("raw.tpx3")
     assert dumped["pixel_to_photon"]["runs"][0]["result"]["status"] == (
@@ -192,9 +192,9 @@ def test_empir_results_require_nonnegative_elapsed_seconds(
     ("path_parts", "invalid_name", "message"),
     [
         (
-            ("pixel_to_photon", "runs", 0, "input_tpx3_file", "path"),
+            ("pixel_to_photon", "runs", 0, "tpx3_file", "path"),
             "raw.bin",
-            "input_tpx3_file",
+            "tpx3_file",
         ),
         (
             ("pixel_to_photon", "runs", 0, "photon_file"),
@@ -202,9 +202,9 @@ def test_empir_results_require_nonnegative_elapsed_seconds(
             "photon_file",
         ),
         (
-            ("photon_to_event", "runs", 0, "input_photon_file", "path"),
+            ("photon_to_event", "runs", 0, "photon_file", "path"),
             "raw.photons",
-            "input_photon_file",
+            "photon_file",
         ),
         (
             ("photon_to_event", "runs", 0, "event_file"),
@@ -212,9 +212,9 @@ def test_empir_results_require_nonnegative_elapsed_seconds(
             "event_file",
         ),
         (
-            ("event_to_image", "input_event_files", 0, "path"),
+            ("event_to_image", "event_files", 0, "path"),
             "raw.events",
-            "input_event_files",
+            "event_files",
         ),
         (
             ("event_to_image", "tiff_file"),
@@ -245,12 +245,12 @@ def test_empir_analysis_rejects_invalid_filename_suffixes(
     ("path_parts", "replacement", "message"),
     [
         (
-            ("photon_to_event", "runs", 0, "input_photon_file", "path"),
+            ("photon_to_event", "runs", 0, "photon_file", "path"),
             "different.empirphot",
             "photon_to_event input files must match",
         ),
         (
-            ("event_to_image", "input_event_files", 0, "path"),
+            ("event_to_image", "event_files", 0, "path"),
             "different.empirevent",
             "event_to_image input files must match",
         ),
