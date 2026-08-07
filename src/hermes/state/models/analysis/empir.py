@@ -1,3 +1,5 @@
+"""Typed settings and results for the three-step EMPIR analysis pipeline."""
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -12,6 +14,7 @@ from hermes.state.models.shared_models import (
     StrictBaseModel,
 )
 
+# Values recorded while each external EMPIR program runs.
 EmpirRunStatus = Literal["planned", "running", "completed", "failed"]
 EmpirExternalTriggerMode = Literal["ignore", "reference", "frameSync"]
 EmpirTiffFormat = Literal["tiff_w4", "tiff_w8"]
@@ -22,6 +25,7 @@ def _validate_suffix(
     suffixes: tuple[str, ...],
     field_name: str,
 ) -> Path:
+    """Require a path to use one of the allowed filename suffixes."""
     if path.suffix.lower() not in suffixes:
         expected = " or ".join(suffixes)
         msg = f"{field_name} must use the {expected} filename suffix"
@@ -34,11 +38,14 @@ def _validate_file_reference_suffix(
     suffixes: tuple[str, ...],
     field_name: str,
 ) -> FileReference:
+    """Apply a filename-suffix check to a file entry."""
     _validate_suffix(file.path, suffixes, field_name)
     return file
 
 
 class EmpirPixelToPhotonSettings(StrictBaseModel):
+    """Settings passed to ``empir_pixel2photon_tpx3spidr``."""
+
     spatial_distance_pixels: float = Field(ge=0)
     time_distance_seconds: float = Field(ge=0)
     minimum_pixel_count: int = Field(ge=1)
@@ -46,6 +53,8 @@ class EmpirPixelToPhotonSettings(StrictBaseModel):
 
 
 class EmpirPixelToPhotonResult(StrictBaseModel):
+    """Recorded outcome from one pixel-to-photon process."""
+
     status: EmpirRunStatus = "planned"
     started_at: datetime | None = None
     completed_at: datetime | None = None
@@ -57,6 +66,8 @@ class EmpirPixelToPhotonResult(StrictBaseModel):
 
 
 class EmpirPixelToPhotonRun(StrictBaseModel):
+    """Input, requested output, command, and result for one raw TPX3 file."""
+
     input_tpx3_file: FileReference
     requested_photon_file: Path
     command_args: list[str] = Field(
@@ -72,6 +83,7 @@ class EmpirPixelToPhotonRun(StrictBaseModel):
     def validate_input_tpx3_file(
         cls, value: FileReference
     ) -> FileReference:
+        """Require the pixel-to-photon input to be a TPX3 file."""
         return _validate_file_reference_suffix(
             value, (".tpx3",), "input_tpx3_file"
         )
@@ -79,24 +91,31 @@ class EmpirPixelToPhotonRun(StrictBaseModel):
     @field_validator("requested_photon_file")
     @classmethod
     def validate_requested_photon_file(cls, value: Path) -> Path:
+        """Require EMPIR's photon output filename."""
         return _validate_suffix(
             value, (".empirphot",), "requested_photon_file"
         )
 
 
 class EmpirPixelToPhotonState(StrictBaseModel):
+    """Program, shared settings, and runs for pixel-to-photon processing."""
+
     program: BinaryProgram
     settings: EmpirPixelToPhotonSettings
     runs: list[EmpirPixelToPhotonRun] = Field(min_length=1)
 
 
 class EmpirPhotonToEventSettings(StrictBaseModel):
+    """Settings passed to ``empir_photon2event``."""
+
     spatial_distance_pixels: float = Field(ge=0)
     time_distance_seconds: float = Field(ge=0)
     maximum_duration_seconds: float = Field(ge=0)
 
 
 class EmpirPhotonToEventResult(StrictBaseModel):
+    """Recorded outcome from one photon-to-event process."""
+
     status: EmpirRunStatus = "planned"
     started_at: datetime | None = None
     completed_at: datetime | None = None
@@ -108,6 +127,8 @@ class EmpirPhotonToEventResult(StrictBaseModel):
 
 
 class EmpirPhotonToEventRun(StrictBaseModel):
+    """Input, requested output, command, and result for one photon file."""
+
     input_photon_file: FileReference
     requested_event_file: Path
     command_args: list[str] = Field(
@@ -123,6 +144,7 @@ class EmpirPhotonToEventRun(StrictBaseModel):
     def validate_input_photon_file(
         cls, value: FileReference
     ) -> FileReference:
+        """Require the photon-to-event input to be an EMPIR photon file."""
         return _validate_file_reference_suffix(
             value, (".empirphot",), "input_photon_file"
         )
@@ -130,18 +152,23 @@ class EmpirPhotonToEventRun(StrictBaseModel):
     @field_validator("requested_event_file")
     @classmethod
     def validate_requested_event_file(cls, value: Path) -> Path:
+        """Require EMPIR's event output filename."""
         return _validate_suffix(
             value, (".empirevent",), "requested_event_file"
         )
 
 
 class EmpirPhotonToEventState(StrictBaseModel):
+    """Program, shared settings, and runs for photon-to-event processing."""
+
     program: BinaryProgram
     settings: EmpirPhotonToEventSettings
     runs: list[EmpirPhotonToEventRun] = Field(min_length=1)
 
 
 class EmpirEventToImageSettings(StrictBaseModel):
+    """Settings passed to ``empir_event2image``."""
+
     image_width_pixels: int = Field(gt=0)
     image_height_pixels: int | None = Field(default=None, gt=0)
     minimum_photon_count: int | None = Field(default=None, ge=0)
@@ -156,6 +183,7 @@ class EmpirEventToImageSettings(StrictBaseModel):
 
     @model_validator(mode="after")
     def validate_ranges_and_time_bins(self) -> EmpirEventToImageSettings:
+        """Check paired ranges and time-bin settings."""
         if (
             self.minimum_photon_count is not None
             and self.maximum_photon_count is not None
@@ -180,6 +208,8 @@ class EmpirEventToImageSettings(StrictBaseModel):
 
 
 class EmpirEventToImageResult(StrictBaseModel):
+    """Recorded outcome from the event-to-image process."""
+
     status: EmpirRunStatus = "planned"
     started_at: datetime | None = None
     completed_at: datetime | None = None
@@ -191,6 +221,8 @@ class EmpirEventToImageResult(StrictBaseModel):
 
 
 class EmpirEventToImageState(StrictBaseModel):
+    """Inputs, settings, requested TIFF, command, and image result."""
+
     program: BinaryProgram
     settings: EmpirEventToImageSettings
     input_event_files: list[FileReference] = Field(min_length=1)
@@ -206,6 +238,7 @@ class EmpirEventToImageState(StrictBaseModel):
     def validate_input_event_files(
         cls, value: list[FileReference]
     ) -> list[FileReference]:
+        """Require every image input to be an EMPIR event file."""
         for file in value:
             _validate_file_reference_suffix(
                 file, (".empirevent",), "input_event_files"
@@ -215,12 +248,15 @@ class EmpirEventToImageState(StrictBaseModel):
     @field_validator("requested_tiff_file")
     @classmethod
     def validate_requested_tiff_file(cls, value: Path) -> Path:
+        """Require the final output to use a TIFF filename."""
         return _validate_suffix(
             value, (".tif", ".tiff"), "requested_tiff_file"
         )
 
 
 class EmpirAnalysisState(StrictBaseModel):
+    """Configuration and progress for one complete EMPIR analysis."""
+
     mode: Literal["empir"] = "empir"
     version: str | None = None
     save_photon_files: bool = False
@@ -231,6 +267,8 @@ class EmpirAnalysisState(StrictBaseModel):
 
     @model_validator(mode="after")
     def validate_pipeline_paths(self) -> EmpirAnalysisState:
+        """Require each step to read the preceding step's requested files."""
+        # List order connects each upstream run to its downstream run.
         requested_photon_files = [
             run.requested_photon_file for run in self.pixel_to_photon.runs
         ]
