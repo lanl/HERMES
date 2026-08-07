@@ -30,7 +30,7 @@ analysis:
       minimum_pixel_count: 2
       include_tdc1: false
     runs:
-      - input_tpx3_file:
+      - tpx3_file:
           path: data/examples/analysis/empir/rawTpx3/Tantalum_IronPowder.tpx3
         photon_file: data/examples/analysis/empir/results/photons/Tantalum_IronPowder.empirphot
 
@@ -45,11 +45,11 @@ analysis:
       time_distance_seconds: 5.0e-6
       maximum_duration_seconds: 25.0e-6
     runs:
-      - input_photon_file:
+      - photon_file:
           path: data/examples/analysis/empir/results/photons/Tantalum_IronPowder.empirphot
         event_file: data/examples/analysis/empir/results/events/Tantalum_IronPowder.empirevent
 
-  # Stage 3: the .empirevent files -> one TIFF image. Each input_event_files
+  # Stage 3: the .empirevent files -> one TIFF image. Each event_files
   # entry must match a event_file from stage 2.
   event_to_image:
     program:
@@ -57,6 +57,6 @@ analysis:
       executable_path: empir_event2image
     settings:
       image_width_pixels: 512
-    input_event_files:
+    event_files:
       - path: data/examples/analysis/empir/results/events/Tantalum_IronPowder.empirevent
     tiff_file: data/examples/analysis/empir/results/final/Tantalum_IronPowder.tiff
