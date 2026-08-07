@@ -39,7 +39,7 @@ def build_photon_to_event_command(
         "-i",
         str(run.input_photon_file.path),
         "-o",
-        str(run.requested_event_file),
+        str(run.event_file),
         "-s",
         str(settings.spatial_distance_pixels),
         "-t",
@@ -56,7 +56,7 @@ def execute_photon_to_event(
 ) -> EmpirPhotonToEventResult:
     """Run photon-to-event once and return its verified result."""
     input_path = run.input_photon_file.path
-    output_path = run.requested_event_file
+    output_path = run.event_file
     validate_step_paths(_STEP_NAME, [input_path], output_path)
     command = build_photon_to_event_command(
         stage,
@@ -135,7 +135,7 @@ def _log_failure(
         command=command,
         command_args=command[1:],
         input_file=str(run.input_photon_file.path),
-        requested_output_file=str(run.requested_event_file),
+        requested_output_file=str(run.event_file),
         input_size_bytes=run.input_photon_file.path.stat().st_size,
         exit_code=outcome.exit_code,
         elapsed_seconds=outcome.elapsed_seconds,
