@@ -69,7 +69,7 @@ class EmpirPixelToPhotonRun(StrictBaseModel):
     """Input, requested output, command, and result for one raw TPX3 file."""
 
     input_tpx3_file: FileReference
-    requested_photon_file: Path
+    photon_file: Path
     command_args: list[str] = Field(
         default_factory=list,
         description="Built and saved by the EMPIR runner.",
@@ -88,12 +88,12 @@ class EmpirPixelToPhotonRun(StrictBaseModel):
             value, (".tpx3",), "input_tpx3_file"
         )
 
-    @field_validator("requested_photon_file")
+    @field_validator("photon_file")
     @classmethod
-    def validate_requested_photon_file(cls, value: Path) -> Path:
+    def validate_photon_file(cls, value: Path) -> Path:
         """Require EMPIR's photon output filename."""
         return _validate_suffix(
-            value, (".empirphot",), "requested_photon_file"
+            value, (".empirphot",), "photon_file"
         )
 
 
@@ -130,7 +130,7 @@ class EmpirPhotonToEventRun(StrictBaseModel):
     """Input, requested output, command, and result for one photon file."""
 
     input_photon_file: FileReference
-    requested_event_file: Path
+    event_file: Path
     command_args: list[str] = Field(
         default_factory=list,
         description="Built and saved by the EMPIR runner.",
@@ -149,12 +149,12 @@ class EmpirPhotonToEventRun(StrictBaseModel):
             value, (".empirphot",), "input_photon_file"
         )
 
-    @field_validator("requested_event_file")
+    @field_validator("event_file")
     @classmethod
-    def validate_requested_event_file(cls, value: Path) -> Path:
+    def validate_event_file(cls, value: Path) -> Path:
         """Require EMPIR's event output filename."""
         return _validate_suffix(
-            value, (".empirevent",), "requested_event_file"
+            value, (".empirevent",), "event_file"
         )
 
 
@@ -226,7 +226,7 @@ class EmpirEventToImageState(StrictBaseModel):
     program: BinaryProgram
     settings: EmpirEventToImageSettings
     input_event_files: list[FileReference] = Field(min_length=1)
-    requested_tiff_file: Path
+    tiff_file: Path
     command_args: list[str] = Field(
         default_factory=list,
         description="Built and saved by the EMPIR runner.",
@@ -245,12 +245,12 @@ class EmpirEventToImageState(StrictBaseModel):
             )
         return value
 
-    @field_validator("requested_tiff_file")
+    @field_validator("tiff_file")
     @classmethod
-    def validate_requested_tiff_file(cls, value: Path) -> Path:
+    def validate_tiff_file(cls, value: Path) -> Path:
         """Require the final output to use a TIFF filename."""
         return _validate_suffix(
-            value, (".tif", ".tiff"), "requested_tiff_file"
+            value, (".tif", ".tiff"), "tiff_file"
         )
 
 
@@ -282,26 +282,26 @@ class EmpirAnalysisState(StrictBaseModel):
             return self
 
         # List order connects each upstream run to its downstream run.
-        requested_photon_files = [
-            run.requested_photon_file for run in self.pixel_to_photon.runs
+        photon_files = [
+            run.photon_file for run in self.pixel_to_photon.runs
         ]
         input_photon_files = [
             run.input_photon_file.path for run in self.photon_to_event.runs
         ]
-        if requested_photon_files != input_photon_files:
+        if photon_files != input_photon_files:
             msg = (
                 "photon_to_event input files must match pixel_to_photon "
                 "requested output files in order"
             )
             raise ValueError(msg)
 
-        requested_event_files = [
-            run.requested_event_file for run in self.photon_to_event.runs
+        event_files = [
+            run.event_file for run in self.photon_to_event.runs
         ]
         input_event_files = [
             file.path for file in self.event_to_image.input_event_files
         ]
-        if requested_event_files != input_event_files:
+        if event_files != input_event_files:
             msg = (
                 "event_to_image input files must match photon_to_event "
                 "requested output files in order"
