@@ -69,7 +69,7 @@ def test_run_analysis_returns_files_and_updates_record(
         return analysis.unpacking.tpx3_files
 
     monkeypatch.setattr(
-        "hermes.workflows.workflow.run_hermes_analysis",
+        "hermes.workflows.workflow.run_analysis",
         complete_analysis,
     )
 

@@ -510,7 +510,7 @@ def test_run_rejects_empir_analysis(tmp_path: Path) -> None:
     )
 
     try:
-        with pytest.raises(HermesAnalysisError, match="EMPIR analysis is not implemented"):
+        with pytest.raises(HermesAnalysisError, match="no valid HERMES analysis"):
             run_hermes_analysis(manager)
     finally:
         logger.remove(sink_id)
