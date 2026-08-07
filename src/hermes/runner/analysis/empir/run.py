@@ -54,7 +54,7 @@ def run_empir_analysis(state_manager: StateManager) -> list[FileReference]:
             event_type="analysis.empir.pipeline.started",
             pixel_to_photon_run_count=len(analysis.pixel_to_photon.runs),
             photon_to_event_run_count=len(analysis.photon_to_event.runs),
-            event_to_image_input_count=len(analysis.event_to_image.input_event_files),
+            event_to_image_input_count=len(analysis.event_to_image.event_files),
             pixel_to_photon_executable=str(resolved.pixel_to_photon),
             photon_to_event_executable=str(resolved.photon_to_event),
             event_to_image_executable=str(resolved.event_to_image),
@@ -138,7 +138,7 @@ def run_empir_analysis(state_manager: StateManager) -> list[FileReference]:
                 justification="EMPIR photon-to-event completed",
             )
             _remove_intermediate(
-                current_run.input_photon_file.path,
+                current_run.photon_file.path,
                 keep=analysis.save_photon_files,
                 step_name="photon_to_event",
             )
@@ -172,7 +172,7 @@ def run_empir_analysis(state_manager: StateManager) -> list[FileReference]:
             completed_stage,
             justification="EMPIR event-to-image completed",
         )
-        for event_file in stage.input_event_files:
+        for event_file in stage.event_files:
             _remove_intermediate(
                 event_file.path,
                 keep=analysis.save_event_files,
@@ -187,7 +187,7 @@ def run_empir_analysis(state_manager: StateManager) -> list[FileReference]:
         )
         raise
 
-    final_file = result.saved_tiff_file
+    final_file = result.tiff_file
     assert final_file is not None
     _ANALYSIS_LOGGER.info(
         "EMPIR analysis completed",
@@ -245,7 +245,7 @@ def _resolve_step_executable(configured_path: Path) -> Path:
 
 def _validate_initial_inputs(analysis: EmpirAnalysisState) -> None:
     for run in analysis.pixel_to_photon.runs:
-        path = run.input_tpx3_file.path
+        path = run.tpx3_file.path
         if not path.is_file():
             raise EmpirPreflightError(
                 f"pixel_to_photon input is not a regular file: {path}"
@@ -253,7 +253,7 @@ def _validate_initial_inputs(analysis: EmpirAnalysisState) -> None:
 
 
 def _validate_path_collisions(analysis: EmpirAnalysisState) -> None:
-    input_paths = [run.input_tpx3_file.path for run in analysis.pixel_to_photon.runs]
+    input_paths = [run.tpx3_file.path for run in analysis.pixel_to_photon.runs]
     output_paths = [
         *(run.photon_file for run in analysis.pixel_to_photon.runs),
         *(run.event_file for run in analysis.photon_to_event.runs),
