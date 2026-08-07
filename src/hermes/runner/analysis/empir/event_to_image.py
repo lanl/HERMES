@@ -37,7 +37,7 @@ def build_event_to_image_command(
         "-i",
         ",".join(str(file.path) for file in stage.input_event_files),
         "-o",
-        str(stage.requested_tiff_file),
+        str(stage.tiff_file),
         "-x",
         str(settings.image_width_pixels),
     ]
@@ -69,7 +69,7 @@ def execute_event_to_image(
 ) -> EmpirEventToImageResult:
     """Run event-to-image once and return its verified TIFF result."""
     input_paths = [file.path for file in stage.input_event_files]
-    output_path = stage.requested_tiff_file
+    output_path = stage.tiff_file
     validate_step_paths(_STEP_NAME, input_paths, output_path)
     command = build_event_to_image_command(stage, resolved_executable_path)
     started_at = utc_now()
@@ -145,7 +145,7 @@ def _log_failure(
         command_args=command[1:],
         input_files=[str(path) for path in input_paths],
         input_file_count=len(input_paths),
-        requested_output_file=str(stage.requested_tiff_file),
+        requested_output_file=str(stage.tiff_file),
         exit_code=outcome.exit_code,
         elapsed_seconds=outcome.elapsed_seconds,
         stdout_excerpt=outcome.stdout_excerpt,
