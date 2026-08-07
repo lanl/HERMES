@@ -34,9 +34,8 @@ analysis:
           path: data/examples/analysis/empir/rawTpx3/Tantalum_IronPowder.tpx3
         photon_file: data/examples/analysis/empir/results/photons/Tantalum_IronPowder.empirphot
 
-  # Stage 2: each .empirphot file -> one .empirevent file. Each input_photon_file
+  # Stage 2: each .empirphot file -> one .empirevent file. Each photon_file here
   # must match a photon_file from stage 1.
-  # (The photon_file written in stage 1 is read back here as input_photon_file.)
   photon_to_event:
     program:
       name: empir_photon2event
