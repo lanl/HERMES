@@ -268,6 +268,19 @@ class EmpirAnalysisState(StrictBaseModel):
     @model_validator(mode="after")
     def validate_pipeline_paths(self) -> EmpirAnalysisState:
         """Require each step to read the preceding step's requested files."""
+        # Some type-guard tests deliberately use model_construct() to create an
+        # incomplete instance without validation. Normal model construction
+        # still reports every missing stage before this validator runs.
+        if not all(
+            hasattr(self, field_name)
+            for field_name in (
+                "pixel_to_photon",
+                "photon_to_event",
+                "event_to_image",
+            )
+        ):
+            return self
+
         # List order connects each upstream run to its downstream run.
         requested_photon_files = [
             run.requested_photon_file for run in self.pixel_to_photon.runs
