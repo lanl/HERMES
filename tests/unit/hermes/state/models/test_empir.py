@@ -151,16 +151,14 @@ def test_empir_analysis_state_serializes_direct_binary_pipeline(
     assert dumped["pixel_to_photon"]["runs"][0]["tpx3_file"][
         "path"
     ].endswith("raw.tpx3")
-    assert dumped["pixel_to_photon"]["runs"][0]["result"]["status"] == (
-        "planned"
-    )
+    assert dumped["pixel_to_photon"]["runs"][0]["result"] is None
     assert dumped["photon_to_event"]["runs"][0]["event_file"].endswith(
         "raw.empirevent"
     )
     assert dumped["event_to_image"]["settings"]["external_trigger_mode"] == (
         "reference"
     )
-    assert dumped["event_to_image"]["result"]["status"] == "planned"
+    assert dumped["event_to_image"]["result"] is None
     assert dumped["pixel_to_photon"]["runs"][0]["command_args"] == []
     assert dumped["photon_to_event"]["runs"][0]["command_args"] == []
     assert dumped["event_to_image"]["command_args"] == []
@@ -182,10 +180,12 @@ def test_empir_results_require_nonnegative_elapsed_seconds(
     ],
 ) -> None:
     """Accept zero duration and reject negative duration for every step."""
-    assert result_model(elapsed_seconds=0).elapsed_seconds == 0
+    assert (
+        result_model(status="completed", elapsed_seconds=0).elapsed_seconds == 0
+    )
 
     with pytest.raises(ValidationError, match="greater than or equal to 0"):
-        result_model(elapsed_seconds=-0.01)
+        result_model(status="completed", elapsed_seconds=-0.01)
 
 
 @pytest.mark.parametrize(

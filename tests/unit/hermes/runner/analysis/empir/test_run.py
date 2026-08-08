@@ -195,8 +195,8 @@ def test_run_empir_analysis_completes_and_removes_intermediates(
     assert current.pixel_to_photon.runs[0].command_args[0] == "-i"
     assert current.photon_to_event.runs[0].photon_file.path.exists() is False
     assert current.event_to_image.event_files[0].path.exists() is False
-    assert initial_analysis.pixel_to_photon.runs[0].result.status == "planned"
-    assert [change.status for change in state_logger.changes].count("applied") == 6
+    assert initial_analysis.pixel_to_photon.runs[0].result is None
+    assert [change.status for change in state_logger.changes].count("applied") == 3
     event_types = [
         record["extra"].get("event_type")
         for record in records
@@ -228,13 +228,8 @@ def test_run_empir_analysis_processes_file_runs_in_order(
     assert applied_paths == [
         "analysis.pixel_to_photon.runs",
         "analysis.pixel_to_photon.runs",
-        "analysis.pixel_to_photon.runs",
-        "analysis.pixel_to_photon.runs",
         "analysis.photon_to_event.runs",
         "analysis.photon_to_event.runs",
-        "analysis.photon_to_event.runs",
-        "analysis.photon_to_event.runs",
-        "analysis.event_to_image",
         "analysis.event_to_image",
     ]
 
@@ -242,7 +237,7 @@ def test_run_empir_analysis_processes_file_runs_in_order(
 def test_run_empir_analysis_stops_after_first_failed_process(
     tmp_path: Path,
 ) -> None:
-    """Mark only the attempted run failed and leave downstream steps planned."""
+    """Mark only the attempted run failed and leave downstream steps unrun."""
     executables = _install_fake_programs(tmp_path)
     manager, _state_logger = _manager(
         tmp_path,
@@ -257,16 +252,16 @@ def test_run_empir_analysis_stops_after_first_failed_process(
     assert current.pixel_to_photon.runs[0].result.status == "completed"
     assert current.pixel_to_photon.runs[1].result.status == "failed"
     assert current.pixel_to_photon.runs[1].command_args[0] == "-i"
-    assert current.photon_to_event.runs[0].result.status == "planned"
-    assert current.event_to_image.result.status == "planned"
+    assert current.photon_to_event.runs[0].result is None
+    assert current.event_to_image.result is None
 
 
-def test_run_empir_analysis_rejects_preflight_without_state_changes(
+def test_run_empir_analysis_skips_step_when_output_exists(
     tmp_path: Path,
 ) -> None:
-    """Reject existing outputs before any running result is saved."""
+    """Skip a step whose output already exists and run the rest normally."""
     executables = _install_fake_programs(tmp_path)
-    analysis = _analysis(tmp_path, executables)
+    analysis = _analysis(tmp_path, executables, save_photon_files=True)
     analysis.pixel_to_photon.runs[0].photon_file.parent.mkdir(
         parents=True,
         exist_ok=True,
@@ -275,15 +270,16 @@ def test_run_empir_analysis_rejects_preflight_without_state_changes(
         "already here",
         encoding="utf-8",
     )
-    manager, state_logger = _manager(tmp_path, analysis)
+    manager, _state_logger = _manager(tmp_path, analysis)
 
-    with pytest.raises(EmpirPreflightError, match="output already exists"):
-        run_empir_analysis(manager)
+    files = run_empir_analysis(manager)
 
-    assert [change.status for change in state_logger.changes] == []
+    assert files == [FileReference(path=tmp_path / "out/final.tiff")]
     current = manager.get_state().analysis
     assert isinstance(current, EmpirAnalysisState)
-    assert current.pixel_to_photon.runs[0].result.status == "planned"
+    assert current.pixel_to_photon.runs[0].result.status == "skipped"
+    assert current.photon_to_event.runs[0].result.status == "completed"
+    assert current.event_to_image.result.status == "completed"
 
 
 def test_run_empir_analysis_wraps_missing_executable_as_preflight_error(
@@ -300,7 +296,7 @@ def test_run_empir_analysis_wraps_missing_executable_as_preflight_error(
     assert [change.status for change in state_logger.changes] == []
     current = manager.get_state().analysis
     assert isinstance(current, EmpirAnalysisState)
-    assert current.pixel_to_photon.runs[0].result.status == "planned"
+    assert current.pixel_to_photon.runs[0].result is None
 
 
 def test_run_empir_analysis_retains_photon_after_downstream_failure(
@@ -326,7 +322,7 @@ def test_run_empir_analysis_retains_photon_after_downstream_failure(
     assert isinstance(current, EmpirAnalysisState)
     assert current.photon_to_event.runs[0].photon_file.path.is_file()
     assert current.photon_to_event.runs[0].result.status == "failed"
-    assert current.event_to_image.result.status == "planned"
+    assert current.event_to_image.result is None
 
 
 def test_run_empir_analysis_keeps_intermediates_when_configured(
