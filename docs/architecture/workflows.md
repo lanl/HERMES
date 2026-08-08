@@ -70,26 +70,24 @@ The first workflow should be intentionally narrow:
 6. Check that all raw TPX3 filename stems are unique before starting analysis.
 7. Validate the unpacker executable, every raw TPX3 file, every existing
    summary, and every existing Parquet file before launching any unpacker.
-8. Apply the HERMES `running` status. If the trusted-workflow state change is
-   not allowed, do not launch an unpacker.
-9. Calculate the worker count from the saved `resource_limit_percent`, physical
+8. Calculate the worker count from the saved `resource_limit_percent`, physical
    CPU count, available memory, and the largest pending raw file size.
-10. Run independent unpacker processes concurrently using `ThreadPoolExecutor`
-    with the calculated worker count. Each worker waits for one C++ subprocess.
-11. Write each packet category to its shared directory. Start every Parquet
+9. Run independent unpacker processes concurrently using `ThreadPoolExecutor`
+   with the calculated worker count. Each worker waits for one C++ subprocess.
+10. Write each packet category to its shared directory. Start every Parquet
     filename with the raw TPX3 filename stem, followed by its chip and part
     numbers.
-12. Write one input-specific unpacker summary JSON file under `analysis/logs/`.
-13. Keep the summary JSON file as the sole detailed result for its raw TPX3
+11. Write one input-specific unpacker summary JSON file under `analysis/logs/`.
+12. Keep the summary JSON file as the sole detailed result for its raw TPX3
     file. Save only the shared analysis directory, raw TPX3 list, unpacker
-    program, resource limit percentage, and overall unpacking status and times
-    in the HERMES record.
-14. Return completed files in the original input order, regardless of completion
+    program, resource limit percentage, and per-file unpacking status in the
+    HERMES record.
+13. Return completed files in the original input order, regardless of completion
     order.
-15. If one unpacker fails, cancel work that has not started, allow already
-    running processes to finish, mark overall unpacking `failed`, and keep valid
-    output from successful processes.
-16. When repeating the workflow, skip an input only when its summary is valid
+14. If one unpacker fails, cancel work that has not started, allow already
+    running processes to finish, mark the affected results `failed`, and keep
+    valid output from successful processes.
+15. When repeating the workflow, skip an input only when its summary is valid
     and every listed Parquet file exists. Run an input only when neither its
     summary nor matching Parquet files exist. Stop on an invalid summary or
     partial output files.
