@@ -24,7 +24,7 @@ from hermes.state.models.analysis.hermes_tpx3_spidr import (
     Tpx3EventReconstruction,
     Tpx3EventReconstructionSummary,
 )
-from hermes.state.models.shared_models import FileReference, utc_now
+from hermes.state.models.shared_models import FileReference
 
 ContinuationAction: TypeAlias = Literal["run", "skip"]
 EventReconstructionPlan: TypeAlias = list[tuple[FileReference, ContinuationAction]]
@@ -168,7 +168,6 @@ def execute_event_reconstruction(
     event_reconstruction = _require_event_reconstruction(analysis)
     output_file = derive_output_path(event_reconstruction, input_file)
     summary_path = derive_summary_path(output_file)
-    started_at = utc_now()
     started = perf_counter()
 
     # The complete event settings go to the binary in a temporary JSON file; the
@@ -265,8 +264,6 @@ def execute_event_reconstruction(
         input_file=input_file,
         output_file=output_file,
         status="completed",
-        started_at=started_at,
-        completed_at=utc_now(),
         counts=summary.reconstruction,
     )
 
