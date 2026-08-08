@@ -70,7 +70,7 @@ def test_invalid_yaml_stops_before_analysis(
         raise AssertionError("analysis must not run for invalid YAML")
 
     monkeypatch.setattr(
-        "hermes.workflows.workflow.run_hermes_analysis",
+        "hermes.workflows.workflow.run_analysis",
         fail_if_called,
     )
 
@@ -123,7 +123,7 @@ analysis:
         return current_record.analysis.unpacking.tpx3_files
 
     monkeypatch.setattr(
-        "hermes.workflows.workflow.run_hermes_analysis",
+        "hermes.workflows.workflow.run_analysis",
         run_without_subprocess,
     )
 

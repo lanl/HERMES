@@ -106,36 +106,39 @@ EMPIR binaries and remains `mode="empir"`.
 
 ## Analysis Entry Point
 
-`Workflow.run_analysis` is the entry point for analysis. It calls
-`run_hermes_analysis(state_manager)` directly. There is no separate
-`src/hermes/runner/analysis/run.py` dispatcher, because HERMES is the only analysis
-mode with a runner today.
-
-`run_hermes_analysis` reads the selected Pydantic model from `StateManager` and
-guards on its type before doing any work:
+`Workflow.run_analysis` is the entry point for analysis. It calls the dispatcher
+in `src/hermes/runner/analysis/run.py`, which reads the selected Pydantic model
+from `StateManager` and sends it to the matching runner:
 
 ```python
-def run_hermes_analysis(state_manager: StateManager) -> HermesRecord:
+def run_analysis(state_manager, *, overwrite=False):
     analysis = state_manager.get_state().analysis
 
     if isinstance(analysis, EmpirAnalysisState):
-        message = "EMPIR analysis is not implemented yet"
-        logger.error(message)
-        raise HermesAnalysisError(message)
-    if not isinstance(analysis, HermesTpx3AnalysisState):
-        message = "no valid HERMES analysis is configured"
-        logger.error(message)
-        raise HermesAnalysisError(message)
+        return run_empir_analysis(state_manager)
+    if isinstance(analysis, HermesTpx3AnalysisState):
+        return run_hermes_analysis(state_manager, overwrite=overwrite)
 
-    ...
-
-    return state_manager.get_state()
+    raise AnalysisModeError("no valid analysis mode is configured")
 ```
 
-The entry point does not accept a mode argument. This prevents a function
-argument or CLI option from disagreeing with `analysis.mode` in the HERMES state
-file. When an EMPIR runner exists, its guard can dispatch to it instead of
-raising.
+The entry point selects the mode from `analysis.mode` in the saved record, not
+from a function argument or CLI option, so the two cannot disagree. HERMES
+analysis honors `overwrite`; EMPIR has no overwrite behavior, and its preflight
+rejects an output that already exists. EMPIR and HERMES steps are never mixed:
+each runner handles one complete mode.
+
+## Timing Comparison
+
+Both runners measure each program with a monotonic clock and write
+`elapsed_seconds` to `analysis.jsonl`. This is end-to-end process wall time,
+including startup and file I/O, which is the useful measure for the file-based
+design.
+
+When comparing EMPIR with HERMES, compare EMPIR pixel-to-photon time with the
+combined HERMES raw unpacking and photon-reconstruction time for the same input,
+not with the HERMES unpacker alone. EMPIR photon-to-event has no current HERMES
+equivalent, and event-to-image time should be reported separately.
 
 ## HERMES Analysis
 

@@ -1,0 +1,62 @@
+measurement_info:
+  measurement_id: example-empir
+  run_number: 1
+
+environment:
+  working_dir: data/examples/analysis/empir
+  # Relative log_dir resolves under working_dir, so analysis.jsonl is written
+  # to data/examples/analysis/empir/logs/analysis.jsonl. Without log_dir set,
+  # no analysis.jsonl is written and the timing data goes only to the console.
+  log_dir: logs
+
+analysis:
+  mode: empir
+  # Keep the intermediate photon and event files after the run so you can
+  # inspect them. Set either to false to delete that stage's inputs once the
+  # downstream stage succeeds.
+  save_photon_files: true
+  save_event_files: true
+
+  # Stage 1: one .tpx3 file -> one .empirphot file.
+  # The three programs are found on PATH by name; put the EMPIR bin directory
+  # on PATH before running (see README).
+  pixel_to_photon:
+    program:
+      name: empir_pixel2photon_tpx3spidr
+      executable_path: empir_pixel2photon_tpx3spidr
+    settings:
+      spatial_distance_pixels: 10
+      time_distance_seconds: 1.0e-6
+      minimum_pixel_count: 2
+      include_tdc1: false
+    runs:
+      - tpx3_file:
+          path: data/examples/analysis/empir/rawTpx3/Tantalum_IronPowder.tpx3
+        photon_file: data/examples/analysis/empir/results/photons/Tantalum_IronPowder.empirphot
+
+  # Stage 2: each .empirphot file -> one .empirevent file. Each photon_file here
+  # must match a photon_file from stage 1.
+  photon_to_event:
+    program:
+      name: empir_photon2event
+      executable_path: empir_photon2event
+    settings:
+      spatial_distance_pixels: 20
+      time_distance_seconds: 5.0e-6
+      maximum_duration_seconds: 25.0e-6
+    runs:
+      - photon_file:
+          path: data/examples/analysis/empir/results/photons/Tantalum_IronPowder.empirphot
+        event_file: data/examples/analysis/empir/results/events/Tantalum_IronPowder.empirevent
+
+  # Stage 3: the .empirevent files -> one TIFF image. Each event_files
+  # entry must match a event_file from stage 2.
+  event_to_image:
+    program:
+      name: empir_event2image
+      executable_path: empir_event2image
+    settings:
+      image_width_pixels: 512
+    event_files:
+      - path: data/examples/analysis/empir/results/events/Tantalum_IronPowder.empirevent
+    tiff_file: data/examples/analysis/empir/results/final/Tantalum_IronPowder.tiff

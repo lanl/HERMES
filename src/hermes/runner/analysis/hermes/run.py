@@ -46,7 +46,6 @@ from hermes.runner.analysis.hermes.unpacker import (
     log_skipped_input,
     plan_unpacking,
 )
-from hermes.state.models.analysis.empir import EmpirAnalysisState
 from hermes.state.models.analysis.hermes_tpx3_spidr import (
     HermesTpx3AnalysisState,
     HermesTpx3EventReconstructionResult,
@@ -166,18 +165,6 @@ def run_hermes_analysis(
 ) -> list[FileReference]:
     state = state_manager.get_state()
     analysis = state.analysis
-    if isinstance(analysis, EmpirAnalysisState):
-        error = "EMPIR analysis is not implemented yet"
-        _ANALYSIS_LOGGER.error(
-            "Cannot run HERMES analysis: {error}",
-            event_type="analysis.hermes.invalid_mode",
-            error=error,
-            measurement_id=state.measurement_info.measurement_id,
-            run_number=state.measurement_info.run_number,
-            expected_analysis_mode="hermes",
-            actual_analysis_mode=getattr(analysis, "mode", None),
-        )
-        raise HermesAnalysisError(error)
     if not isinstance(analysis, HermesTpx3AnalysisState):
         error = "no valid HERMES analysis is configured"
         _ANALYSIS_LOGGER.error(
