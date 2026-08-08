@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
@@ -11,11 +10,10 @@ from pydantic import Field, field_validator, model_validator
 from hermes.state.models.shared_models import (
     BinaryProgram,
     FileReference,
+    ResultStatus,
     StrictBaseModel,
 )
 
-# Values recorded while each external EMPIR program runs.
-EmpirRunStatus = Literal["planned", "running", "completed", "failed"]
 EmpirExternalTriggerMode = Literal["ignore", "reference", "frameSync"]
 EmpirTiffFormat = Literal["tiff_w4", "tiff_w8"]
 
@@ -55,9 +53,7 @@ class EmpirPixelToPhotonSettings(StrictBaseModel):
 class EmpirPixelToPhotonResult(StrictBaseModel):
     """Recorded outcome from one pixel-to-photon process."""
 
-    status: EmpirRunStatus = "planned"
-    started_at: datetime | None = None
-    completed_at: datetime | None = None
+    status: ResultStatus
     elapsed_seconds: float | None = Field(default=None, ge=0)
     exit_code: int | None = None
     photon_file: FileReference | None = None
@@ -74,9 +70,7 @@ class EmpirPixelToPhotonRun(StrictBaseModel):
         default_factory=list,
         description="Built and saved by the EMPIR runner.",
     )
-    result: EmpirPixelToPhotonResult = Field(
-        default_factory=EmpirPixelToPhotonResult
-    )
+    result: EmpirPixelToPhotonResult | None = None
 
     @field_validator("tpx3_file")
     @classmethod
@@ -116,9 +110,7 @@ class EmpirPhotonToEventSettings(StrictBaseModel):
 class EmpirPhotonToEventResult(StrictBaseModel):
     """Recorded outcome from one photon-to-event process."""
 
-    status: EmpirRunStatus = "planned"
-    started_at: datetime | None = None
-    completed_at: datetime | None = None
+    status: ResultStatus
     elapsed_seconds: float | None = Field(default=None, ge=0)
     exit_code: int | None = None
     event_file: FileReference | None = None
@@ -135,9 +127,7 @@ class EmpirPhotonToEventRun(StrictBaseModel):
         default_factory=list,
         description="Built and saved by the EMPIR runner.",
     )
-    result: EmpirPhotonToEventResult = Field(
-        default_factory=EmpirPhotonToEventResult
-    )
+    result: EmpirPhotonToEventResult | None = None
 
     @field_validator("photon_file")
     @classmethod
@@ -210,9 +200,7 @@ class EmpirEventToImageSettings(StrictBaseModel):
 class EmpirEventToImageResult(StrictBaseModel):
     """Recorded outcome from the event-to-image process."""
 
-    status: EmpirRunStatus = "planned"
-    started_at: datetime | None = None
-    completed_at: datetime | None = None
+    status: ResultStatus
     elapsed_seconds: float | None = Field(default=None, ge=0)
     exit_code: int | None = None
     tiff_file: FileReference | None = None
@@ -231,7 +219,7 @@ class EmpirEventToImageState(StrictBaseModel):
         default_factory=list,
         description="Built and saved by the EMPIR runner.",
     )
-    result: EmpirEventToImageResult = Field(default_factory=EmpirEventToImageResult)
+    result: EmpirEventToImageResult | None = None
 
     @field_validator("event_files")
     @classmethod
