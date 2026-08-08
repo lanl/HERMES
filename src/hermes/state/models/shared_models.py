@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Literal
 try:
     from typing import TypeAliasType
 except ImportError:  # pragma: no cover - compatibility for Python 3.11
@@ -15,6 +16,11 @@ JsonValue = TypeAliasType(
     JsonScalar | list["JsonValue"] | dict[str, "JsonValue"],
 )
 JsonObject = dict[str, JsonValue]
+
+# Terminal outcome of one analysis step, shared by both analysis modes. A step
+# records exactly one of these once it finishes; "not run yet" is the result
+# object being absent, not a status value.
+ResultStatus = Literal["completed", "skipped", "failed"]
 
 
 def utc_now() -> datetime:
