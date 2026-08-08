@@ -286,17 +286,14 @@ files:
    summary is invalid, or when its saved settings differ from the requested
    settings.
 
-The runner applies the overall reconstruction status `running` through
-`StateManager` before launching the first reconstruction process. If that
-trusted-workflow change is not allowed, it stops before launching the process.
-Reconstruction runs sequentially by raw filename stem in the first
-implementation. State changes remain on the main thread.
+The runner records one result per pixel file after that file finishes: it never
+writes a start-of-work status. Each result is `completed`, `skipped`, or
+`failed`.
 
-If one reconstruction process fails, the runner marks the overall
-reconstruction result `failed`, raises a HERMES reconstruction error, and
-keeps valid photon files and summaries from inputs that completed. A later run
-validates and skips those inputs. After every input validates, the runner marks
-the overall reconstruction result `completed`.
+If one reconstruction process fails, the runner marks the affected results
+`failed`, raises a HERMES reconstruction error, and keeps valid photon files and
+summaries from inputs that completed. A later run validates and skips those
+inputs.
 
 HERMES programs may be implemented in C++ or Rust, but they must read and write
 the HERMES files and columns defined for that analysis step. Choosing a C++ or
@@ -340,14 +337,11 @@ Each mode-specific pipeline should:
 
 - read its executable paths, inputs, settings, and requested output paths from
   its selected analysis model
-- apply `planned`, `running`, `completed`, and `failed` status through
-  `StateManager`
-- record the overall step start and finish times in the corresponding Pydantic
-  result model
+- write one result per step through `StateManager` once the step finishes, with
+  status `completed`, `skipped`, or `failed`; a step that has not run yet has no
+  result object
 - keep detailed results in the program-specific files defined by the selected
   analysis mode
-- stop before launching an executable when a required state change has not been
-  approved
 - return completed or failed state through `StateManager`
 
 The calling workflow saves `StateManager.get_state()` as the HERMES YAML file

@@ -662,8 +662,6 @@ def test_run_hermes_analysis_completes_event_reconstruction(
     event_results = result_analysis.event_reconstruction.results
     assert len(event_results) == 1
     assert event_results[0].status == "completed"
-    assert event_results[0].started_at is not None
-    assert event_results[0].completed_at is not None
     assert event_results[0].counts.event_count == 4
 
 

@@ -24,7 +24,7 @@ from hermes.state.models.analysis.hermes_tpx3_spidr import (
     Tpx3PhotonReconstruction,
     Tpx3PhotonReconstructionSummary,
 )
-from hermes.state.models.shared_models import FileReference, utc_now
+from hermes.state.models.shared_models import FileReference
 
 ContinuationAction: TypeAlias = Literal["run", "skip"]
 ReconstructionPlan: TypeAlias = list[tuple[FileReference, ContinuationAction]]
@@ -157,7 +157,6 @@ def execute_reconstruction(
     reconstruction = _require_reconstruction(analysis)
     output_file = derive_output_path(reconstruction, input_file)
     summary_path = derive_summary_path(output_file)
-    started_at = utc_now()
     started = perf_counter()
 
     # The complete clustering settings go to the binary in a temporary JSON
@@ -253,8 +252,6 @@ def execute_reconstruction(
         input_file=input_file,
         output_file=output_file,
         status="completed",
-        started_at=started_at,
-        completed_at=utc_now(),
         counts=summary.reconstruction,
     )
 

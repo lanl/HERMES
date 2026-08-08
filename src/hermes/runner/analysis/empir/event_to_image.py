@@ -15,7 +15,7 @@ from hermes.state.models.analysis.empir import (
     EmpirEventToImageResult,
     EmpirEventToImageState,
 )
-from hermes.state.models.shared_models import FileReference, utc_now
+from hermes.state.models.shared_models import FileReference
 
 _STEP_NAME = "event_to_image"
 _EVENT_PREFIX = "analysis.empir.event_to_image"
@@ -70,9 +70,8 @@ def execute_event_to_image(
     """Run event-to-image once and return its verified TIFF result."""
     input_paths = [file.path for file in stage.event_files]
     output_path = stage.tiff_file
-    validate_step_paths(_STEP_NAME, input_paths, output_path)
+    validate_step_paths(_STEP_NAME, input_paths)
     command = build_event_to_image_command(stage, resolved_executable_path)
-    started_at = utc_now()
     _ANALYSIS_LOGGER.info(
         "EMPIR event-to-image started for {input_file_count} files",
         event_type=f"{_EVENT_PREFIX}.started",
@@ -92,7 +91,6 @@ def execute_event_to_image(
             _STEP_NAME,
             command,
             output_path,
-            started_at,
         )
     except EmpirExecutionError as exc:
         _log_failure(stage, resolved_executable_path, command, exc)
@@ -117,8 +115,6 @@ def execute_event_to_image(
     )
     return EmpirEventToImageResult(
         status="completed",
-        started_at=outcome.started_at,
-        completed_at=outcome.completed_at,
         elapsed_seconds=outcome.elapsed_seconds,
         exit_code=outcome.exit_code,
         tiff_file=FileReference(path=output_path),

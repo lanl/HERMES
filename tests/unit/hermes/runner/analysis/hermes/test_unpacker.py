@@ -473,8 +473,6 @@ def test_run_marks_analysis_only_state_running_through_state_manager(
         "second.tpx3",
     ]
     assert all(result.status == "completed" for result in results)
-    assert all(result.started_at is not None for result in results)
-    assert all(result.completed_at is not None for result in results)
     assert state_logger.changes[-1].path == "analysis.unpacking.results"
     assert state_logger.changes[-1].origin == "trusted_workflow"
     assert state_logger.changes[-1].proposer == "tpx3_spidr_unpacking"
@@ -496,8 +494,6 @@ def test_run_with_only_completed_files_does_not_mark_running(
     results = manager.get_state().analysis.unpacking.results
     assert len(results) == 1
     assert results[0].status == "skipped"
-    assert results[0].started_at is None
-    assert results[0].completed_at is None
 
 
 def test_run_rejects_empir_analysis(tmp_path: Path) -> None:
@@ -599,8 +595,6 @@ def test_run_executes_fake_unpacker_logs_details_and_round_trips_yaml(
     results = manager.get_state().analysis.unpacking.results
     assert len(results) == 1
     assert results[0].status == "completed"
-    assert results[0].started_at is not None
-    assert results[0].completed_at is not None
 
     started = next(
         record
@@ -718,7 +712,6 @@ def test_run_saves_failed_state_before_raising_for_output_failures(
     results = manager.get_state().analysis.unpacking.results
     assert results
     assert all(result.status == "failed" for result in results)
-    assert all(result.completed_at is not None for result in results)
     failures = [
         record
         for record in records
@@ -758,7 +751,6 @@ def test_run_saves_failed_state_for_preflight_failure(tmp_path: Path) -> None:
     results = manager.get_state().analysis.unpacking.results
     assert results
     assert all(result.status == "failed" for result in results)
-    assert all(result.completed_at is not None for result in results)
 
 
 def test_resource_limit_percent_field_defaults_to_90(tmp_path: Path) -> None:

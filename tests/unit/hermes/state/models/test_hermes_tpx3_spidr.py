@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -40,8 +39,6 @@ def _analysis_state(tmp_path: Path, *raw_names: str) -> HermesTpx3AnalysisState:
                 HermesTpx3UnpackingResult(
                     input_file=FileReference(path=tmp_path / "rawTpx3" / raw_name),
                     status="completed",
-                    started_at=datetime(2026, 7, 23, 12, 0, tzinfo=timezone.utc),
-                    completed_at=datetime(2026, 7, 23, 12, 1, tzinfo=timezone.utc),
                 )
                 for raw_name in raw_names
             ],
@@ -310,11 +307,10 @@ def test_reconstruction_result_defaults_and_rejects_undefined_fields(
     result = HermesTpx3ReconstructionResult(
         input_file=FileReference(path=tmp_path / "pixelHits/raw.parquet"),
         output_file=tmp_path / "photons/raw.parquet",
+        status="completed",
     )
 
-    assert result.status == "planned"
-    assert result.started_at is None
-    assert result.completed_at is None
+    assert result.status == "completed"
     assert result.counts is None
 
     with pytest.raises(ValidationError, match="extra_forbidden"):

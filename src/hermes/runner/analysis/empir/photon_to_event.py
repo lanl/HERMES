@@ -16,7 +16,7 @@ from hermes.state.models.analysis.empir import (
     EmpirPhotonToEventRun,
     EmpirPhotonToEventState,
 )
-from hermes.state.models.shared_models import FileReference, utc_now
+from hermes.state.models.shared_models import FileReference
 
 _STEP_NAME = "photon_to_event"
 _EVENT_PREFIX = "analysis.empir.photon_to_event"
@@ -57,13 +57,12 @@ def execute_photon_to_event(
     """Run photon-to-event once and return its verified result."""
     input_path = run.photon_file.path
     output_path = run.event_file
-    validate_step_paths(_STEP_NAME, [input_path], output_path)
+    validate_step_paths(_STEP_NAME, [input_path])
     command = build_photon_to_event_command(
         stage,
         run,
         resolved_executable_path,
     )
-    started_at = utc_now()
     _ANALYSIS_LOGGER.info(
         "EMPIR photon-to-event started for {input_file}",
         event_type=f"{_EVENT_PREFIX}.started",
@@ -83,7 +82,6 @@ def execute_photon_to_event(
             _STEP_NAME,
             command,
             output_path,
-            started_at,
         )
     except EmpirExecutionError as exc:
         _log_failure(stage, run, resolved_executable_path, command, exc)
@@ -108,8 +106,6 @@ def execute_photon_to_event(
     )
     return EmpirPhotonToEventResult(
         status="completed",
-        started_at=outcome.started_at,
-        completed_at=outcome.completed_at,
         elapsed_seconds=outcome.elapsed_seconds,
         exit_code=outcome.exit_code,
         event_file=FileReference(path=output_path),
