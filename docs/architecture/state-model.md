@@ -161,7 +161,8 @@ rejected. Saving the HERMES record always writes the expanded explicit
 - `HermesTpx3AnalysisState.unpacker_program`, `analysis_directory`, and
   `tpx3_files` are required. `tpx3_files` must contain at least one entry.
 - `HermesTpx3AnalysisState.resource_limit_percent`, `photon_reconstruction`,
-  and `results` have defaults. Nested unpacking results default to `planned`.
+  and `results` have defaults. A raw file with no recorded result has not run
+  yet.
 - `Tpx3SpidrUnpackerProgram.name` and `executable_path` are required; `version`
   defaults to `None`.
 - `FileReference.path` is required; its file information fields default to
@@ -663,14 +664,10 @@ HermesTpx3AnalysisResults
   reconstruction: HermesTpx3ReconstructionResult | None
 
 HermesTpx3UnpackingResult
-  status: planned | running | completed | failed
-  started_at: datetime | None
-  completed_at: datetime | None
+  status: completed | skipped | failed
 
 HermesTpx3ReconstructionResult
-  status: planned | running | completed | failed
-  started_at: datetime | None
-  completed_at: datetime | None
+  status: completed | skipped | failed
   photon_count: int
   rejected_count: int
   warnings: list[str]
@@ -729,32 +726,27 @@ raw TPX3 filename stem. Input-specific summary paths are derived as:
 The HERMES state does not save one result per raw file, generated command
 arguments, summary JSON paths, Parquet filenames, file counts, packet or row
 counts, timestamp diagnostics, sorting diagnostics, detailed rejection counts,
-quality-flag counts, processing times, or per-file exit codes. Each summary JSON
-file is the sole saved detailed result for its raw TPX3 file. The overall
-reconstruction result keeps only status and times, total accepted and rejected
+quality-flag counts, or per-file exit codes. Each summary JSON
+file is the sole saved detailed result for its raw TPX3 file. The
+reconstruction result keeps only status, total accepted and rejected
 component counts, and combined warnings and errors.
 
-The unpacking status applies to the complete `tpx3_files` list:
+HERMES writes one result per raw file after that file finishes, using these
+terminal values (a file that has not run yet has no result):
 
-- `planned`: processing has not started
-- `running`: HERMES is checking or unpacking the list
-- `completed`: every raw file has a valid summary and valid listed Parquet files
-- `failed`: at least one raw file could not be unpacked or validated
+- `completed`: the file has a valid summary and valid listed Parquet files
+- `skipped`: a valid result already existed, so the file was not reprocessed
+- `failed`: the file could not be unpacked or validated
 
 A repeated run skips a raw file only when its summary is valid and every listed
 Parquet file exists. It runs an input only when neither its summary nor matching
 Parquet files exist. Matching Parquet files without a valid summary, or an
-invalid existing summary, cause the overall run to fail. No resume flag is
-saved.
+invalid existing summary, cause the run to fail. No resume flag is saved.
 
-The reconstruction status applies to the complete `tpx3_files` list:
-
-- `planned`: photon reconstruction has not started
-- `running`: HERMES has applied the state change and may launch the selected
-  program
-- `completed`: every raw filename stem has a valid reconstruction summary and
-  every required photon file
-- `failed`: at least one input could not be reconstructed or validated
+Reconstruction records the same terminal values per photon file: `completed`
+when a file has a valid reconstruction summary and every required photon file,
+`skipped` when a valid result already existed, and `failed` when a file could
+not be reconstructed or validated.
 
 A repeated reconstruction run also verifies that the saved summary settings
 match the requested settings. It requires `photon_pixels` files only when the
