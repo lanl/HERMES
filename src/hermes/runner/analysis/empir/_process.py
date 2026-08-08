@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import subprocess
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
 from time import perf_counter
 
@@ -13,7 +12,6 @@ from hermes.runner.analysis.empir._errors import (
     EmpirOutputError,
     EmpirPreflightError,
 )
-from hermes.state.models.shared_models import utc_now
 
 _LOG_TEXT_LIMIT = 4_000
 
@@ -22,8 +20,6 @@ _LOG_TEXT_LIMIT = 4_000
 class EmpirProcessOutcome:
     """Measured process details used for results, logs, and failures."""
 
-    started_at: datetime
-    completed_at: datetime
     elapsed_seconds: float
     exit_code: int | None
     stdout_excerpt: str = ""
@@ -33,25 +29,19 @@ class EmpirProcessOutcome:
 def validate_step_paths(
     step_name: str,
     input_paths: list[Path],
-    requested_output_path: Path,
 ) -> None:
-    """Check immediate inputs and reject an existing requested output."""
+    """Check that each immediate input is a regular file."""
     for input_path in input_paths:
         if not input_path.is_file():
             raise EmpirPreflightError(
                 f"{step_name} input is not a regular file: {input_path}"
             )
-    if requested_output_path.exists():
-        raise EmpirPreflightError(
-            f"{step_name} output already exists: {requested_output_path}"
-        )
 
 
 def run_process(
     step_name: str,
     command: list[str],
     requested_output_path: Path,
-    started_at: datetime,
 ) -> EmpirProcessOutcome:
     """Run one EMPIR command, measure it, and verify its requested file."""
     started = perf_counter()
@@ -65,8 +55,6 @@ def run_process(
         )
     except OSError as exc:
         outcome = EmpirProcessOutcome(
-            started_at=started_at,
-            completed_at=utc_now(),
             elapsed_seconds=perf_counter() - started,
             exit_code=None,
         )
@@ -75,8 +63,6 @@ def run_process(
         ) from exc
 
     outcome = EmpirProcessOutcome(
-        started_at=started_at,
-        completed_at=utc_now(),
         elapsed_seconds=perf_counter() - started,
         exit_code=process.returncode,
         stdout_excerpt=_bounded_text(process.stdout),
