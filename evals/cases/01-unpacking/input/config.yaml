@@ -5,11 +5,11 @@ measurement_info:
   run: 1kHz-testing
 
 environment:
-  working_dir: data/harness/01-unpacking
-  run_dir: data/harness/01-unpacking
-  log_dir: data/harness/01-unpacking/analysis/logs
-  raw_data_dir: tests/data/tpx3
-  analysis_dir: data/harness/01-unpacking/analysis
+  working_directory: data/harness/01-unpacking
+  run_directory: data/harness/01-unpacking
+  log_directory: data/harness/01-unpacking/analysis/logs
+  raw_data_directory: tests/data/tpx3
+  analysis_directory: data/harness/01-unpacking/analysis
   config_file: data/harness/01-unpacking/HERMES_record.yaml
 
 analysis:
@@ -21,4 +21,4 @@ analysis:
       executable_path: build/backends/tpx3-spidr/hermes-tpx3-spidr
     tpx3_files:
       - path: tests/data/tpx3/Example_1kHz_5frames.tpx3
-    unpacked_output_dir: None
+    unpacked_output_directory: None
