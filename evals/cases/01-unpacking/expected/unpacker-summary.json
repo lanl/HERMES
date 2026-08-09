@@ -1,4 +1,8 @@
 {
+  "measurement_info": {
+    "measurement_id": "harness-01-unpacking",
+    "run": "1kHz-testing"
+  },
   "inputfile": "tests/data/tpx3/Example_1kHz_5frames.tpx3",
   "unpacking": {
     "bytes_read": 348128,
