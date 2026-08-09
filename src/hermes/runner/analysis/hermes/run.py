@@ -52,7 +52,7 @@ from hermes.state.models.analysis.hermes_tpx3_spidr import (
     HermesTpx3ReconstructionResult,
     HermesTpx3UnpackingResult,
 )
-from hermes.state.models.shared_models import FileReference, utc_now
+from hermes.state.models.shared_models import FileReference
 from hermes.state_service.state_manager import StateManager
 
 _ANALYSIS_LOGGER = logger.bind(
@@ -195,7 +195,6 @@ def run_hermes_analysis(
                 if action == "skip":
                     log_skipped_input(analysis, raw_file)
 
-            started_at = utc_now()
             if files_to_run:
                 worker_count = _calculate_worker_count(analysis, files_to_run)
                 completed = _run_parallel(
@@ -207,13 +206,10 @@ def run_hermes_analysis(
                 )
                 unpacked_files = [files_to_run[i] for i in sorted(completed)]
 
-            completed_at = utc_now()
             unpacking_results = [
                 HermesTpx3UnpackingResult(
                     input_file=raw_file,
                     status="completed" if action == "run" else "skipped",
-                    started_at=started_at if action == "run" else None,
-                    completed_at=completed_at if action == "run" else None,
                 )
                 for raw_file, action in unpacking_plan
             ]
@@ -254,7 +250,6 @@ def run_hermes_analysis(
                     HermesTpx3UnpackingResult(
                         input_file=raw_file,
                         status="failed",
-                        completed_at=utc_now(),
                     )
                     for raw_file in current_analysis.unpacking.tpx3_files
                 ],
@@ -327,7 +322,6 @@ def _run_photon_reconstruction(
                     input_file=input_file,
                     output_file=derive_output_path(reconstruction, input_file),
                     status="failed",
-                    completed_at=utc_now(),
                 )
                 for input_file in _reconstruction_inputs(analysis)
             ],
@@ -416,7 +410,6 @@ def _run_event_reconstruction(
                         event_reconstruction, input_file
                     ),
                     status="failed",
-                    completed_at=utc_now(),
                 )
                 for input_file in _event_reconstruction_inputs(analysis)
             ],

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
@@ -9,12 +8,9 @@ from pydantic import Field, field_validator, model_validator
 from hermes.state.models.shared_models import (
     BinaryProgram,
     FileReference,
+    ResultStatus,
     StrictBaseModel,
 )
-
-HermesTpx3RunStatus = Literal[
-    "planned", "running", "completed", "skipped", "failed"
-]
 
 # Canonical parquet-category subdirectory names the unpacker writes under the
 # unpacking output directory. The unpacker binary creates these directories;
@@ -439,26 +435,20 @@ class Tpx3EventReconstructionSummary(StrictBaseModel):
 
 class HermesTpx3UnpackingResult(StrictBaseModel):
     input_file: FileReference
-    status: HermesTpx3RunStatus = "planned"
-    started_at: datetime | None = None
-    completed_at: datetime | None = None
+    status: ResultStatus
 
 
 class HermesTpx3ReconstructionResult(StrictBaseModel):
     input_file: FileReference
     output_file: Path
-    status: HermesTpx3RunStatus = "planned"
-    started_at: datetime | None = None
-    completed_at: datetime | None = None
+    status: ResultStatus
     counts: Tpx3PhotonReconstructionCountsSummary | None = None
 
 
 class HermesTpx3EventReconstructionResult(StrictBaseModel):
     input_file: FileReference
     output_file: Path
-    status: HermesTpx3RunStatus = "planned"
-    started_at: datetime | None = None
-    completed_at: datetime | None = None
+    status: ResultStatus
     counts: Tpx3EventReconstructionCountsSummary | None = None
 
 

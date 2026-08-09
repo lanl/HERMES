@@ -16,7 +16,7 @@ from hermes.state.models.analysis.empir import (
     EmpirPixelToPhotonRun,
     EmpirPixelToPhotonState,
 )
-from hermes.state.models.shared_models import FileReference, utc_now
+from hermes.state.models.shared_models import FileReference
 
 _STEP_NAME = "pixel_to_photon"
 _EVENT_PREFIX = "analysis.empir.pixel_to_photon"
@@ -60,13 +60,12 @@ def execute_pixel_to_photon(
     """Run pixel-to-photon once and return its verified result."""
     input_path = run.tpx3_file.path
     output_path = run.photon_file
-    validate_step_paths(_STEP_NAME, [input_path], output_path)
+    validate_step_paths(_STEP_NAME, [input_path])
     command = build_pixel_to_photon_command(
         stage,
         run,
         resolved_executable_path,
     )
-    started_at = utc_now()
     _ANALYSIS_LOGGER.info(
         "EMPIR pixel-to-photon started for {input_file}",
         event_type=f"{_EVENT_PREFIX}.started",
@@ -86,7 +85,6 @@ def execute_pixel_to_photon(
             _STEP_NAME,
             command,
             output_path,
-            started_at,
         )
     except EmpirExecutionError as exc:
         _log_failure(stage, run, resolved_executable_path, command, exc)
@@ -111,8 +109,6 @@ def execute_pixel_to_photon(
     )
     return EmpirPixelToPhotonResult(
         status="completed",
-        started_at=outcome.started_at,
-        completed_at=outcome.completed_at,
         elapsed_seconds=outcome.elapsed_seconds,
         exit_code=outcome.exit_code,
         photon_file=FileReference(path=output_path),

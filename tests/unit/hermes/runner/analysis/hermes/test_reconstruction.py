@@ -520,8 +520,6 @@ def test_run_hermes_analysis_completes_reconstruction(tmp_path: Path) -> None:
     reconstruction_results = result_analysis.photon_reconstruction.results
     assert len(reconstruction_results) == 1
     assert reconstruction_results[0].status == "completed"
-    assert reconstruction_results[0].started_at is not None
-    assert reconstruction_results[0].completed_at is not None
     assert reconstruction_results[0].counts.photon_count == 4
 
 

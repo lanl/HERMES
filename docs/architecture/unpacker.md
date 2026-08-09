@@ -52,7 +52,7 @@ set, then call the binary with the flags. Do not add helper functions or a
 builder abstraction for assembling the command.
 
 The HERMES state should save the raw TPX3 input files, shared analysis
-directory, unpacker program, and overall unpacking status and times. Each
+directory, unpacker program, and per-file unpacking status. Each
 input-specific summary JSON file should save its byte and packet counts,
 Parquet filenames and row counts, timestamp-processing information, sorting
 information, processing times, throughput, warnings, and errors.
