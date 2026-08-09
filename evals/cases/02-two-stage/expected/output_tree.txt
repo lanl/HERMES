@@ -1,4 +1,4 @@
-data/harness/02-two-stage/
+data/02-two-stage/tantalum-ironpowder/
 ├── analysis/
 │   ├── control_packets/
 │   │   └── Tantalum_IronPowder_control_packets_00000.parquet
@@ -18,4 +18,5 @@ data/harness/02-two-stage/
 │   │   └── photon_reconstruction/
 │   │       └── Tantalum_IronPowder_photon_reconstruction_summary.json
 │   └── HERMES-workflow.jsonl
+├── logs/
 └── HERMES_record.yaml

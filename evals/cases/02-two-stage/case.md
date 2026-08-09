@@ -5,7 +5,7 @@ clustering neighboring hits that are close in space and time.
 
 - **Input data:** `tests/data/tpx3/Tantalum_IronPowder.tpx3` (FP5, tantalum foil
   and iron powder in the beam, T-zeros on TDC1 at 20 Hz).
-- **Working directory:** `data/harness/02-two-stage/` (all output goes here).
+- **Working directory:** `data/02-two-stage/` (all output goes here).
 
 Reconstruction runs with the `connected_components` algorithm (8-way
 adjacency), arithmetic position averaging, and a leading-edge time estimator.
