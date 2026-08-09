@@ -1,0 +1,49 @@
+# HERMES record — Example 02: unpacking + photon reconstruction
+
+measurement_info:
+  measurement_id: harness-02-two-stage
+  run: tantalum-ironpowder
+
+environment:
+  working_dir: data/harness/02-two-stage
+  run_dir: data/harness/02-two-stage
+  log_dir: data/harness/02-two-stage/analysis/logs
+  raw_data_dir: tests/data/tpx3
+  analysis_dir: data/harness/02-two-stage/analysis
+  config_file: data/harness/02-two-stage/HERMES_record.yaml
+
+analysis:
+  mode: hermes
+  resource_limit_percent: 90
+  unpacking:
+    program:
+      name: tpx3-spidr-cpp
+      executable_path: build/backends/tpx3-spidr/hermes-tpx3-spidr
+    tpx3_files:
+      - path: tests/data/tpx3/Tantalum_IronPowder.tpx3
+    unpacked_output_dir: data/harness/02-two-stage/analysis
+
+  photon_reconstruction:
+    program:
+      name: photon-clusterer-cpp
+      executable_path: build/backends/photon-clusterer/hermes-photon-clusterer
+      version: null
+    pixel_data_directory: data/harness/02-two-stage/analysis/pixel_hits
+    pixel_files: auto
+    photon_output_directory: data/harness/02-two-stage/analysis/photons
+    clustering_algorithm:
+      name: connected_components
+      save_photon_pixels: true
+      settings:
+        max_time_spread_ticks: 98304
+        min_cluster_size: 2
+        max_cluster_size: 64
+        min_pixel_tot_raw: 1
+        min_cluster_tot_raw: 2
+        max_cluster_tot_raw: 500
+        max_aspect_ratio: 3.0
+        min_filled_fraction: 0.5
+        adjacency: 8
+        position_averaging: arithmetic
+        photon_time_estimator: leading_edge
+        timewalk_calibration_file: calibrations/tpx3/time-walk_example.json

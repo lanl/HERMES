@@ -1,0 +1,21 @@
+data/harness/02-two-stage/
+├── analysis/
+│   ├── control_packets/
+│   │   └── Tantalum_IronPowder_control_packets_00000.parquet
+│   ├── global_timestamps/
+│   │   └── Tantalum_IronPowder_global_timestamps_00000.parquet
+│   ├── pixel_hits/
+│   │   └── Tantalum_IronPowder_chip_0_pixels_00000.parquet
+│   ├── tdc_triggers/
+│   │   └── Tantalum_IronPowder_tdc_triggers_00000.parquet
+│   ├── photons/
+│   │   └── Tantalum_IronPowder_photon_00000.parquet
+│   ├── pixel_clusters/
+│   │   └── Tantalum_IronPowder_pixel_clusters_00000.parquet
+│   ├── logs/
+│   │   ├── unpacking/
+│   │   │   └── Tantalum_IronPowder_unpacker_summary.json
+│   │   └── photon_reconstruction/
+│   │       └── Tantalum_IronPowder_photon_reconstruction_summary.json
+│   └── HERMES-workflow.jsonl
+└── HERMES_record.yaml

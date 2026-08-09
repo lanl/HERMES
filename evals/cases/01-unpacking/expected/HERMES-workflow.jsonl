@@ -1,0 +1,4 @@
+{"event":"HERMES_record_initialized","record":"data/harness/01-unpacking/HERMES_record.yaml","time":"<TIMESTAMP>"}
+{"event":"workflow_initialized","stages":["unpacking"],"time":"<TIMESTAMP>"}
+{"event":"stage_completed","stage":"unpacking","file":"tests/data/tpx3/Example_1kHz_5frames.tpx3","status":"success","start":"<TIMESTAMP>","stop":"<TIMESTAMP>","summary":"data/harness/01-unpacking/analysis/logs/unpacking/Example_1kHz_5frames_unpacker_summary.json"}
+{"event":"workflow_completed","stages":["unpacking"],"time":"<TIMESTAMP>"}

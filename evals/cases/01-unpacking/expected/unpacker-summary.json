@@ -1,0 +1,70 @@
+{
+  "inputfile": "tests/data/tpx3/Example_1kHz_5frames.tpx3",
+  "unpacking": {
+    "bytes_read": 348128,
+    "chunks_read": 21750,
+    "packets_read": 21766,
+    "pixel_data_packets": 34,
+    "tdc_timestamps": 21632,
+    "heartbeat_packets": 8,
+    "spidr_control_packets": 0,
+    "tpx3_control_packets": 84,
+    "unrecognized_packets": 0,
+    "tdc1_rising": 10816,
+    "tdc1_falling": 10816,
+    "tdc2_rising": 0,
+    "tdc2_falling": 0,
+    "unknown_tdc_edges": 0,
+    "errors": [],
+    "warnings": []
+  },
+  "timestamp_processing": {
+    "heartbeat_pairs": {
+      "number_of_beats": 2
+    },
+    "time_adjustments": {
+      "pixel_packets": 5,
+      "tdc_packets": 5408,
+      "control_packets": 0,
+      "failed": 0
+    }
+  },
+  "sorting": {
+    "strategy": "in_memory",
+    "memory_budget_bytes": 1073741824,
+    "estimated_memory_bytes": 874288,
+    "sorting_time_seconds": "<IGNORE: non-deterministic timing>"
+  },
+  "output_parquet": {
+    "pixel_data": {
+      "row_count": 34,
+      "files": [
+        "data/harness/01-unpacking/analysis/pixel_hits/Example_1kHz_5frames_chip_0_pixels_00000.parquet"
+      ]
+    },
+    "tdc_timestamps": {
+      "row_count": 21632,
+      "files": [
+        "data/harness/01-unpacking/analysis/tdc_triggers/Example_1kHz_5frames_tdc_triggers_00000.parquet"
+      ]
+    },
+    "heartbeat_packets": {
+      "row_count": 8,
+      "files": [
+        "data/harness/01-unpacking/analysis/global_timestamps/Example_1kHz_5frames_global_timestamps_00000.parquet"
+      ]
+    },
+    "control_packets": {
+      "row_count": 84,
+      "files": [
+        "data/harness/01-unpacking/analysis/control_packets/Example_1kHz_5frames_control_packets_00000.parquet"
+      ]
+    },
+    "unrecognized_packets": {
+      "row_count": 0,
+      "files": []
+    },
+    "errors": []
+  },
+  "processing_times_seconds": "<IGNORE: non-deterministic timing>"
+}

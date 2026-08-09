@@ -1,0 +1,70 @@
+{
+  "inputfile": "tests/data/tpx3/Tantalum_IronPowder.tpx3",
+  "unpacking": {
+    "bytes_read": 4059152,
+    "chunks_read": 1568,
+    "packets_read": 505826,
+    "pixel_data_packets": 505721,
+    "tdc_timestamps": 100,
+    "heartbeat_packets": 1,
+    "spidr_control_packets": 0,
+    "tpx3_control_packets": 3,
+    "unrecognized_packets": 0,
+    "tdc1_rising": 100,
+    "tdc1_falling": 0,
+    "tdc2_rising": 0,
+    "tdc2_falling": 0,
+    "unknown_tdc_edges": 0,
+    "errors": [],
+    "warnings": []
+  },
+  "timestamp_processing": {
+    "heartbeat_pairs": {
+      "number_of_beats": 1
+    },
+    "time_adjustments": {
+      "pixel_packets": 505721,
+      "tdc_packets": 100,
+      "control_packets": 0,
+      "failed": 0
+    }
+  },
+  "sorting": {
+    "strategy": "in_memory",
+    "memory_budget_bytes": 1073741824,
+    "estimated_memory_bytes": 20233136,
+    "sorting_time_seconds": "<IGNORE: non-deterministic timing>"
+  },
+  "output_parquet": {
+    "pixel_data": {
+      "row_count": 505721,
+      "files": [
+        "data/harness/02-two-stage/analysis/pixel_hits/Tantalum_IronPowder_chip_0_pixels_00000.parquet"
+      ]
+    },
+    "tdc_timestamps": {
+      "row_count": 100,
+      "files": [
+        "data/harness/02-two-stage/analysis/tdc_triggers/Tantalum_IronPowder_tdc_triggers_00000.parquet"
+      ]
+    },
+    "heartbeat_packets": {
+      "row_count": 1,
+      "files": [
+        "data/harness/02-two-stage/analysis/global_timestamps/Tantalum_IronPowder_global_timestamps_00000.parquet"
+      ]
+    },
+    "control_packets": {
+      "row_count": 3,
+      "files": [
+        "data/harness/02-two-stage/analysis/control_packets/Tantalum_IronPowder_control_packets_00000.parquet"
+      ]
+    },
+    "unrecognized_packets": {
+      "row_count": 0,
+      "files": []
+    },
+    "errors": []
+  },
+  "processing_times_seconds": "<IGNORE: non-deterministic timing>"
+}

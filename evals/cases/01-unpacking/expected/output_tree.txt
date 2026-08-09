@@ -1,0 +1,15 @@
+data/harness/01-unpacking/
+├── analysis/
+│   ├── control_packets/
+│   │   └── Example_1kHz_5frames_control_packets_00000.parquet
+│   ├── global_timestamps/
+│   │   └── Example_1kHz_5frames_global_timestamps_00000.parquet
+│   ├── pixel_hits/
+│   │   └── Example_1kHz_5frames_chip_0_pixels_00000.parquet
+│   ├── tdc_triggers/
+│   │   └── Example_1kHz_5frames_tdc_triggers_00000.parquet
+│   ├── logs/
+│   │   └── unpacking/
+│   │       └── Example_1kHz_5frames_unpacker_summary.json
+│   └── HERMES-workflow.jsonl
+└── HERMES_record.yaml
