@@ -39,25 +39,25 @@
     "pixel_data": {
       "row_count": 34,
       "files": [
-        "data/harness/01-unpacking/analysis/pixel_hits/Example_1kHz_5frames_chip_0_pixels_00000.parquet"
+        "data/01-unpacking/1kHz-testing/analysis/pixel_hits/Example_1kHz_5frames_chip_0_pixels_00000.parquet"
       ]
     },
     "tdc_timestamps": {
       "row_count": 21632,
       "files": [
-        "data/harness/01-unpacking/analysis/tdc_triggers/Example_1kHz_5frames_tdc_triggers_00000.parquet"
+        "data/01-unpacking/1kHz-testing/analysis/tdc_triggers/Example_1kHz_5frames_tdc_triggers_00000.parquet"
       ]
     },
     "heartbeat_packets": {
       "row_count": 8,
       "files": [
-        "data/harness/01-unpacking/analysis/global_timestamps/Example_1kHz_5frames_global_timestamps_00000.parquet"
+        "data/01-unpacking/1kHz-testing/analysis/global_timestamps/Example_1kHz_5frames_global_timestamps_00000.parquet"
       ]
     },
     "control_packets": {
       "row_count": 84,
       "files": [
-        "data/harness/01-unpacking/analysis/control_packets/Example_1kHz_5frames_control_packets_00000.parquet"
+        "data/01-unpacking/1kHz-testing/analysis/control_packets/Example_1kHz_5frames_control_packets_00000.parquet"
       ]
     },
     "unrecognized_packets": {
