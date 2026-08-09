@@ -5,11 +5,11 @@ measurement_info:
   run: tantalum-ironpowder
 
 environment:
-  working_dir: data/harness/02-two-stage
-  run_dir: data/harness/02-two-stage
-  log_dir: data/harness/02-two-stage/analysis/logs
-  raw_data_dir: tests/data/tpx3
-  analysis_dir: data/harness/02-two-stage/analysis
+  working_directory: data/harness/02-two-stage
+  run_directory: data/harness/02-two-stage
+  log_directory: data/harness/02-two-stage/analysis/logs
+  raw_data_directory: tests/data/tpx3
+  analysis_directory: data/harness/02-two-stage/analysis
   config_file: data/harness/02-two-stage/HERMES_record.yaml
 
 analysis:
