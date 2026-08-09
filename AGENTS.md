@@ -11,7 +11,7 @@
 - If Python code is added, prefer typed APIs, focused pytest coverage, and Pixi-managed environments.
 - reference .agent/resources for context on interfaces with the TPX3Cam, data formats from SPIDR readouts, and EMPIR data analysis.
 - Start with following the architecture laid out in the docs/architecture directory, unless directly working on the architecture itself. 
-- some parts of docs/architecture markdown files have drifted from the original intention, so prompt user on following the architecture closely.
+- Some parts of docs/architecture markdown files have drifted, make sure to use the `eval` harness to bring back to the original intention.
 - If the architecture is unclear, ask for clarification or propose a change to the architecture docs before proceeding.
 - If the architecture is missing details necessary to implement a workflow, ask for clarification or propose a change to the architecture docs before proceeding.
 - If requests do not align with the architecture, ask for clarification or propose a change to the architecture docs before proceeding.
