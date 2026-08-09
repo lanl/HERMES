@@ -9,9 +9,9 @@
 - Use .scratch for non-tracked files that are useful for development but not part of the core codebase.
 - Use /tmp for temporary files that are not useful for development and should be cleaned up regularly.
 - If Python code is added, prefer typed APIs, focused pytest coverage, and Pixi-managed environments.
-- reference .agent/resources and .agent/examples for context on interfaces with the TPX3Cam, data formats from SPIDR readouts, and EMPIR data analysis.
-- Strictly follow the architecture laid out in the docs/architecture directory unless directly working on the architecture itself.
-- If the achitecture is unclear, ask for clarification or propose a change to the architecture docs before proceeding.
+- reference .agent/resources for context on interfaces with the TPX3Cam, data formats from SPIDR readouts, and EMPIR data analysis.
+- Follow the architecture laid out in the docs/architecture directory unless directly working on the architecture itself.
+- If the architecture is unclear, ask for clarification or propose a change to the architecture docs before proceeding.
 - If the architecture is missing details necessary to implement a workflow, ask for clarification or propose a change to the architecture docs before proceeding.
 - If requests do not align with the architecture, ask for clarification or propose a change to the architecture docs before proceeding.
 - Loguru is used for logging, and logs should be structured and informative to aid in debugging and understanding the flow of data through the system.
@@ -19,8 +19,22 @@
     - artifacts
     - contracts
     - shape
-    - patloads
+    - payloads
     - products
     - state values
     - store
     - reference
+
+## Evals
+
+`evals/` holds known-good cases that pin down what a HERMES workflow should
+produce for a given input. After changing unpacking, photon reconstruction, or
+workflow code, run the cases and fix any deviation before finishing:
+
+    pixi run python evals/run_evals.py
+
+Each case under `evals/cases/` has an `input/` (the config the workflow loads)
+and an `expected/` (the output tree, the JSON-lines workflow log, and the
+per-file summaries). Any value written as `<...>` changes every run and is not
+checked. If you change the intended design on purpose, update the affected case
+in the same change so the eval stays honest. See `evals/README.md`.
