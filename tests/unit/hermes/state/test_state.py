@@ -13,8 +13,6 @@ from hermes.state.models.acquisition.serval import (
 from hermes.state.models.analysis.hermes_tpx3_spidr import (
     HermesTpx3AnalysisState,
     HermesTpx3UnpackingResult,
-    Tpx3PhotonClusteringSettings,
-    Tpx3PhotonReconstruction,
     Tpx3Unpacking,
 )
 from hermes.state.models.environment import RuntimeEnvironment
@@ -24,56 +22,6 @@ from hermes.state.state import HermesRecord
 
 
 HASH = "a" * 64
-
-
-def _clustering_settings() -> Tpx3PhotonClusteringSettings:
-    return Tpx3PhotonClusteringSettings.model_validate(
-        {
-            "max_time_spread_ticks": 491_520,
-            "min_cluster_size": 2,
-            "max_cluster_size": 64,
-            "min_pixel_tot_raw": 1,
-            "min_cluster_tot_raw": 2,
-            "max_cluster_tot_raw": 65_472,
-            "max_aspect_ratio": 3.0,
-            "min_filled_fraction": 0.5,
-        }
-    )
-
-
-def test_record_derives_analysis_output_directories_from_environment(
-    tmp_path: Path,
-) -> None:
-    record = HermesRecord(
-        measurement_info=MeasurementInfo(measurement_id="LC-1", run_number=1),
-        environment=RuntimeEnvironment(
-            working_directory=tmp_path,
-            analysis_directory=tmp_path / "analysis",
-        ),
-        analysis=HermesTpx3AnalysisState(
-            unpacking=Tpx3Unpacking(
-                program=BinaryProgram(
-                    name="tpx3-spidr-cpp",
-                    executable_path=tmp_path / "bin/hermes-tpx3-spidr",
-                ),
-                tpx3_files=[FileReference(path=tmp_path / "rawTpx3/raw.tpx3")],
-            ),
-            photon_reconstruction=Tpx3PhotonReconstruction(
-                program=BinaryProgram(
-                    name="connected-components-cpp",
-                    executable_path=tmp_path / "bin/hermes-photon-clusterer",
-                ),
-                settings=_clustering_settings(),
-            ),
-        ),
-    )
-
-    resolved_root = record.environment.analysis_directory.resolved_path
-    assert record.analysis.unpacking.output_directory == resolved_root
-    assert (
-        record.analysis.photon_reconstruction.output_directory
-        == resolved_root / "photons"
-    )
 
 
 def test_record_without_analysis_needs_no_analysis_directory(

@@ -61,9 +61,6 @@ def test_checked_in_yaml_configures_both_analysis_stages(
     )
     assert reconstruction.clustering_algorithm == "connected_components"
     assert reconstruction.pixel_parquet_files == "auto"
-    assert reconstruction.output_directory == (
-        initial_record.environment.analysis_directory.resolved_path / "photons"
-    )
     assert reconstruction.settings.timewalk_calibration_file == Path(
         "calibrations/tpx3/time-walk_example.json"
     )
@@ -165,10 +162,7 @@ analysis:
                     "results": [
                         HermesTpx3ReconstructionResult(
                             input_file=tpx3_files[0],
-                            output_file=(
-                                analysis.photon_reconstruction.output_directory
-                                / "photons.parquet"
-                            ),
+                            output_file=photon_directory / "photons.parquet",
                             status="completed",
                             counts=counts,
                         )
