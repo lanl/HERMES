@@ -71,7 +71,7 @@ def _expand_file_list(value: object) -> object:
     return files
 
 
-class Tpx3PhotonClusteringSettings(StrictBaseModel):
+class HermesTpx3PhotonClusteringSettings(StrictBaseModel):
     max_time_spread_ticks: int = Field(gt=0)
     min_cluster_size: int = Field(gt=0)
     max_cluster_size: int = Field(gt=0)
@@ -84,7 +84,6 @@ class Tpx3PhotonClusteringSettings(StrictBaseModel):
     position_averaging: Literal["arithmetic"] = "arithmetic"
     photon_time_estimator: PhotonTimeEstimator = "leading_edge"
     timewalk_calibration_file: Path | None = None
-    save_photon_pixels: bool = False
 
     @field_validator("photon_time_estimator")
     @classmethod
@@ -99,7 +98,7 @@ class Tpx3PhotonClusteringSettings(StrictBaseModel):
         return value
 
     @model_validator(mode="after")
-    def require_ordered_bounds(self) -> Tpx3PhotonClusteringSettings:
+    def require_ordered_bounds(self) -> HermesTpx3PhotonClusteringSettings:
         if self.min_cluster_size > self.max_cluster_size:
             raise ValueError(
                 "min_cluster_size must be less than or equal to max_cluster_size"
@@ -112,12 +111,20 @@ class Tpx3PhotonClusteringSettings(StrictBaseModel):
         return self
 
 
+class HermesTpx3PhotonClustering(StrictBaseModel):
+    # Groups the clustering choice: which algorithm runs, whether to also save
+    # the source pixels of each photon, and the algorithm's numeric settings.
+    name: ClusteringAlgorithm = "connected_components"
+    save_photon_pixels: bool = False
+    settings: HermesTpx3PhotonClusteringSettings
+
+
 # Fixed detector width in pixels; the event grid spans one 256 x 256 chip. Used
 # to derive the spatial-grid cell width the same way the C++ binary does.
 EVENT_CHIP_WIDTH_PIXELS = 256
 
 
-class Tpx3EventReconstructionSettings(StrictBaseModel):
+class HermesTpx3EventReconstructionSettings(StrictBaseModel):
     # One field per key the event-reconstructor binary reads, with the same
     # bounds its validateReconParams enforces. model_dump(mode="json") produces
     # exactly these keys, which is what is written to the binary's settings file.
@@ -131,7 +138,7 @@ class Tpx3EventReconstructionSettings(StrictBaseModel):
     @model_validator(mode="after")
     def require_cell_width_at_least_link_radius(
         self,
-    ) -> Tpx3EventReconstructionSettings:
+    ) -> HermesTpx3EventReconstructionSettings:
         # The binary rejects a grid so fine that the derived cell width falls
         # below the linking radius, because its fixed 3x3 cell search would then
         # miss genuine neighbors. Mirror that here so an invalid grid is caught
@@ -263,7 +270,7 @@ class Tpx3SpidrSummary(StrictBaseModel):
 # ---------------------------------------------------------------------------
 
 
-class Tpx3PhotonRejectionCountsSummary(StrictBaseModel):
+class HermesTpx3PhotonRejectionCountsSummary(StrictBaseModel):
     below_min_cluster_size: int = Field(ge=0)
     above_max_cluster_size: int = Field(ge=0)
     below_min_cluster_tot: int = Field(ge=0)
@@ -272,26 +279,26 @@ class Tpx3PhotonRejectionCountsSummary(StrictBaseModel):
     below_min_filled_fraction: int = Field(ge=0)
 
 
-class Tpx3PhotonQualityFlagCountsSummary(StrictBaseModel):
+class HermesTpx3PhotonQualityFlagCountsSummary(StrictBaseModel):
     saturated_pixel: int = Field(ge=0)
     bridged_components: int = Field(ge=0)
 
 
-class Tpx3PhotonReconstructionCountsSummary(StrictBaseModel):
+class HermesTpx3PhotonReconstructionCountsSummary(StrictBaseModel):
     pixel_rows_read: int = Field(ge=0)
     pixel_rows_below_min_tot: int = Field(ge=0)
     components_formed: int = Field(ge=0)
     photon_count: int = Field(ge=0)
     rejected_component_count: int = Field(ge=0)
-    rejection_counts: Tpx3PhotonRejectionCountsSummary
-    quality_flag_counts: Tpx3PhotonQualityFlagCountsSummary
+    rejection_counts: HermesTpx3PhotonRejectionCountsSummary
+    quality_flag_counts: HermesTpx3PhotonQualityFlagCountsSummary
     warnings: list[str]
     errors: list[str]
 
     @model_validator(mode="after")
     def require_component_counts_to_match(
         self,
-    ) -> Tpx3PhotonReconstructionCountsSummary:
+    ) -> HermesTpx3PhotonReconstructionCountsSummary:
         if self.pixel_rows_below_min_tot > self.pixel_rows_read:
             raise ValueError(
                 "pixel_rows_below_min_tot cannot exceed pixel_rows_read"
@@ -312,23 +319,23 @@ class Tpx3PhotonReconstructionCountsSummary(StrictBaseModel):
         return self
 
 
-class Tpx3PhotonThroughputSummary(StrictBaseModel):
+class HermesTpx3PhotonThroughputSummary(StrictBaseModel):
     pixels_per_second: float = Field(ge=0)
     photons_per_second: float = Field(ge=0)
 
 
-class Tpx3PhotonProcessingTimesSummary(StrictBaseModel):
+class HermesTpx3PhotonProcessingTimesSummary(StrictBaseModel):
     parquet_reading: float = Field(ge=0)
     clustering_and_filtering: float = Field(ge=0)
     parquet_writing: float = Field(ge=0)
     total: float = Field(ge=0)
-    throughput: Tpx3PhotonThroughputSummary
+    throughput: HermesTpx3PhotonThroughputSummary
 
 
-class Tpx3PhotonReconstructionSummary(StrictBaseModel):
+class HermesTpx3PhotonReconstructionSummary(StrictBaseModel):
     schema_version: Literal[1] = 1
-    reconstruction: Tpx3PhotonReconstructionCountsSummary
-    processing_times_seconds: Tpx3PhotonProcessingTimesSummary
+    reconstruction: HermesTpx3PhotonReconstructionCountsSummary
+    processing_times_seconds: HermesTpx3PhotonProcessingTimesSummary
 
 
 # ---------------------------------------------------------------------------
@@ -336,16 +343,16 @@ class Tpx3PhotonReconstructionSummary(StrictBaseModel):
 # ---------------------------------------------------------------------------
 
 
-class Tpx3EventQualityFlagCountsSummary(StrictBaseModel):
+class HermesTpx3EventQualityFlagCountsSummary(StrictBaseModel):
     single_photon: int = Field(ge=0)
     duration_exceeded: int = Field(ge=0)
 
 
-class Tpx3EventReconstructionCountsSummary(StrictBaseModel):
+class HermesTpx3EventReconstructionCountsSummary(StrictBaseModel):
     photons_read: int = Field(ge=0)
     components_formed: int = Field(ge=0)
     event_count: int = Field(ge=0)
-    quality_flag_counts: Tpx3EventQualityFlagCountsSummary
+    quality_flag_counts: HermesTpx3EventQualityFlagCountsSummary
     min_photon_count_below: int = Field(ge=0)
     warnings: list[str]
     errors: list[str]
@@ -353,7 +360,7 @@ class Tpx3EventReconstructionCountsSummary(StrictBaseModel):
     @model_validator(mode="after")
     def require_event_counts_to_match(
         self,
-    ) -> Tpx3EventReconstructionCountsSummary:
+    ) -> HermesTpx3EventReconstructionCountsSummary:
         # Every closed component becomes exactly one event; the stage records
         # min_photon_count_below but never discards, so these counts are equal.
         if self.event_count != self.components_formed:
@@ -373,7 +380,7 @@ class Tpx3EventReconstructionCountsSummary(StrictBaseModel):
         return self
 
 
-class Tpx3EventClusteringSummary(StrictBaseModel):
+class HermesTpx3EventClusteringSummary(StrictBaseModel):
     algorithm: ClusteringAlgorithm
     # The binary owns its settings shape and renders it verbatim, so this is kept
     # as a plain mapping rather than re-validated field by field. For
@@ -382,16 +389,16 @@ class Tpx3EventClusteringSummary(StrictBaseModel):
     settings: dict[str, float | int | bool]
 
 
-class Tpx3EventTimingSummary(StrictBaseModel):
+class HermesTpx3EventTimingSummary(StrictBaseModel):
     estimator: Literal["earliest_photon"] = "earliest_photon"
 
 
-class Tpx3EventParquetCategorySummary(StrictBaseModel):
+class HermesTpx3EventParquetCategorySummary(StrictBaseModel):
     row_count: int = Field(ge=0)
     files: list[Path]
 
     @model_validator(mode="after")
-    def require_files_for_saved_rows(self) -> Tpx3EventParquetCategorySummary:
+    def require_files_for_saved_rows(self) -> HermesTpx3EventParquetCategorySummary:
         if self.row_count == 0 and self.files:
             raise ValueError("a category with zero rows cannot list Parquet files")
         if self.row_count > 0 and not self.files:
@@ -399,33 +406,33 @@ class Tpx3EventParquetCategorySummary(StrictBaseModel):
         return self
 
 
-class Tpx3EventParquetSummary(StrictBaseModel):
+class HermesTpx3EventParquetSummary(StrictBaseModel):
     input_photon_events_files: list[Path]
-    event_candidates: Tpx3EventParquetCategorySummary
+    event_candidates: HermesTpx3EventParquetCategorySummary
     # event_photons is present only when save_event_photons was set.
-    event_photons: Tpx3EventParquetCategorySummary | None = None
+    event_photons: HermesTpx3EventParquetCategorySummary | None = None
 
 
-class Tpx3EventThroughputSummary(StrictBaseModel):
+class HermesTpx3EventThroughputSummary(StrictBaseModel):
     photons_per_second: float = Field(ge=0)
     events_per_second: float = Field(ge=0)
 
 
-class Tpx3EventProcessingTimesSummary(StrictBaseModel):
+class HermesTpx3EventProcessingTimesSummary(StrictBaseModel):
     photon_reading: float = Field(ge=0)
     clustering: float = Field(ge=0)
     parquet_writing: float = Field(ge=0)
     total: float = Field(ge=0)
-    throughput: Tpx3EventThroughputSummary
+    throughput: HermesTpx3EventThroughputSummary
 
 
-class Tpx3EventReconstructionSummary(StrictBaseModel):
+class HermesTpx3EventReconstructionSummary(StrictBaseModel):
     schema_version: Literal[1] = 1
-    reconstruction: Tpx3EventReconstructionCountsSummary
-    clustering: Tpx3EventClusteringSummary
-    event_timing: Tpx3EventTimingSummary
-    parquet: Tpx3EventParquetSummary
-    processing_times_seconds: Tpx3EventProcessingTimesSummary
+    reconstruction: HermesTpx3EventReconstructionCountsSummary
+    clustering: HermesTpx3EventClusteringSummary
+    event_timing: HermesTpx3EventTimingSummary
+    parquet: HermesTpx3EventParquetSummary
+    processing_times_seconds: HermesTpx3EventProcessingTimesSummary
 
 
 # ---------------------------------------------------------------------------
@@ -438,18 +445,18 @@ class HermesTpx3UnpackingResult(StrictBaseModel):
     status: ResultStatus
 
 
-class HermesTpx3ReconstructionResult(StrictBaseModel):
+class HermesTpx3PhotonReconstructionResult(StrictBaseModel):
     input_file: FileReference
     output_file: Path
     status: ResultStatus
-    counts: Tpx3PhotonReconstructionCountsSummary | None = None
+    counts: HermesTpx3PhotonReconstructionCountsSummary | None = None
 
 
 class HermesTpx3EventReconstructionResult(StrictBaseModel):
     input_file: FileReference
     output_file: Path
     status: ResultStatus
-    counts: Tpx3EventReconstructionCountsSummary | None = None
+    counts: HermesTpx3EventReconstructionCountsSummary | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -489,50 +496,49 @@ class Tpx3Unpacking(StrictBaseModel):
         return self
 
 
-class Tpx3PhotonReconstructionRuntimeOptions(StrictBaseModel):
+class HermesTpx3PhotonReconstructionRuntimeOptions(StrictBaseModel):
     overwrite: bool = False
 
 
-class Tpx3PhotonReconstruction(StrictBaseModel):
+class HermesTpx3PhotonReconstruction(StrictBaseModel):
     program: BinaryProgram
     # "auto" gathers pixel files from the unpacking stage's output; a list names
     # specific pixel_hits Parquet files to reconstruct.
-    pixel_parquet_files: Literal["auto"] | list[FileReference] = "auto"
-    clustering_algorithm: ClusteringAlgorithm = "connected_components"
-    settings: Tpx3PhotonClusteringSettings
-    runtime_options: Tpx3PhotonReconstructionRuntimeOptions = Field(
-        default_factory=Tpx3PhotonReconstructionRuntimeOptions
+    pixel_files: Literal["auto"] | list[FileReference] = "auto"
+    clustering_algorithm: HermesTpx3PhotonClustering
+    runtime_options: HermesTpx3PhotonReconstructionRuntimeOptions = Field(
+        default_factory=HermesTpx3PhotonReconstructionRuntimeOptions
     )
-    results: list[HermesTpx3ReconstructionResult] = Field(default_factory=list)
+    results: list[HermesTpx3PhotonReconstructionResult] = Field(default_factory=list)
 
-    @field_validator("pixel_parquet_files", mode="before")
+    @field_validator("pixel_files", mode="before")
     @classmethod
     def expand_pixel_file_list(cls, value: object) -> object:
         return _expand_file_list(value)
 
-    @field_validator("pixel_parquet_files", mode="after")
+    @field_validator("pixel_files", mode="after")
     @classmethod
     def require_non_empty_file_list(cls, value: object) -> object:
         if isinstance(value, list) and not value:
             raise ValueError(
-                "pixel_parquet_files must be 'auto' or a non-empty file list"
+                "pixel_files must be 'auto' or a non-empty file list"
             )
         return value
 
 
-class Tpx3EventReconstructionRuntimeOptions(StrictBaseModel):
+class HermesTpx3EventReconstructionRuntimeOptions(StrictBaseModel):
     overwrite: bool = False
 
 
-class Tpx3EventReconstruction(StrictBaseModel):
+class HermesTpx3EventReconstruction(StrictBaseModel):
     program: BinaryProgram
     # "auto" gathers photon files from the photon reconstruction stage's output;
     # a list names specific photon_events Parquet files to reconstruct.
     photon_parquet_files: Literal["auto"] | list[FileReference] = "auto"
     clustering_algorithm: ClusteringAlgorithm = "connected_components"
-    settings: Tpx3EventReconstructionSettings
-    runtime_options: Tpx3EventReconstructionRuntimeOptions = Field(
-        default_factory=Tpx3EventReconstructionRuntimeOptions
+    settings: HermesTpx3EventReconstructionSettings
+    runtime_options: HermesTpx3EventReconstructionRuntimeOptions = Field(
+        default_factory=HermesTpx3EventReconstructionRuntimeOptions
     )
     results: list[HermesTpx3EventReconstructionResult] = Field(
         default_factory=list
@@ -564,5 +570,5 @@ class HermesTpx3AnalysisState(StrictBaseModel):
     # Optional so reconstruction can run on its own when unpacking is already
     # done and the pixel/photon files it needs are already on disk.
     unpacking: Tpx3Unpacking | None = None
-    photon_reconstruction: Tpx3PhotonReconstruction | None = None
-    event_reconstruction: Tpx3EventReconstruction | None = None
+    photon_reconstruction: HermesTpx3PhotonReconstruction | None = None
+    event_reconstruction: HermesTpx3EventReconstruction | None = None
