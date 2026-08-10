@@ -1,6 +1,6 @@
 measurement_info:
   measurement_id: example-tpx3-timewalk-calibration
-  run_number: 1
+  run: timewalk-cal
 
 environment:
   working_directory: data/examples/analysis/timewalk_calibration
