@@ -19,6 +19,9 @@ struct TimingDiagnostics {
 };
 
 struct SummaryJsonContent {
+    std::string measurement_id;
+    std::string run;
+    std::string inputfile;
     UnpackSummary unpack_summary;
     AnchorIndexDiagnostics anchor_diagnostics;
     EpochAssignmentDiagnostics epoch_diagnostics;
