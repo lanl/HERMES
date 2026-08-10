@@ -285,7 +285,7 @@ constexpr std::array<const char*, 6> analysis_directories = {
     "global_timestamps",
     "control_packets",
     "unknownPackets",
-    "logs/unpacker",
+    "logs/unpacking",
 };
 
 constexpr std::array<const char*, 5> parquet_directories = {
@@ -305,8 +305,7 @@ void findExistingOutputFiles(const std::filesystem::path& analysis_directory,
                          summary_path.string());
     }
 
-    const std::string parquet_prefix_with_chip = raw_file_stem + "-chip-";
-    const std::string parquet_prefix_without_chip = raw_file_stem + "-part-";
+    const std::string parquet_prefix = raw_file_stem + "_";
     for (const char* directory_name : parquet_directories) {
         const auto directory = analysis_directory / directory_name;
         if (!std::filesystem::exists(directory)) {
@@ -319,8 +318,7 @@ void findExistingOutputFiles(const std::filesystem::path& analysis_directory,
             }
             const auto filename = entry.path().filename().string();
             if (entry.path().extension() == ".parquet" &&
-                (filename.rfind(parquet_prefix_with_chip, 0) == 0 ||
-                 filename.rfind(parquet_prefix_without_chip, 0) == 0)) {
+                filename.rfind(parquet_prefix, 0) == 0) {
                 errors.push_back("Refusing to overwrite existing Parquet file " +
                                  entry.path().string());
             }
@@ -487,6 +485,8 @@ UnpackResult unpack(std::istream& input) {
 WorkflowResult runTwoPassWorkflow(std::istream& input,
                                   const std::string& source_file_path,
                                   const std::string& analysis_directory,
+                                  const std::string& measurement_id,
+                                  const std::string& run,
                                   const bool overwrite,
                                   const bool time_sort) {
     using Clock = std::chrono::high_resolution_clock;
@@ -496,6 +496,9 @@ WorkflowResult runTwoPassWorkflow(std::istream& input,
 
     WorkflowResult workflow_result;
     workflow_result.analysis_directory = analysis_directory;
+    workflow_result.summary.measurement_id = measurement_id;
+    workflow_result.summary.run = run;
+    workflow_result.summary.inputfile = source_file_path;
 
     const std::string raw_file_stem =
         std::filesystem::path(source_file_path).stem().string();
@@ -506,15 +509,14 @@ WorkflowResult runTwoPassWorkflow(std::istream& input,
     }
 
     const std::string summary_json_file =
-        "logs/unpacker/" + raw_file_stem + "-unpacker-summary.json";
+        "logs/unpacking/" + raw_file_stem + "_unpacker_summary.json";
     const auto summary_path = std::filesystem::path(analysis_directory) /
                               summary_json_file;
 
     try {
         if (overwrite) {
             std::filesystem::remove(summary_path);
-            const std::string parquet_prefix_with_chip = raw_file_stem + "-chip-";
-            const std::string parquet_prefix_without_chip = raw_file_stem + "-part-";
+            const std::string parquet_prefix = raw_file_stem + "_";
             for (const char* directory_name : parquet_directories) {
                 const auto directory =
                     std::filesystem::path(analysis_directory) / directory_name;
@@ -527,8 +529,7 @@ WorkflowResult runTwoPassWorkflow(std::istream& input,
                         continue;
                     }
                     const auto filename = entry.path().filename().string();
-                    if (filename.rfind(parquet_prefix_with_chip, 0) == 0 ||
-                        filename.rfind(parquet_prefix_without_chip, 0) == 0) {
+                    if (filename.rfind(parquet_prefix, 0) == 0) {
                         std::filesystem::remove(entry.path());
                     }
                 }
