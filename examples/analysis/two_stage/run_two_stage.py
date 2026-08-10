@@ -17,7 +17,7 @@ def main(input_yaml_path: Path = DEFAULT_INPUT_YAML_PATH) -> None:
     initial_record = load_hermes_record_from_yaml(input_yaml_path)
 
     # Step 2: Choose a separate path for the completed HERMES record
-    working_directory = initial_record.environment.working_dir.resolved_path
+    working_directory = initial_record.environment.working_directory.resolved_path
     final_record_path = working_directory / "hermes-record_final.yaml"
 
     # Step 3: Run unpacking followed by photon reconstruction
@@ -61,7 +61,8 @@ def main(input_yaml_path: Path = DEFAULT_INPUT_YAML_PATH) -> None:
     print(f"Skipped existing valid reconstruction output: {skipped_count}")
     print(f"Photons: {photon_count}")
     print(f"Rejected clusters: {rejected_count}")
-    print(f"Analysis directory: {final_analysis.analysis_directory}")
+    analysis_directory = final_record.environment.analysis_directory.resolved_path
+    print(f"Analysis directory: {analysis_directory}")
     print(f"Photon output directory: {final_reconstruction.output_directory}")
     print(f"HERMES state file: {final_record_path}")
 
