@@ -3,11 +3,11 @@ measurement_info:
   run_number: 1
 
 environment:
-  working_dir: data/examples/analysis/end_to_end
+  working_directory: data/examples/analysis/end_to_end
+  analysis_directory: analysis
 
 analysis:
   mode: hermes
-  analysis_directory: data/examples/analysis/end_to_end/analysis
   unpacking:
     program:
       name: tpx3-spidr-cpp
