@@ -3,11 +3,11 @@ measurement_info:
   run_number: 1
 
 environment:
-  working_dir: data/examples/analysis/unpacking/multiple_files
+  working_directory: data/examples/analysis/unpacking/multiple_files
+  analysis_directory: analysis
 
 analysis:
   mode: hermes
-  analysis_directory: data/examples/analysis/unpacking/multiple_files/analysis
   resource_limit_percent: 90
   unpacking:
     program:
