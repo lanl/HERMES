@@ -21,7 +21,7 @@ def _record(tmp_path: Path) -> HermesRecord:
     return HermesRecord(
         measurement_info=MeasurementInfo(
             measurement_id="workflow-test",
-            run_number=1,
+            run="test-run",
         ),
         environment=RuntimeEnvironment(
             working_directory=tmp_path,

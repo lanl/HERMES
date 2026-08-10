@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pydantic import Field, field_validator
+from pydantic import Field, ValidationInfo, field_validator
 
 from hermes.state.models.shared_models import JsonObject, StrictBaseModel
 
@@ -9,7 +9,8 @@ class MeasurementInfo(StrictBaseModel):
     """Human and facility metadata needed to identify a measurement."""
 
     measurement_id: str = Field(min_length=1)
-    run_number: int = Field(ge=0)
+    run: str = Field(min_length=1)
+    run_number: int | None = Field(default=None, ge=0)
     beamline: str | None = None
     proposal_id: str | None = None
     image_intensifier_sn: str | None = None
@@ -19,11 +20,11 @@ class MeasurementInfo(StrictBaseModel):
     log_notes: str | None = None
     additional_metadata: JsonObject = Field(default_factory=dict)
 
-    @field_validator("measurement_id")
+    @field_validator("measurement_id", "run")
     @classmethod
-    def strip_measurement_id(cls, value: str) -> str:
+    def strip_label(cls, value: str, info: ValidationInfo) -> str:
         stripped = value.strip()
         if not stripped:
-            msg = "measurement_id must not be blank"
+            msg = f"{info.field_name} must not be blank"
             raise ValueError(msg)
         return stripped

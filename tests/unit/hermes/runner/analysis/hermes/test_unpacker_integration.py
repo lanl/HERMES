@@ -64,7 +64,7 @@ def test_real_cpp_unpacker_handles_two_inputs_and_skips_completed_files(
         HermesRecord(
             measurement_info=MeasurementInfo(
                 measurement_id="real-tpx3-unpacker",
-                run_number=1,
+                run="test-run",
             ),
             environment=RuntimeEnvironment(
                 working_directory=tmp_path,

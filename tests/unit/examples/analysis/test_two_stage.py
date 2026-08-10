@@ -85,7 +85,7 @@ def test_main_runs_two_files_and_saves_final_record_separately(
         f"""
 measurement_info:
   measurement_id: two-stage-test
-  run_number: 1
+  run: test-run
 environment:
   working_directory: {working_directory}
   analysis_directory: {analysis_directory}

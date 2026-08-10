@@ -28,7 +28,7 @@ def test_record_without_analysis_needs_no_analysis_directory(
     tmp_path: Path,
 ) -> None:
     record = HermesRecord(
-        measurement_info=MeasurementInfo(measurement_id="LC-1", run_number=1),
+        measurement_info=MeasurementInfo(measurement_id="LC-1", run="test-run"),
         environment=RuntimeEnvironment(working_directory=tmp_path),
         analysis=None,
     )
@@ -45,7 +45,7 @@ def test_hermes_record_serializes_paths_datetimes_and_mode_tags(tmp_path: Path) 
     record = HermesRecord(
         measurement_info=MeasurementInfo(
             measurement_id=" LC-20231023 ",
-            run_number=1,
+            run="test-run",
             beamline="DCS",
         ),
         environment=RuntimeEnvironment(
@@ -108,7 +108,7 @@ def test_hermes_record_serializes_serval_requested_applied_and_calibration(
         file_hash=HASH,
     )
     record = HermesRecord(
-        measurement_info=MeasurementInfo(measurement_id="LC-20231024", run_number=2),
+        measurement_info=MeasurementInfo(measurement_id="LC-20231024", run="test-run"),
         environment=RuntimeEnvironment(working_directory=tmp_path / "run-002"),
         acquisition=ServalAcquisitionState(
             serval_environment=ServalEnvironment(serval_url="http://localhost:8080"),

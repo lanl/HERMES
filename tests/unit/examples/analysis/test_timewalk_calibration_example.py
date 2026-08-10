@@ -82,7 +82,7 @@ def test_main_runs_workflow_and_calibrates(
         f"""
 measurement_info:
   measurement_id: timewalk-test
-  run_number: 1
+  run: test-run
 environment:
   working_directory: {working_directory}
   analysis_directory: {analysis_directory}

@@ -1,6 +1,6 @@
 measurement_info:
   measurement_id: example-empir
-  run_number: 1
+  run: empir
 
 environment:
   working_directory: data/examples/analysis/empir

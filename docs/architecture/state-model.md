@@ -89,7 +89,7 @@ defaults:
 ```yaml
 measurement_info:
   measurement_id: example-run
-  run_number: 1
+  run: example
 
 environment: {}
 ```
@@ -103,7 +103,7 @@ and values that intentionally differ from defaults:
 ```yaml
 measurement_info:
   measurement_id: example-tpx3-unpacking
-  run_number: 1
+  run: single-file
 
 environment:
   working_dir: data/examples/analysis/unpacking/single_file
@@ -154,8 +154,9 @@ rejected. Saving the HERMES record always writes the expanded explicit
 ### Current required/default review
 
 - `HermesRecord.measurement_info` and `HermesRecord.environment` are required.
-- `MeasurementInfo.measurement_id` and `MeasurementInfo.run_number` are
-  required. Its other fields have defaults.
+- `MeasurementInfo.measurement_id` and `MeasurementInfo.run` (the run label)
+  are required. Its other fields, including the optional `run_number`, have
+  defaults.
 - Every `RuntimeEnvironment` field has a default. Its `working_dir` defaults to
   the current directory and is marked required and resolved.
 - `HermesTpx3AnalysisState.unpacker_program`, `analysis_directory`, and
@@ -269,7 +270,8 @@ MeasurementInfo should capture all relevant metadata about the measurement, incl
 ```python
 MeasurementInfo
   measurement_id: str
-  run_number: int
+  run: str
+  run_number: int | None
   beamline: str | None
   proposal_id: str | None
   image_intensifier_sn: str | None

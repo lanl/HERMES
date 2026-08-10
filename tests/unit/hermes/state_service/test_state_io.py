@@ -30,7 +30,7 @@ NOW = datetime(2026, 5, 5, 12, 0, tzinfo=timezone.utc)
 PARTIAL_HERMES_ANALYSIS_YAML = """
 measurement_info:
   measurement_id: example-tpx3-unpacking
-  run_number: 1
+  run: test-run
 environment:
   working_directory: data/examples/analysis/unpacker
   analysis_directory: analysis
@@ -54,7 +54,7 @@ def _example_record(tmp_path: Path) -> HermesRecord:
     return HermesRecord(
         measurement_info=MeasurementInfo(
             measurement_id="LC-20260505",
-            run_number=1,
+            run="test-run",
             beamline="DCS",
         ),
         environment=RuntimeEnvironment(
@@ -121,7 +121,7 @@ def test_load_partial_yaml_applies_record_and_environment_defaults(
         """
 measurement_info:
   measurement_id: example-run
-  run_number: 1
+  run: test-run
 environment: {}
 """,
         encoding="utf-8",
@@ -202,7 +202,7 @@ def test_load_file_list_and_save_expanded_raw_tpx3_files(
         f"""
 measurement_info:
   measurement_id: file-list-run
-  run_number: 1
+  run: test-run
 environment:
   working_directory: {tmp_path}
   analysis_directory: analysis
@@ -285,7 +285,7 @@ def test_load_hermes_record_from_yaml_requires_environment(tmp_path: Path) -> No
         """
 measurement_info:
   measurement_id: LC-20260505
-  run_number: 1
+  run: test-run
 """,
         encoding="utf-8",
     )
@@ -323,7 +323,7 @@ def test_load_hermes_record_from_yaml_rejects_unknown_or_invalid_fields(
         yaml_content = f"""
 measurement_info:
   measurement_id: LC-20260505
-  run_number: 1
+  run: test-run
 environment: {{}}
 {field}: {value}
 """
@@ -331,6 +331,7 @@ environment: {{}}
         yaml_content = f"""
 measurement_info:
   measurement_id: LC-20260505
+  run: test-run
   {field}: {value}
 environment: {{}}
 """

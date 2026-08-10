@@ -67,7 +67,7 @@ def _record(tmp_path: Path) -> HermesRecord:
     return HermesRecord(
         measurement_info=MeasurementInfo(
             measurement_id="LC-20260505",
-            run_number=7,
+            run="test-run",
         ),
         environment=RuntimeEnvironment(working_directory=tmp_path / "run-007"),
     )
@@ -95,7 +95,7 @@ def test_state_logger_logs_initial_state_record(tmp_path: Path) -> None:
     assert fields["domain"] == "state"
     assert fields["run_id"] == "run-007"
     assert fields["measurement_id"] == "LC-20260505"
-    assert fields["run_number"] == 7
+    assert fields["run"] == "test-run"
     assert fields["record"]["measurement_info"]["measurement_id"] == "LC-20260505"
 
 

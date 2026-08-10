@@ -1,6 +1,6 @@
 measurement_info:
   measurement_id: example-tpx3-two-stage-analysis
-  run_number: 1
+  run: two-stage
 
 environment:
   working_directory: data/examples/analysis/two_stage

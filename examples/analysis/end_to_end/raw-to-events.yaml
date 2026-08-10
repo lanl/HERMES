@@ -1,6 +1,6 @@
 measurement_info:
   measurement_id: example-tpx3-end-to-end
-  run_number: 1
+  run: raw-to-events
 
 environment:
   working_directory: data/examples/analysis/end_to_end

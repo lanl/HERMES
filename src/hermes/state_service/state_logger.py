@@ -21,7 +21,7 @@ class StateLogger:
     def log_initial_state(self, record: HermesRecord) -> None:
         self._logger.info(
             "Initialized HERMES Record for measurement {measurement_id}, "
-            "run {run_number}",
+            "run {run}",
             event_type="state.initial_record",
             record=_serialize_record(record),
             **_record_context(record),
@@ -93,7 +93,7 @@ def _serialize_record(record: HermesRecord) -> dict[str, Any]:
 def _record_context(record: HermesRecord) -> dict[str, Any]:
     return {
         "measurement_id": record.measurement_info.measurement_id,
-        "run_number": record.measurement_info.run_number,
+        "run": record.measurement_info.run,
     }
 
 

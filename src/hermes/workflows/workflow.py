@@ -24,10 +24,10 @@ class Workflow:
         )
         _WORKFLOW_LOGGER.info(
             "Initialized HERMES workflow for measurement {measurement_id}, "
-            "run {run_number}",
+            "run {run}",
             event_type="workflow.initialized",
             measurement_id=record.measurement_info.measurement_id,
-            run_number=record.measurement_info.run_number,
+            run=record.measurement_info.run,
         )
 
     def run_analysis(self, *, overwrite: bool = False) -> list[FileReference]:

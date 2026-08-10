@@ -1,6 +1,6 @@
 measurement_info:
   measurement_id: example-tpx3-unpacking-multiple-files
-  run_number: 1
+  run: multi-file
 
 environment:
   working_directory: data/examples/analysis/unpacking/multiple_files

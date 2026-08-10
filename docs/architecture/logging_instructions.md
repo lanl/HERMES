@@ -138,7 +138,7 @@ across domains:
 
 ```text
 measurement_id
-run_id or run_number
+run_id or run
 workflow_step
 acquisition_mode
 analysis_mode, when relevant

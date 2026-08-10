@@ -1,6 +1,6 @@
 measurement_info:
   measurement_id: example-tpx3-event-reconstruction
-  run_number: 1
+  run: photon-to-event
 
 environment:
   working_directory: data/examples/analysis/event_reconstruction
