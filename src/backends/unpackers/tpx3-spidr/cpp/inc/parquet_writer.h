@@ -24,10 +24,10 @@ struct ParquetCategoryFiles {
 };
 
 struct ParquetWriterDiagnostics {
-    ParquetCategoryFiles pixel_hits{"pixelHits", 0, {}};
-    ParquetCategoryFiles tdc_triggers{"tdcTriggers", 0, {}};
-    ParquetCategoryFiles global_timestamps{"globalTimestamps", 0, {}};
-    ParquetCategoryFiles control_packets{"controlPackets", 0, {}};
+    ParquetCategoryFiles pixel_hits{"pixel_hits", 0, {}};
+    ParquetCategoryFiles tdc_triggers{"tdc_triggers", 0, {}};
+    ParquetCategoryFiles global_timestamps{"global_timestamps", 0, {}};
+    ParquetCategoryFiles control_packets{"control_packets", 0, {}};
     ParquetCategoryFiles unknown_packets{"unknownPackets", 0, {}};
     std::vector<std::string> errors;
 };
