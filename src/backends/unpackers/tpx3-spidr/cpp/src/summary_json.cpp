@@ -34,6 +34,13 @@ std::string generateSummaryJson(const SummaryJsonContent& content) {
                   total_seconds / 1'000'000.0
             : 0.0;
 
+    j["measurement_info"] = {
+        {"measurement_id", content.measurement_id},
+        {"run", content.run}
+    };
+
+    j["inputfile"] = content.inputfile;
+
     j["unpacking"] = {
         {"bytes_read", content.unpack_summary.bytes_read},
         {"chunks_read", content.unpack_summary.chunks_read},
@@ -75,10 +82,10 @@ std::string generateSummaryJson(const SummaryJsonContent& content) {
              : "external_merge"},
         {"memory_budget_bytes", content.sorting_diagnostics.memory_budget_bytes},
         {"estimated_memory_bytes", content.sorting_diagnostics.estimated_memory_bytes},
-        {"temporary_runs_created", content.sorting_diagnostics.temporary_runs_created}
+        {"sorting_time_seconds", content.timing_diagnostics.sorting_seconds}
     };
 
-    j["parquet"] = {
+    j["output_parquet"] = {
         {"pixel_data", categoryJson(content.writer_diagnostics.pixel_hits)},
         {"tdc_timestamps", categoryJson(content.writer_diagnostics.tdc_triggers)},
         {"heartbeat_packets",
