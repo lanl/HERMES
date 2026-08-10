@@ -1,9 +1,8 @@
 """Runs the C++ photon reconstruction binary over unpacked pixel data.
 
 Reconstruction is 1:1: each pixel Parquet file produces one photon file at the
-matching path (input basename kept). plan_reconstruction decides which files
-still need work, execute_reconstruction runs the binary on one file and reads
-its summary JSON for the per-file counts.
+matching path (input basename kept). execute_reconstruction runs the binary on
+one file and reads its summary JSON for the per-file counts.
 """
 
 from __future__ import annotations
@@ -13,7 +12,6 @@ import subprocess
 import tempfile
 from pathlib import Path
 from time import perf_counter
-from typing import Literal, TypeAlias
 
 from loguru import logger
 from pydantic import ValidationError
@@ -25,9 +23,6 @@ from hermes.state.models.analysis.hermes_tpx3_spidr import (
     Tpx3PhotonReconstructionSummary,
 )
 from hermes.state.models.shared_models import FileReference
-
-ContinuationAction: TypeAlias = Literal["run", "skip"]
-ReconstructionPlan: TypeAlias = list[tuple[FileReference, ContinuationAction]]
 
 _LOG_TEXT_LIMIT = 4_000
 _ANALYSIS_LOGGER = logger.bind(
@@ -76,12 +71,29 @@ def resolve_pixel_files(
 
 
 def derive_output_path(
-    reconstruction: Tpx3PhotonReconstruction,
+    analysis_root: Path,
     input_file: FileReference,
 ) -> Path:
-    """Return the photon file path for one pixel file (input basename kept)."""
-    assert reconstruction.output_directory is not None  # derived on the state
-    return reconstruction.output_directory / f"{input_file.path.stem}.parquet"
+    """Return the photon file path for one pixel file (input basename kept).
+
+    Photon files go in a ``photons`` directory the reconstruction stage makes
+    under the analysis directory.
+    """
+    return analysis_root / "photons" / f"{input_file.path.stem}.parquet"
+
+
+def check_previous_reconstructed_file(
+    analysis_root: Path,
+    input_file: FileReference,
+) -> bool:
+    """Return True when this pixel file was already reconstructed before.
+
+    The binary writes a per-file reconstruction summary on every success
+    (including zero-photon runs that produce no photon parquet), so its presence
+    means the file is already done.
+    """
+    output_file = derive_output_path(analysis_root, input_file)
+    return derive_summary_path(output_file).is_file()
 
 
 def derive_summary_path(output_file: Path) -> Path:
@@ -118,35 +130,9 @@ def derive_reconstruction_command(
     return command
 
 
-def plan_reconstruction(
-    analysis: HermesTpx3AnalysisState,
-    analysis_root: Path,
-    *,
-    overwrite: bool = False,
-) -> ReconstructionPlan:
-    """Decide, per pixel file, whether to "run" reconstruction or "skip" it.
-
-    With overwrite every file runs. Otherwise a file is skipped only when its
-    reconstruction summary already exists, which the binary writes on every
-    success (including zero-photon runs that produce no photon parquet).
-    """
-    reconstruction = _require_reconstruction(analysis)
-    _validate_program_and_algorithm(reconstruction)
-
-    plan: ReconstructionPlan = []
-    for input_file in resolve_pixel_files(analysis, analysis_root):
-        summary_path = derive_summary_path(
-            derive_output_path(reconstruction, input_file)
-        )
-        if not overwrite and summary_path.exists():
-            plan.append((input_file, "skip"))
-        else:
-            plan.append((input_file, "run"))
-    return plan
-
-
 def execute_reconstruction(
     analysis: HermesTpx3AnalysisState,
+    analysis_root: Path,
     input_file: FileReference,
     *,
     overwrite: bool = False,
@@ -157,7 +143,7 @@ def execute_reconstruction(
     an error, or leaves no readable summary.
     """
     reconstruction = _require_reconstruction(analysis)
-    output_file = derive_output_path(reconstruction, input_file)
+    output_file = derive_output_path(analysis_root, input_file)
     summary_path = derive_summary_path(output_file)
     started = perf_counter()
 
@@ -311,7 +297,7 @@ def _require_reconstruction(
     return reconstruction
 
 
-def _validate_program_and_algorithm(
+def validate_program_and_algorithm(
     reconstruction: Tpx3PhotonReconstruction,
 ) -> None:
     """Check the algorithm is supported and the binary exists before running."""
