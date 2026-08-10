@@ -16,7 +16,7 @@ report their own errors.
 
 - `timewalk_config.yaml` — the `HermesRecord` describing the unpacking stage
   (unpacker program, analysis directory, and raw TPX3 inputs).
-- `clustering_settings.yaml` — the `Tpx3PhotonClusteringSettings` used to select
+- `clustering_settings.yaml` — the `HermesTpx3PhotonClusteringSettings` used to select
   in-cluster pixel pairs for the fit.
 
 By default the example unpacks `tests/data/Example_1kHz_5frames.tpx3`.
