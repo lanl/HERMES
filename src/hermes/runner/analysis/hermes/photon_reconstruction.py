@@ -55,13 +55,13 @@ def resolve_pixel_files(
     """Return the pixel Parquet files reconstruction should run over.
 
     ``pixel_parquet_files == "auto"`` gathers every ``*.parquet`` under the
-    unpacking stage's ``pixelHits`` directory; an explicit list is used as-is.
+    unpacking stage's ``pixel_hits`` directory; an explicit list is used as-is.
     """
     reconstruction = _require_reconstruction(analysis)
     if reconstruction.pixel_parquet_files != "auto":
         return list(reconstruction.pixel_parquet_files)
 
-    pixel_directory = analysis_root / "pixelHits"
+    pixel_directory = analysis_root / "pixel_hits"
     if not pixel_directory.is_dir():
         return []
     return [
