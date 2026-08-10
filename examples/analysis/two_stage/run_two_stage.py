@@ -63,7 +63,7 @@ def main(input_yaml_path: Path = DEFAULT_INPUT_YAML_PATH) -> None:
     print(f"Rejected clusters: {rejected_count}")
     analysis_directory = final_record.environment.analysis_directory.resolved_path
     print(f"Analysis directory: {analysis_directory}")
-    print(f"Photon output directory: {final_reconstruction.output_directory}")
+    print(f"Photon output directory: {analysis_directory / 'photons'}")
     print(f"HERMES state file: {final_record_path}")
 
 
