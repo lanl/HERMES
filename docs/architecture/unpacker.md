@@ -26,7 +26,7 @@ The Python runner should call the unpacker with the raw TPX3 file and the
 shared analysis directory:
 
 ```text
-<executable> --input <input.tpx3> [--output <analysis_directory>] [--overwrite] [--time-sort]
+<executable> --input <input.tpx3> --output <analysis_directory> --measurement-id <measurement-id> --run <run> [--overwrite] [--time-sort]
 ```
 
 The unpacker accepts exactly these options and no others:
@@ -37,13 +37,20 @@ The unpacker accepts exactly these options and no others:
   creates all category directories and output filenames from it. Optional; when
   omitted, the unpacker prints summary statistics only and writes no files. The
   HERMES analysis workflow always supplies it. Implemented.
+- `--measurement-id <measurement-id>` — the measurement identifier. The unpacker
+  copies it into the summary JSON so each summary names the measurement it
+  belongs to. Required when `--output` is given.
+- `--run <run>` — the run label within the measurement. The unpacker copies it
+  into the summary JSON next to the measurement identifier. Required when
+  `--output` is given.
 - `--overwrite` — redo the unpacking or reconstruction and replace existing
   output files instead of stopping. Optional, defaults to false. Without it the
   unpacker preserves existing files (see below). Implemented.
 - `--time-sort` — sort output by canonical timestamp. Optional, defaults to
   false. Not implemented yet.
 
-Do not add any option outside this list. In particular, do not add separate
+Do not add any option outside this list. The measurement identifier and run
+label are the only run-identity inputs; in particular, do not add separate
 command options for category directories, a filename prefix, or a summary
 filename; the unpacker creates those from `--output`.
 
@@ -100,39 +107,46 @@ The directory names and the corresponding Parquet data category names are:
 
 ## Parquet Filenames
 
-Pixel data can come from more than one chip, so its filenames carry the raw TPX3
-filename stem, chip index, and part index:
+Filenames join the raw TPX3 filename stem, a descriptive data label, and a
+five-digit part index with underscores:
 
 ```text
-<raw-file-stem>-chip-<chip-index>-part-<five-digit-part-index>.parquet
+<raw-file-stem>_<data-label>_<five-digit-part-index>.parquet
 ```
 
-For example, the first pixel-data part for chip 0 from
-`DT_2p0V_000000.tpx3` is:
+Pixel data can come from more than one chip, so its label carries the chip
+index:
 
 ```text
-analysis/pixel_hits/DT_2p0V_000000-chip-0-part-00000.parquet
+<raw-file-stem>_chip_<chip-index>_pixels_<five-digit-part-index>.parquet
 ```
 
-The other categories (`tdc_triggers`, `global_timestamps`, `control_packets`, and
-`unknownPackets`) are not associated with a chip, so their filenames omit the
-chip index and carry only the raw TPX3 filename stem and part index:
+For example, the first pixel-data part for chip 0 from `DT_2p0V_000000.tpx3` is:
 
 ```text
-<raw-file-stem>-part-<five-digit-part-index>.parquet
+analysis/pixel_hits/DT_2p0V_000000_chip_0_pixels_00000.parquet
 ```
+
+The other categories are not associated with a chip, so their label is just the
+category name:
+
+| Directory | Data label |
+| --- | --- |
+| `tdc_triggers/` | `tdc_triggers` |
+| `global_timestamps/` | `global_timestamps` |
+| `control_packets/` | `control_packets` |
+| `unknownPackets/` | `unrecognized_packets` |
 
 For example, the first TDC-timestamps part from `DT_2p0V_000000.tpx3` is:
 
 ```text
-analysis/tdc_triggers/DT_2p0V_000000-part-00000.parquet
+analysis/tdc_triggers/DT_2p0V_000000_tdc_triggers_00000.parquet
 ```
 
 Part numbers start at zero independently for each raw file, data category, and
-(for pixel data) chip. The category name does not need to be repeated in the
-filename because it is already stated by the parent directory. When a chip index
-is present it should not be repeated in the rows. When a schema includes
-`packet_index`, it is the packet index within its chunk.
+(for pixel data) chip. The descriptive label makes each file readable on its
+own; when a chip index is present it should not be repeated in the rows. When a
+schema includes `packet_index`, it is the packet index within its chunk.
 
 Raw TPX3 filename stems must be unique within one measurement. The HERMES
 runner must reject duplicate stems before launching any unpacker so one input
@@ -279,26 +293,35 @@ files.
 
 ## Summary JSON File
 
-Each raw TPX3 file has one summary JSON file in `analysis/logs/`:
+Each raw TPX3 file has one summary JSON file in `analysis/logs/unpacking/`:
 
 ```text
-<raw-file-stem>-unpacker-summary.json
+<raw-file-stem>_unpacker_summary.json
 ```
 
 For example:
 
 ```text
-analysis/logs/DT_2p0V_000000-unpacker-summary.json
+analysis/logs/unpacking/DT_2p0V_000000_unpacker_summary.json
 ```
 
 The summary JSON file is the sole saved detailed result for that raw TPX3 file.
 It contains information calculated by the unpacker, including the raw byte
-count. It does not repeat the unpacker program, raw input path, shared analysis
-directory, summary filename, or overall HERMES unpacking status.
+count. It opens with the measurement identifier and run label (from
+`--measurement-id` and `--run`) and the raw input path, so each summary names
+the measurement, run, and file it belongs to. It does not repeat the unpacker
+program, shared analysis directory, summary filename, or overall HERMES
+unpacking status.
 
 The summary should have this structure:
 
 ```yaml
+measurement_info:
+  measurement_id: harness-01-unpacking
+  run: 1kHz-testing
+
+inputfile: tests/data/tpx3/Example_1kHz_5frames.tpx3
+
 unpacking:
   bytes_read: 0
   chunks_read: 0
@@ -330,14 +353,14 @@ sorting:
   strategy: in_memory
   memory_budget_bytes: 0
   estimated_memory_bytes: 0
-  temporary_runs_created: 0
+  sorting_time_seconds: 0.0
 
-parquet:
+output_parquet:
   pixel_data:
     row_count: 1200000
     files:
-      - pixel_hits/DT_2p0V_000000-chip-0-part-00000.parquet
-      - pixel_hits/DT_2p0V_000000-chip-0-part-00001.parquet
+      - data/expt/1kHz-testing/analysis/pixel_hits/DT_2p0V_000000_chip_0_pixels_00000.parquet
+      - data/expt/1kHz-testing/analysis/pixel_hits/DT_2p0V_000000_chip_0_pixels_00001.parquet
   tdc_timestamps:
     row_count: 0
     files: []
@@ -368,9 +391,10 @@ processing_times_seconds:
 All five category entries are required, including categories with no rows. The
 file list contains only final Parquet files written for the raw TPX3 file named
 by the summary filename; it must not list temporary sorting files or files from
-a different input. Paths are relative to the shared analysis directory and
-begin with their category directory, so the directory is not repeated in
-another field. The file count is calculated from `len(files)` and is not saved.
+a different input. Each path is the `--output` directory joined with the
+category directory and filename, exactly as `--output` was given, so a reader
+can open the file directly from the working directory. The file count is
+calculated from `len(files)` and is not saved.
 
 Unpacked packet counts and Parquet row counts both remain because they describe
 different processing stages. An unpacked packet may be rejected before a
