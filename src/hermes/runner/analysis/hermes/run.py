@@ -182,15 +182,17 @@ def run_hermes_analysis(
             event_type="analysis.hermes.invalid_mode",
             error=error,
             measurement_id=state.measurement_info.measurement_id,
-            run_number=state.measurement_info.run_number,
+            run=state.measurement_info.run,
             expected_analysis_mode="hermes",
             actual_analysis_mode=getattr(analysis, "mode", None),
         )
         raise HermesAnalysisError(error)
 
-analysis_root = state.environment.analysis_directory.resolved_path
-if analysis_root is None:
-    raise HermesAnalysisError("environment.analysis_directory must be set to run HERMES analysis")
+    analysis_root = state.environment.analysis_directory.resolved_path
+    if analysis_root is None:
+        raise HermesAnalysisError(
+            "environment.analysis_directory must be set to run HERMES analysis"
+        )
 
     unpacked_files: list[FileReference] = []
     try:
