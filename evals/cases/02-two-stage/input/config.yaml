@@ -21,16 +21,13 @@ analysis:
       executable_path: build/backends/tpx3-spidr/hermes-tpx3-spidr
     tpx3_files:
       - path: tests/data/tpx3/Tantalum_IronPowder.tpx3
-    unpacked_output_directory: data/02-two-stage/tantalum-ironpowder/analysis
 
   photon_reconstruction:
     program:
       name: photon-clusterer-cpp
       executable_path: build/backends/photon-clusterer/hermes-photon-clusterer
       version: null
-    pixel_data_directory: data/02-two-stage/tantalum-ironpowder/analysis/pixel_hits
     pixel_files: auto
-    photon_output_directory: data/02-two-stage/tantalum-ironpowder/analysis/photons
     clustering_algorithm:
       name: connected_components
       save_photon_pixels: true
