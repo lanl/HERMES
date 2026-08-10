@@ -9,11 +9,16 @@ namespace {
 void printHelp(const char* program_name) {
     std::cout << "HERMES TPX3 SPIDR Unpacker v0.1.0\n\n";
     std::cout << "Usage: " << program_name
-              << " --input <input.tpx3> [--output <analysis_directory>]"
+              << " --input <input.tpx3> [--output <analysis_directory>"
+                 " --measurement-id <id> --run <run>]"
                  " [--overwrite] [--time-sort <true|false>]\n\n";
     std::cout << "Options:\n";
     std::cout << "  --input <input.tpx3>          Input TPX3 raw data file (required)\n";
     std::cout << "  --output <analysis_directory> Shared analysis directory (optional)\n";
+    std::cout << "  --measurement-id <id>         Measurement identifier copied into the\n";
+    std::cout << "                                summary JSON (required with --output)\n";
+    std::cout << "  --run <run>                   Run label copied into the summary JSON\n";
+    std::cout << "                                (required with --output)\n";
     std::cout << "  --overwrite                   Overwrite existing summary and Parquet files\n";
     std::cout << "  --time-sort <true|false>      Sort rows by timestamp (default: true).\n";
     std::cout << "                                false leaves rows in source packet order\n";
@@ -31,7 +36,7 @@ void printHelp(const char* program_name) {
     std::cout << "      - global_timestamps/   Global timestamp anchors\n";
     std::cout << "      - control_packets/     Control packets\n";
     std::cout << "      - unknownPackets/     Unknown packets\n";
-    std::cout << "      - logs/unpacker/      Input-specific summary JSON\n\n";
+    std::cout << "      - logs/unpacking/     Input-specific summary JSON\n\n";
     std::cout << "Examples:\n";
     std::cout << "  # Print summary only\n";
     std::cout << "  " << program_name << " --input data.tpx3\n\n";
@@ -50,8 +55,12 @@ int main(const int argc, char* argv[]) {
     bool time_sort = true;
     std::string input_path;
     std::string output_dir;
+    std::string measurement_id;
+    std::string run;
     bool have_input = false;
     bool have_output = false;
+    bool have_measurement_id = false;
+    bool have_run = false;
 
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
@@ -94,6 +103,24 @@ int main(const int argc, char* argv[]) {
             have_output = true;
             continue;
         }
+        if (arg == "--measurement-id") {
+            if (i + 1 >= argc) {
+                std::cerr << "Error: --measurement-id requires a value\n";
+                return 2;
+            }
+            measurement_id = argv[++i];
+            have_measurement_id = true;
+            continue;
+        }
+        if (arg == "--run") {
+            if (i + 1 >= argc) {
+                std::cerr << "Error: --run requires a value\n";
+                return 2;
+            }
+            run = argv[++i];
+            have_run = true;
+            continue;
+        }
         std::cerr << "Error: unrecognized argument: " << arg << "\n\n";
         std::cerr << "Try '" << argv[0] << " --help' for more information.\n";
         return 2;
@@ -118,8 +145,15 @@ int main(const int argc, char* argv[]) {
         return result.summary.errors.empty() ? 0 : 1;
     }
 
+    if (!have_measurement_id || !have_run) {
+        std::cerr << "Error: --measurement-id and --run are required with "
+                     "--output\n";
+        return 2;
+    }
+
     const auto result = hermes_tpx3_spidr::runTwoPassWorkflow(
-        input, input_path, output_dir, overwrite, time_sort);
+        input, input_path, output_dir, measurement_id, run, overwrite,
+        time_sort);
 
     if (!result.success) {
         std::cerr << "Workflow failed with errors:\n";
