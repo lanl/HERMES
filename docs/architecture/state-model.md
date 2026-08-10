@@ -637,8 +637,6 @@ Tpx3SpidrUnpackerProgram
 Tpx3PhotonReconstructionConfiguration
   clustering_algorithm: connected_components | dbscan
   program: PhotonReconstructorProgram
-  pixel_data_directory: Path
-  photon_output_directory: Path
   settings: Tpx3PhotonClusteringSettings
 
 PhotonReconstructorProgram
@@ -688,11 +686,9 @@ percentage is saved in the HERMES YAML file, making the resource limit explicit
 and repeatable.
 
 Photon reconstruction is omitted when only unpacking is requested. When it is
-present, `pixel_data_directory` must equal
-`<analysis_directory>/pixel_hits` and `photon_output_directory` must equal
-`<analysis_directory>/photons`. Keeping the paths explicit makes an
-analysis-only HERMES state readable, while validation prevents two directory
-settings from disagreeing.
+present, the reconstruction stage reads pixel-hit Parquet from
+`<analysis_directory>/pixel_hits` and writes photon Parquet to
+`<analysis_directory>/photons`, both derived from `analysis_directory`.
 
 The first implementation accepts only
 `clustering_algorithm="connected_components"`. The `"dbscan"` value is
