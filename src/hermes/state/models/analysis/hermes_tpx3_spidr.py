@@ -465,7 +465,6 @@ class Tpx3UnpackingRuntimeOptions(StrictBaseModel):
 class Tpx3Unpacking(StrictBaseModel):
     program: BinaryProgram
     tpx3_files: list[FileReference] = Field(min_length=1)
-    output_directory: Path | None = None
     runtime_options: Tpx3UnpackingRuntimeOptions = Field(
         default_factory=Tpx3UnpackingRuntimeOptions
     )
@@ -499,7 +498,6 @@ class Tpx3PhotonReconstruction(StrictBaseModel):
     # "auto" gathers pixel files from the unpacking stage's output; a list names
     # specific pixelHits Parquet files to reconstruct.
     pixel_parquet_files: Literal["auto"] | list[FileReference] = "auto"
-    output_directory: Path | None = None
     clustering_algorithm: ClusteringAlgorithm = "connected_components"
     settings: Tpx3PhotonClusteringSettings
     runtime_options: Tpx3PhotonReconstructionRuntimeOptions = Field(
@@ -531,7 +529,6 @@ class Tpx3EventReconstruction(StrictBaseModel):
     # "auto" gathers photon files from the photon reconstruction stage's output;
     # a list names specific photon_events Parquet files to reconstruct.
     photon_parquet_files: Literal["auto"] | list[FileReference] = "auto"
-    output_directory: Path | None = None
     clustering_algorithm: ClusteringAlgorithm = "connected_components"
     settings: Tpx3EventReconstructionSettings
     runtime_options: Tpx3EventReconstructionRuntimeOptions = Field(
@@ -563,27 +560,9 @@ class Tpx3EventReconstruction(StrictBaseModel):
 
 class HermesTpx3AnalysisState(StrictBaseModel):
     mode: Literal["hermes"] = "hermes"
-    analysis_directory: Path
     resource_limit_percent: int = Field(default=90, ge=1, le=100)
     # Optional so reconstruction can run on its own when unpacking is already
     # done and the pixel/photon files it needs are already on disk.
     unpacking: Tpx3Unpacking | None = None
     photon_reconstruction: Tpx3PhotonReconstruction | None = None
     event_reconstruction: Tpx3EventReconstruction | None = None
-
-    @model_validator(mode="after")
-    def derive_output_directories(self) -> HermesTpx3AnalysisState:
-        if self.unpacking is not None and self.unpacking.output_directory is None:
-            self.unpacking.output_directory = self.analysis_directory
-        reconstruction = self.photon_reconstruction
-        if reconstruction is not None and reconstruction.output_directory is None:
-            reconstruction.output_directory = self.analysis_directory / "photons"
-        event_reconstruction = self.event_reconstruction
-        if (
-            event_reconstruction is not None
-            and event_reconstruction.output_directory is None
-        ):
-            event_reconstruction.output_directory = (
-                self.analysis_directory / "events"
-            )
-        return self
