@@ -55,6 +55,7 @@ class HermesReconstructionOutputError(HermesReconstructionPreflightError):
 
 def resolve_pixel_files(
     analysis: HermesTpx3AnalysisState,
+    analysis_root: Path,
 ) -> list[FileReference]:
     """Return the pixel Parquet files reconstruction should run over.
 
@@ -65,7 +66,7 @@ def resolve_pixel_files(
     if reconstruction.pixel_parquet_files != "auto":
         return list(reconstruction.pixel_parquet_files)
 
-    pixel_directory = analysis.analysis_directory / "pixelHits"
+    pixel_directory = analysis_root / "pixelHits"
     if not pixel_directory.is_dir():
         return []
     return [
@@ -119,6 +120,7 @@ def derive_reconstruction_command(
 
 def plan_reconstruction(
     analysis: HermesTpx3AnalysisState,
+    analysis_root: Path,
     *,
     overwrite: bool = False,
 ) -> ReconstructionPlan:
@@ -132,7 +134,7 @@ def plan_reconstruction(
     _validate_program_and_algorithm(reconstruction)
 
     plan: ReconstructionPlan = []
-    for input_file in resolve_pixel_files(analysis):
+    for input_file in resolve_pixel_files(analysis, analysis_root):
         summary_path = derive_summary_path(
             derive_output_path(reconstruction, input_file)
         )
