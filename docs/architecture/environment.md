@@ -50,7 +50,7 @@ raw_data_directory.required = false
 analysis_directory.required = false
 log_directory.required = false
 preview_directory.required = false
-config_directory.required = false
+config_file.required = false
 ```
 
 A directory that is not marked required may remain unresolved in a partially
