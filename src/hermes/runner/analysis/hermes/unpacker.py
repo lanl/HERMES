@@ -36,11 +36,11 @@ _ANALYSIS_LOGGER = logger.bind(
 
 
 class HermesTpx3Error(Exception):
-    """Base exception for HERMES TPX3 unpacking failures."""
+    """Base exception for HERMES TPX3 SPIDR unpacking failures."""
 
 
 class HermesTpx3PreflightError(HermesTpx3Error):
-    """Raised when HERMES cannot safely start or continue TPX3 unpacking."""
+    """Raised when HERMES cannot safely start or continue unpacking."""
 
 
 class HermesTpx3ExecutionError(HermesTpx3Error):
@@ -65,6 +65,7 @@ def derive_summary_path(
 
 def derive_unpacker_command(
     analysis: HermesTpx3AnalysisState,
+    analysis_root: Path,
     raw_file: FileReference,
     *,
     overwrite: bool = False,
@@ -74,53 +75,13 @@ def derive_unpacker_command(
         "--input",
         str(raw_file.path),
         "--output",
-        str(analysis.unpacking.output_directory),
+        str(analysis_root),
     ]
     if overwrite:
         command.append("--overwrite")
     if not analysis.unpacking.runtime_options.time_sort:
         command.extend(["--time-sort", "false"])
     return command
-
-
-def plan_unpacking(
-    analysis: HermesTpx3AnalysisState,
-    analysis_root: Path,
-    *,
-    overwrite: bool = False,
-) -> UnpackingPlan:
-    _validate_program_and_inputs(analysis, analysis_root)
-
-    if overwrite:
-        return [(raw_file, "run") for raw_file in analysis.unpacking.tpx3_files]
-
-    plan: UnpackingPlan = []
-    for raw_file in analysis.unpacking.tpx3_files:
-        summary_path = derive_summary_path(analysis_root, raw_file)
-        matching_parquet_files = _matching_parquet_files(
-            analysis_root,
-            raw_file.path.stem,
-        )
-
-        if summary_path.exists():
-            summary = _load_summary(summary_path)
-            _validate_completed_files(
-                summary,
-                summary_path,
-                analysis_root,
-                raw_file.path.stem,
-            )
-            plan.append((raw_file, "skip"))
-        elif matching_parquet_files:
-            raise HermesTpx3PreflightError(
-                f"Parquet files exist without a valid summary for "
-                f"{raw_file.path}: {matching_parquet_files[0]}"
-            )
-        else:
-            plan.append((raw_file, "run"))
-
-    return plan
-
 
 def execute_unpacker(
     analysis: HermesTpx3AnalysisState,
@@ -129,7 +90,9 @@ def execute_unpacker(
     *,
     overwrite: bool = False,
 ) -> Tpx3SpidrSummary:
-    command = derive_unpacker_command(analysis, raw_file, overwrite=overwrite)
+    command = derive_unpacker_command(
+        analysis, analysis_root, raw_file, overwrite=overwrite
+    )
     summary_path = derive_summary_path(analysis_root, raw_file)
     resolved_executable_path = (
         analysis.unpacking.program.executable_path.resolve()
