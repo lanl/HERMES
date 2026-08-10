@@ -8,11 +8,11 @@ import pytest
 
 from hermes.state.models.analysis.hermes_tpx3_spidr import (
     HermesTpx3AnalysisState,
-    HermesTpx3ReconstructionResult,
+    HermesTpx3PhotonReconstructionResult,
     HermesTpx3UnpackingResult,
-    Tpx3PhotonQualityFlagCountsSummary,
-    Tpx3PhotonRejectionCountsSummary,
-    Tpx3PhotonReconstructionCountsSummary,
+    HermesTpx3PhotonQualityFlagCountsSummary,
+    HermesTpx3PhotonRejectionCountsSummary,
+    HermesTpx3PhotonReconstructionCountsSummary,
 )
 from hermes.state.models.shared_models import FileReference
 from hermes.state.state import HermesRecord
@@ -59,12 +59,13 @@ def test_checked_in_yaml_configures_both_analysis_stages(
     assert reconstruction.program.executable_path == Path(
         "build/backends/photon-clusterer/hermes-photon-clusterer"
     )
-    assert reconstruction.clustering_algorithm == "connected_components"
-    assert reconstruction.pixel_parquet_files == "auto"
-    assert reconstruction.settings.timewalk_calibration_file == Path(
-        "calibrations/tpx3/time-walk_example.json"
+    assert reconstruction.clustering_algorithm.name == "connected_components"
+    assert reconstruction.pixel_files == "auto"
+    assert (
+        reconstruction.clustering_algorithm.settings.timewalk_calibration_file
+        == Path("calibrations/tpx3/time-walk_example.json")
     )
-    assert reconstruction.settings.save_photon_pixels is True
+    assert reconstruction.clustering_algorithm.save_photon_pixels is True
 
 
 def test_main_runs_two_files_and_saves_final_record_separately(
@@ -102,16 +103,18 @@ analysis:
     program:
       name: test-clusterer
       executable_path: {tmp_path / "test-clusterer"}
-    pixel_parquet_files: auto
-    settings:
-      max_time_spread_ticks: 100
-      min_cluster_size: 2
-      max_cluster_size: 10
-      min_pixel_tot_raw: 1
-      min_cluster_tot_raw: 2
-      max_cluster_tot_raw: 100
-      max_aspect_ratio: 2.0
-      min_filled_fraction: 0.5
+    pixel_files: auto
+    clustering_algorithm:
+      name: connected_components
+      settings:
+        max_time_spread_ticks: 100
+        min_cluster_size: 2
+        max_cluster_size: 10
+        min_pixel_tot_raw: 1
+        min_cluster_tot_raw: 2
+        max_cluster_tot_raw: 100
+        max_aspect_ratio: 2.0
+        min_filled_fraction: 0.5
 """,
         encoding="utf-8",
     )
@@ -124,13 +127,13 @@ analysis:
             analysis = record.analysis
             assert isinstance(analysis, HermesTpx3AnalysisState)
             tpx3_files = analysis.unpacking.tpx3_files
-            counts = Tpx3PhotonReconstructionCountsSummary(
+            counts = HermesTpx3PhotonReconstructionCountsSummary(
                 pixel_rows_read=10,
                 pixel_rows_below_min_tot=0,
                 components_formed=5,
                 photon_count=3,
                 rejected_component_count=2,
-                rejection_counts=Tpx3PhotonRejectionCountsSummary(
+                rejection_counts=HermesTpx3PhotonRejectionCountsSummary(
                     below_min_cluster_size=0,
                     above_max_cluster_size=0,
                     below_min_cluster_tot=0,
@@ -138,7 +141,7 @@ analysis:
                     above_max_aspect_ratio=0,
                     below_min_filled_fraction=0,
                 ),
-                quality_flag_counts=Tpx3PhotonQualityFlagCountsSummary(
+                quality_flag_counts=HermesTpx3PhotonQualityFlagCountsSummary(
                     saturated_pixel=0,
                     bridged_components=0,
                 ),
@@ -160,7 +163,7 @@ analysis:
             completed_reconstruction = analysis.photon_reconstruction.model_copy(
                 update={
                     "results": [
-                        HermesTpx3ReconstructionResult(
+                        HermesTpx3PhotonReconstructionResult(
                             input_file=tpx3_files[0],
                             output_file=photon_directory / "photons.parquet",
                             status="completed",

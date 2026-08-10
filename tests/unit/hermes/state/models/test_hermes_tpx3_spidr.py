@@ -8,14 +8,15 @@ from pydantic import ValidationError
 
 from hermes.state.models.analysis.hermes_tpx3_spidr import (
     HermesTpx3AnalysisState,
-    HermesTpx3ReconstructionResult,
+    HermesTpx3PhotonReconstructionResult,
     HermesTpx3UnpackingResult,
-    Tpx3EventReconstruction,
-    Tpx3EventReconstructionSettings,
-    Tpx3EventReconstructionSummary,
-    Tpx3PhotonClusteringSettings,
-    Tpx3PhotonReconstruction,
-    Tpx3PhotonReconstructionSummary,
+    HermesTpx3EventReconstruction,
+    HermesTpx3EventReconstructionSettings,
+    HermesTpx3EventReconstructionSummary,
+    HermesTpx3PhotonClustering,
+    HermesTpx3PhotonClusteringSettings,
+    HermesTpx3PhotonReconstruction,
+    HermesTpx3PhotonReconstructionSummary,
     Tpx3SpidrSummary,
     Tpx3Unpacking,
 )
@@ -298,7 +299,7 @@ def test_hermes_analysis_state_checks_duplicate_stems_from_file_list(
 def test_reconstruction_result_defaults_and_rejects_undefined_fields(
     tmp_path: Path,
 ) -> None:
-    result = HermesTpx3ReconstructionResult(
+    result = HermesTpx3PhotonReconstructionResult(
         input_file=FileReference(path=tmp_path / "pixel_hits/raw.parquet"),
         output_file=tmp_path / "photons/raw.parquet",
         status="completed",
@@ -308,7 +309,7 @@ def test_reconstruction_result_defaults_and_rejects_undefined_fields(
     assert result.counts is None
 
     with pytest.raises(ValidationError, match="extra_forbidden"):
-        HermesTpx3ReconstructionResult(
+        HermesTpx3PhotonReconstructionResult(
             input_file=FileReference(path=tmp_path / "pixel_hits/raw.parquet"),
             output_file=tmp_path / "photons/raw.parquet",
             settings={},
@@ -316,7 +317,7 @@ def test_reconstruction_result_defaults_and_rejects_undefined_fields(
 
 
 def test_photon_clustering_settings_use_structural_defaults() -> None:
-    settings = Tpx3PhotonClusteringSettings.model_validate(
+    settings = HermesTpx3PhotonClusteringSettings.model_validate(
         _clustering_settings_data()
     )
 
@@ -324,7 +325,7 @@ def test_photon_clustering_settings_use_structural_defaults() -> None:
     assert settings.position_averaging == "arithmetic"
     assert settings.photon_time_estimator == "leading_edge"
     assert settings.timewalk_calibration_file is None
-    assert settings.save_photon_pixels is False
+    assert HermesTpx3PhotonClustering(settings=settings).save_photon_pixels is False
 
 
 @pytest.mark.parametrize(
@@ -348,7 +349,7 @@ def test_photon_clustering_settings_reject_invalid_ranges(
     data[field] = value
 
     with pytest.raises(ValidationError, match=error):
-        Tpx3PhotonClusteringSettings.model_validate(data)
+        HermesTpx3PhotonClusteringSettings.model_validate(data)
 
 
 @pytest.mark.parametrize(
@@ -367,7 +368,7 @@ def test_photon_clustering_settings_reject_inverted_bounds(
     data[maximum_field] = 9
 
     with pytest.raises(ValidationError, match="less than or equal"):
-        Tpx3PhotonClusteringSettings.model_validate(data)
+        HermesTpx3PhotonClusteringSettings.model_validate(data)
 
 
 @pytest.mark.parametrize(
@@ -381,7 +382,7 @@ def test_photon_clustering_settings_reject_reserved_time_estimators(
     data["photon_time_estimator"] = reserved_estimator
 
     with pytest.raises(ValidationError, match="reserved and not implemented"):
-        Tpx3PhotonClusteringSettings.model_validate(data)
+        HermesTpx3PhotonClusteringSettings.model_validate(data)
 
 
 def test_hermes_analysis_state_accepts_photon_reconstruction(
@@ -395,23 +396,25 @@ def test_hermes_analysis_state_accepts_photon_reconstruction(
             ),
             tpx3_files=[FileReference(path=tmp_path / "rawTpx3/raw.tpx3")],
         ),
-        photon_reconstruction=Tpx3PhotonReconstruction(
+        photon_reconstruction=HermesTpx3PhotonReconstruction(
             program=BinaryProgram(
                 name="connected-components-cpp",
                 executable_path=tmp_path / "bin/hermes-photon-clusterer",
             ),
-            settings=Tpx3PhotonClusteringSettings.model_validate(
-                _clustering_settings_data()
+            clustering_algorithm=HermesTpx3PhotonClustering(
+                settings=HermesTpx3PhotonClusteringSettings.model_validate(
+                    _clustering_settings_data()
+                ),
             ),
         ),
     )
 
     assert state.photon_reconstruction is not None
-    assert state.photon_reconstruction.clustering_algorithm == (
+    assert state.photon_reconstruction.clustering_algorithm.name == (
         "connected_components"
     )
-    assert state.photon_reconstruction.settings.adjacency == 8
-    assert state.photon_reconstruction.pixel_parquet_files == "auto"
+    assert state.photon_reconstruction.clustering_algorithm.settings.adjacency == 8
+    assert state.photon_reconstruction.pixel_files == "auto"
 
 
 def test_summary_validates_every_section() -> None:
@@ -505,7 +508,7 @@ def test_summary_requires_parquet_files_to_match_saved_rows(
 
 
 def test_photon_reconstruction_summary_validates_every_section() -> None:
-    summary = Tpx3PhotonReconstructionSummary.model_validate(
+    summary = HermesTpx3PhotonReconstructionSummary.model_validate(
         _photon_summary_data()
     )
 
@@ -536,7 +539,7 @@ def test_photon_reconstruction_summary_rejects_inconsistent_values(
     reconstruction[field] = value
 
     with pytest.raises(ValidationError, match=error):
-        Tpx3PhotonReconstructionSummary.model_validate(summary_data)
+        HermesTpx3PhotonReconstructionSummary.model_validate(summary_data)
 
 
 def test_photon_reconstruction_summary_rejects_quality_flags_over_photons() -> (
@@ -550,7 +553,7 @@ def test_photon_reconstruction_summary_rejects_quality_flags_over_photons() -> (
     quality_flag_counts["bridged_components"] = 99
 
     with pytest.raises(ValidationError, match="quality flag counts cannot exceed"):
-        Tpx3PhotonReconstructionSummary.model_validate(summary_data)
+        HermesTpx3PhotonReconstructionSummary.model_validate(summary_data)
 
 
 # ---------------------------------------------------------------------------
@@ -622,7 +625,7 @@ def _event_summary_data() -> dict[str, object]:
 
 
 def test_event_settings_dump_matches_binary_keys() -> None:
-    settings = Tpx3EventReconstructionSettings.model_validate(
+    settings = HermesTpx3EventReconstructionSettings.model_validate(
         _event_settings_data()
     )
     dumped = settings.model_dump(mode="json")
@@ -642,7 +645,7 @@ def test_event_settings_default_save_event_photons_is_false() -> None:
     data = _event_settings_data()
     del data["save_event_photons"]
 
-    settings = Tpx3EventReconstructionSettings.model_validate(data)
+    settings = HermesTpx3EventReconstructionSettings.model_validate(data)
 
     assert settings.save_event_photons is False
 
@@ -667,7 +670,7 @@ def test_event_settings_reject_invalid_ranges(
     data[field] = value
 
     with pytest.raises(ValidationError, match=error):
-        Tpx3EventReconstructionSettings.model_validate(data)
+        HermesTpx3EventReconstructionSettings.model_validate(data)
 
 
 def test_event_settings_reject_grid_finer_than_link_radius() -> None:
@@ -677,11 +680,11 @@ def test_event_settings_reject_grid_finer_than_link_radius() -> None:
     data["spatial_link_radius_pixels"] = 10.0
 
     with pytest.raises(ValidationError, match="derived cell width"):
-        Tpx3EventReconstructionSettings.model_validate(data)
+        HermesTpx3EventReconstructionSettings.model_validate(data)
 
 
 def test_event_summary_round_trips_from_json() -> None:
-    summary = Tpx3EventReconstructionSummary.model_validate_json(
+    summary = HermesTpx3EventReconstructionSummary.model_validate_json(
         json.dumps(_event_summary_data())
     )
 
@@ -705,7 +708,7 @@ def test_event_summary_round_trips_with_event_photons() -> None:
         "files": ["events/raw-chip-0-event-photons-part-00000.parquet"],
     }
 
-    summary = Tpx3EventReconstructionSummary.model_validate_json(
+    summary = HermesTpx3EventReconstructionSummary.model_validate_json(
         json.dumps(data)
     )
 
@@ -731,7 +734,7 @@ def test_event_summary_rejects_inconsistent_counts(
     reconstruction[field] = value
 
     with pytest.raises(ValidationError, match=error):
-        Tpx3EventReconstructionSummary.model_validate(data)
+        HermesTpx3EventReconstructionSummary.model_validate(data)
 
 
 def test_event_summary_rejects_flag_count_over_events() -> None:
@@ -743,7 +746,7 @@ def test_event_summary_rejects_flag_count_over_events() -> None:
     quality_flag_counts["single_photon"] = 99
 
     with pytest.raises(ValidationError, match="single_photon cannot exceed"):
-        Tpx3EventReconstructionSummary.model_validate(data)
+        HermesTpx3EventReconstructionSummary.model_validate(data)
 
 
 def test_event_summary_category_requires_files_for_saved_rows() -> None:
@@ -755,7 +758,7 @@ def test_event_summary_category_requires_files_for_saved_rows() -> None:
     event_candidates["files"] = []
 
     with pytest.raises(ValidationError, match="must list a Parquet file"):
-        Tpx3EventReconstructionSummary.model_validate(data)
+        HermesTpx3EventReconstructionSummary.model_validate(data)
 
 
 def test_hermes_analysis_state_accepts_event_reconstruction(
@@ -769,12 +772,12 @@ def test_hermes_analysis_state_accepts_event_reconstruction(
             ),
             tpx3_files=[FileReference(path=tmp_path / "rawTpx3/raw.tpx3")],
         ),
-        event_reconstruction=Tpx3EventReconstruction(
+        event_reconstruction=HermesTpx3EventReconstruction(
             program=BinaryProgram(
                 name="connected-components-cpp",
                 executable_path=tmp_path / "bin/hermes-event-reconstructor",
             ),
-            settings=Tpx3EventReconstructionSettings.model_validate(
+            settings=HermesTpx3EventReconstructionSettings.model_validate(
                 _event_settings_data()
             ),
         ),
@@ -792,12 +795,12 @@ def test_hermes_analysis_state_allows_no_unpacking(tmp_path: Path) -> None:
     # Reconstruction can run on its own when unpacking is already done, so the
     # unpacking stage is optional.
     state = HermesTpx3AnalysisState(
-        event_reconstruction=Tpx3EventReconstruction(
+        event_reconstruction=HermesTpx3EventReconstruction(
             program=BinaryProgram(
                 name="connected-components-cpp",
                 executable_path=tmp_path / "bin/hermes-event-reconstructor",
             ),
-            settings=Tpx3EventReconstructionSettings.model_validate(
+            settings=HermesTpx3EventReconstructionSettings.model_validate(
                 _event_settings_data()
             ),
         ),

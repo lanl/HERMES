@@ -18,9 +18,9 @@ from pydantic import ValidationError
 
 from hermes.state.models.analysis.hermes_tpx3_spidr import (
     HermesTpx3AnalysisState,
-    HermesTpx3ReconstructionResult,
-    Tpx3PhotonReconstruction,
-    Tpx3PhotonReconstructionSummary,
+    HermesTpx3PhotonReconstructionResult,
+    HermesTpx3PhotonReconstruction,
+    HermesTpx3PhotonReconstructionSummary,
 )
 from hermes.state.models.shared_models import FileReference
 
@@ -32,19 +32,19 @@ _ANALYSIS_LOGGER = logger.bind(
 )
 
 
-class HermesReconstructionError(Exception):
+class HermesPhotonReconstructionError(Exception):
     """Base exception for HERMES photon reconstruction failures."""
 
 
-class HermesReconstructionPreflightError(HermesReconstructionError):
+class HermesPhotonReconstructionPreflightError(HermesPhotonReconstructionError):
     """Raised when HERMES cannot safely start or continue reconstruction."""
 
 
-class HermesReconstructionExecutionError(HermesReconstructionError):
+class HermesPhotonReconstructionExecutionError(HermesPhotonReconstructionError):
     """Raised when the clustering process cannot complete successfully."""
 
 
-class HermesReconstructionOutputError(HermesReconstructionPreflightError):
+class HermesPhotonReconstructionOutputError(HermesPhotonReconstructionPreflightError):
     """Raised when reconstruction output is missing, unsafe, or inconsistent."""
 
 
@@ -54,12 +54,12 @@ def resolve_pixel_files(
 ) -> list[FileReference]:
     """Return the pixel Parquet files reconstruction should run over.
 
-    ``pixel_parquet_files == "auto"`` gathers every ``*.parquet`` under the
+    ``pixel_files == "auto"`` gathers every ``*.parquet`` under the
     unpacking stage's ``pixel_hits`` directory; an explicit list is used as-is.
     """
     reconstruction = _require_reconstruction(analysis)
-    if reconstruction.pixel_parquet_files != "auto":
-        return list(reconstruction.pixel_parquet_files)
+    if reconstruction.pixel_files != "auto":
+        return list(reconstruction.pixel_files)
 
     pixel_directory = analysis_root / "pixel_hits"
     if not pixel_directory.is_dir():
@@ -108,7 +108,7 @@ def derive_summary_path(output_file: Path) -> Path:
 
 
 def derive_reconstruction_command(
-    reconstruction: Tpx3PhotonReconstruction,
+    reconstruction: HermesTpx3PhotonReconstruction,
     input_file: FileReference,
     output_file: Path,
     settings_file: Path,
@@ -136,10 +136,10 @@ def execute_reconstruction(
     input_file: FileReference,
     *,
     overwrite: bool = False,
-) -> HermesTpx3ReconstructionResult:
+) -> HermesTpx3PhotonReconstructionResult:
     """Run the binary on one pixel file and return its per-file result.
 
-    Raises a HermesReconstructionError if the binary fails to launch, exits with
+    Raises a HermesPhotonReconstructionError if the binary fails to launch, exits with
     an error, or leaves no readable summary.
     """
     reconstruction = _require_reconstruction(analysis)
@@ -148,8 +148,12 @@ def execute_reconstruction(
     started = perf_counter()
 
     # The complete clustering settings go to the binary in a temporary JSON
-    # file; the field names match the binary's settings keys.
-    settings_json = reconstruction.settings.model_dump(mode="json")
+    # file; the field names match the binary's settings keys. save_photon_pixels
+    # lives beside the settings in the model, so add it back into the JSON the
+    # binary reads.
+    clustering = reconstruction.clustering_algorithm
+    settings_json = clustering.settings.model_dump(mode="json")
+    settings_json["save_photon_pixels"] = clustering.save_photon_pixels
     with tempfile.NamedTemporaryFile(
         mode="w",
         suffix=".json",
@@ -174,7 +178,7 @@ def execute_reconstruction(
         summary_json_file=str(summary_path),
         executable_path=str(reconstruction.program.executable_path),
         executable_version=reconstruction.program.version,
-        clustering_algorithm=reconstruction.clustering_algorithm,
+        clustering_algorithm=reconstruction.clustering_algorithm.name,
         command=command,
     )
 
@@ -195,7 +199,7 @@ def execute_reconstruction(
                 elapsed_seconds,
                 error=str(exc),
             )
-            raise HermesReconstructionExecutionError(
+            raise HermesPhotonReconstructionExecutionError(
                 f"failed to launch clusterer for {input_file.path}: {exc}"
             ) from exc
 
@@ -212,7 +216,7 @@ def execute_reconstruction(
                 stdout_excerpt=stdout_excerpt,
                 stderr_excerpt=stderr_excerpt,
             )
-            raise HermesReconstructionExecutionError(
+            raise HermesPhotonReconstructionExecutionError(
                 f"clusterer exited with code {process.returncode} for "
                 f"{input_file.path}"
             )
@@ -236,7 +240,7 @@ def execute_reconstruction(
         photon_count=summary.reconstruction.photon_count,
         rejected_component_count=summary.reconstruction.rejected_component_count,
     )
-    return HermesTpx3ReconstructionResult(
+    return HermesTpx3PhotonReconstructionResult(
         input_file=input_file,
         output_file=output_file,
         status="completed",
@@ -287,48 +291,48 @@ def log_overall_failure(error: Exception) -> None:
 
 def _require_reconstruction(
     analysis: HermesTpx3AnalysisState,
-) -> Tpx3PhotonReconstruction:
+) -> HermesTpx3PhotonReconstruction:
     """Return the reconstruction config, or raise if it is not set up."""
     reconstruction = analysis.photon_reconstruction
     if reconstruction is None:
-        raise HermesReconstructionPreflightError(
+        raise HermesPhotonReconstructionPreflightError(
             "photon reconstruction is not configured in the analysis state"
         )
     return reconstruction
 
 
 def validate_program_and_algorithm(
-    reconstruction: Tpx3PhotonReconstruction,
+    reconstruction: HermesTpx3PhotonReconstruction,
 ) -> None:
     """Check the algorithm is supported and the binary exists before running."""
-    if reconstruction.clustering_algorithm != "connected_components":
-        raise HermesReconstructionPreflightError(
-            f"clustering_algorithm={reconstruction.clustering_algorithm!r} is "
-            "not implemented; only 'connected_components' is available"
+    if reconstruction.clustering_algorithm.name != "connected_components":
+        raise HermesPhotonReconstructionPreflightError(
+            f"clustering_algorithm={reconstruction.clustering_algorithm.name!r} "
+            "is not implemented; only 'connected_components' is available"
         )
     executable = reconstruction.program.executable_path
     if not executable.is_file():
-        raise HermesReconstructionPreflightError(
+        raise HermesPhotonReconstructionPreflightError(
             f"clusterer executable does not exist: {executable}"
         )
 
 
-def _load_summary(summary_path: Path) -> Tpx3PhotonReconstructionSummary:
+def _load_summary(summary_path: Path) -> HermesTpx3PhotonReconstructionSummary:
     """Read and parse a reconstruction-summary JSON file into a model object."""
     if not summary_path.is_file():
-        raise HermesReconstructionOutputError(
+        raise HermesPhotonReconstructionOutputError(
             f"reconstruction summary is missing: {summary_path}"
         )
     try:
-        return Tpx3PhotonReconstructionSummary.model_validate_json(
+        return HermesTpx3PhotonReconstructionSummary.model_validate_json(
             summary_path.read_bytes()
         )
     except OSError as exc:
-        raise HermesReconstructionOutputError(
+        raise HermesPhotonReconstructionOutputError(
             f"cannot read summary JSON file: {summary_path}"
         ) from exc
     except ValidationError as exc:
-        raise HermesReconstructionOutputError(
+        raise HermesPhotonReconstructionOutputError(
             f"invalid summary JSON file: {summary_path}"
         ) from exc
 

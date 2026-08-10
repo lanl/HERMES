@@ -8,7 +8,7 @@ import pytest
 
 from hermes.state.models.analysis.hermes_tpx3_spidr import (
     HermesTpx3AnalysisState,
-    Tpx3PhotonClusteringSettings,
+    HermesTpx3PhotonClusteringSettings,
 )
 from hermes.state.models.shared_models import FileReference
 from hermes.state.state import HermesRecord
@@ -48,7 +48,7 @@ def test_checked_in_yaml_configures_unpacking_and_clustering(
 
     import yaml
 
-    clustering_settings = Tpx3PhotonClusteringSettings.model_validate(
+    clustering_settings = HermesTpx3PhotonClusteringSettings.model_validate(
         yaml.safe_load(
             run_timewalk_module.CLUSTERING_SETTINGS_YAML_PATH.read_text(
                 encoding="utf-8"
@@ -114,7 +114,7 @@ analysis:
 
     def fake_calibrate_timewalk(
         pixel_data_files: list[Path],
-        settings: Tpx3PhotonClusteringSettings,
+        settings: HermesTpx3PhotonClusteringSettings,
         output_file: Path,
         correction_file: Path,
     ) -> SimpleNamespace:
@@ -158,7 +158,7 @@ analysis:
     assert len(calibration_calls) == 1
     call = calibration_calls[0]
     assert call["pixel_data_files"] == [pixel_file]
-    assert isinstance(call["settings"], Tpx3PhotonClusteringSettings)
+    assert isinstance(call["settings"], HermesTpx3PhotonClusteringSettings)
     assert call["settings"].adjacency == 8
     assert call["output_file"] == (
         analysis_directory / "logs/timewalk-calibration.json"

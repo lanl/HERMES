@@ -11,9 +11,9 @@ from typing import Any
 import pytest
 
 from hermes.runner.analysis.hermes.photon_reconstruction import (
-    HermesReconstructionExecutionError,
-    HermesReconstructionOutputError,
-    HermesReconstructionPreflightError,
+    HermesPhotonReconstructionExecutionError,
+    HermesPhotonReconstructionOutputError,
+    HermesPhotonReconstructionPreflightError,
     check_previous_reconstructed_file,
     derive_output_path,
     derive_reconstruction_command,
@@ -25,8 +25,9 @@ from hermes.runner.analysis.hermes.photon_reconstruction import (
 from hermes.runner.analysis.hermes.run import run_hermes_analysis
 from hermes.state.models.analysis.hermes_tpx3_spidr import (
     HermesTpx3AnalysisState,
-    Tpx3PhotonClusteringSettings,
-    Tpx3PhotonReconstruction,
+    HermesTpx3PhotonClustering,
+    HermesTpx3PhotonClusteringSettings,
+    HermesTpx3PhotonReconstruction,
     Tpx3Unpacking,
 )
 from hermes.state.models.environment import RuntimeEnvironment
@@ -37,7 +38,7 @@ from hermes.state_service.shared_types import StateServiceConfig
 from hermes.state_service.state_manager import StateManager
 
 
-def _settings(**overrides: Any) -> Tpx3PhotonClusteringSettings:
+def _settings(**overrides: Any) -> HermesTpx3PhotonClusteringSettings:
     base: dict[str, Any] = {
         "max_time_spread_ticks": 491520,
         "min_cluster_size": 2,
@@ -49,13 +50,13 @@ def _settings(**overrides: Any) -> Tpx3PhotonClusteringSettings:
         "min_filled_fraction": 0.5,
     }
     base.update(overrides)
-    return Tpx3PhotonClusteringSettings(**base)
+    return HermesTpx3PhotonClusteringSettings(**base)
 
 
 def _analysis(
     tmp_path: Path,
     *pixel_names: str,
-    settings: Tpx3PhotonClusteringSettings | None = None,
+    settings: HermesTpx3PhotonClusteringSettings | None = None,
     clustering_algorithm: str = "connected_components",
     with_reconstruction: bool = True,
 ) -> HermesTpx3AnalysisState:
@@ -83,14 +84,16 @@ def _analysis(
 
     reconstruction = None
     if with_reconstruction:
-        reconstruction = Tpx3PhotonReconstruction(
+        reconstruction = HermesTpx3PhotonReconstruction(
             program=BinaryProgram(
                 name="photon-clusterer-cpp",
                 executable_path=clusterer_exe,
                 version="0.1.0",
             ),
-            settings=settings or _settings(),
-            clustering_algorithm=clustering_algorithm,
+            clustering_algorithm=HermesTpx3PhotonClustering(
+                name=clustering_algorithm,
+                settings=settings or _settings(),
+            ),
         )
 
     return HermesTpx3AnalysisState(
@@ -248,7 +251,9 @@ def test_validate_rejects_dbscan(tmp_path: Path) -> None:
         "run_000000-chip-0-part-00000.parquet",
         clustering_algorithm="dbscan",
     )
-    with pytest.raises(HermesReconstructionPreflightError, match="not implemented"):
+    with pytest.raises(
+        HermesPhotonReconstructionPreflightError, match="not implemented"
+    ):
         validate_program_and_algorithm(analysis.photon_reconstruction)
 
 
@@ -256,7 +261,7 @@ def test_validate_rejects_missing_executable(tmp_path: Path) -> None:
     analysis = _analysis(tmp_path, "run_000000-chip-0-part-00000.parquet")
     analysis.photon_reconstruction.program.executable_path.unlink()
     with pytest.raises(
-        HermesReconstructionPreflightError, match="executable does not exist"
+        HermesPhotonReconstructionPreflightError, match="executable does not exist"
     ):
         validate_program_and_algorithm(analysis.photon_reconstruction)
 
@@ -268,7 +273,7 @@ def test_resolve_requires_reconstruction_config(tmp_path: Path) -> None:
         with_reconstruction=False,
     )
     with pytest.raises(
-        HermesReconstructionPreflightError, match="not configured"
+        HermesPhotonReconstructionPreflightError, match="not configured"
     ):
         resolve_pixel_files(analysis, tmp_path / "analysis")
 
@@ -370,7 +375,7 @@ def test_execute_raises_on_nonzero_exit(tmp_path: Path) -> None:
         / "run_000000-chip-0-part-00000.parquet"
     )
     with pytest.raises(
-        HermesReconstructionExecutionError, match="exited with code"
+        HermesPhotonReconstructionExecutionError, match="exited with code"
     ):
         execute_reconstruction(analysis, tmp_path / "analysis", input_file)
 
@@ -386,7 +391,7 @@ def test_execute_raises_on_missing_summary(tmp_path: Path) -> None:
         / "pixel_hits"
         / "run_000000-chip-0-part-00000.parquet"
     )
-    with pytest.raises(HermesReconstructionOutputError):
+    with pytest.raises(HermesPhotonReconstructionOutputError):
         execute_reconstruction(analysis, tmp_path / "analysis", input_file)
 
 
@@ -519,7 +524,7 @@ def test_run_hermes_analysis_marks_reconstruction_failed(tmp_path: Path) -> None
     )
     manager = _manager(analysis, tmp_path)
 
-    with pytest.raises(HermesReconstructionExecutionError):
+    with pytest.raises(HermesPhotonReconstructionExecutionError):
         run_hermes_analysis(manager)
 
     result_analysis = manager.get_state().analysis

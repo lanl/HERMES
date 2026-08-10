@@ -626,7 +626,7 @@ HermesTpx3AnalysisState
   analysis_directory: Path
   tpx3_files: list[FileReference]
   resource_limit_percent: int = 90  # integer from 1 through 100
-  photon_reconstruction: Tpx3PhotonReconstructionConfiguration | None
+  photon_reconstruction: HermesTpx3PhotonReconstructionConfiguration | None
   results: HermesTpx3AnalysisResults
 
 Tpx3SpidrUnpackerProgram
@@ -634,17 +634,22 @@ Tpx3SpidrUnpackerProgram
   executable_path: Path
   version: str | None
 
-Tpx3PhotonReconstructionConfiguration
-  clustering_algorithm: connected_components | dbscan
+HermesTpx3PhotonReconstructionConfiguration
   program: PhotonReconstructorProgram
-  settings: Tpx3PhotonClusteringSettings
+  pixel_files: auto | list[FileReference]
+  clustering_algorithm: HermesTpx3PhotonClustering
 
 PhotonReconstructorProgram
   name: str
   executable_path: Path
   version: str | None
 
-Tpx3PhotonClusteringSettings
+HermesTpx3PhotonClustering
+  name: connected_components | dbscan
+  save_photon_pixels: bool = false
+  settings: HermesTpx3PhotonClusteringSettings
+
+HermesTpx3PhotonClusteringSettings
   adjacency: 4 | 8
   max_time_spread_ticks: int
   min_cluster_size: int
@@ -657,16 +662,15 @@ Tpx3PhotonClusteringSettings
   position_averaging: arithmetic
   photon_time_estimator: leading_edge
   timewalk_calibration_file: Path | None
-  save_photon_pixels: bool = false
 
 HermesTpx3AnalysisResults
   unpacking: HermesTpx3UnpackingResult
-  reconstruction: HermesTpx3ReconstructionResult | None
+  reconstruction: HermesTpx3PhotonReconstructionResult | None
 
 HermesTpx3UnpackingResult
   status: completed | skipped | failed
 
-HermesTpx3ReconstructionResult
+HermesTpx3PhotonReconstructionResult
   status: completed | skipped | failed
   photon_count: int
   rejected_count: int

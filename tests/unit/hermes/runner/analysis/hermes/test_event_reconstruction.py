@@ -25,10 +25,11 @@ from hermes.runner.analysis.hermes.event_reconstruction import (
 from hermes.runner.analysis.hermes.run import run_hermes_analysis
 from hermes.state.models.analysis.hermes_tpx3_spidr import (
     HermesTpx3AnalysisState,
-    Tpx3EventReconstruction,
-    Tpx3EventReconstructionSettings,
-    Tpx3PhotonClusteringSettings,
-    Tpx3PhotonReconstruction,
+    HermesTpx3EventReconstruction,
+    HermesTpx3EventReconstructionSettings,
+    HermesTpx3PhotonClustering,
+    HermesTpx3PhotonClusteringSettings,
+    HermesTpx3PhotonReconstruction,
     Tpx3Unpacking,
 )
 from hermes.state.models.environment import RuntimeEnvironment
@@ -39,7 +40,7 @@ from hermes.state_service.shared_types import StateServiceConfig
 from hermes.state_service.state_manager import StateManager
 
 
-def _settings(**overrides: Any) -> Tpx3EventReconstructionSettings:
+def _settings(**overrides: Any) -> HermesTpx3EventReconstructionSettings:
     base: dict[str, Any] = {
         "spatial_link_radius_pixels": 10.0,
         "spatial_cells_per_axis": 5,
@@ -49,13 +50,13 @@ def _settings(**overrides: Any) -> Tpx3EventReconstructionSettings:
         "save_event_photons": False,
     }
     base.update(overrides)
-    return Tpx3EventReconstructionSettings(**base)
+    return HermesTpx3EventReconstructionSettings(**base)
 
 
 def _analysis(
     tmp_path: Path,
     *photon_names: str,
-    settings: Tpx3EventReconstructionSettings | None = None,
+    settings: HermesTpx3EventReconstructionSettings | None = None,
     clustering_algorithm: str = "connected_components",
     with_event_reconstruction: bool = True,
 ) -> HermesTpx3AnalysisState:
@@ -85,7 +86,7 @@ def _analysis(
 
     event_reconstruction = None
     if with_event_reconstruction:
-        event_reconstruction = Tpx3EventReconstruction(
+        event_reconstruction = HermesTpx3EventReconstruction(
             program=BinaryProgram(
                 name="event-reconstructor-cpp",
                 executable_path=event_exe,
@@ -104,21 +105,23 @@ def _analysis(
             ),
             tpx3_files=[FileReference(path=raw_path)],
         ),
-        photon_reconstruction=Tpx3PhotonReconstruction(
+        photon_reconstruction=HermesTpx3PhotonReconstruction(
             program=BinaryProgram(
                 name="photon-clusterer-cpp",
                 executable_path=clusterer_exe,
                 version="0.1.0",
             ),
-            settings=Tpx3PhotonClusteringSettings(
-                max_time_spread_ticks=491520,
-                min_cluster_size=2,
-                max_cluster_size=64,
-                min_pixel_tot_raw=1,
-                min_cluster_tot_raw=2,
-                max_cluster_tot_raw=65472,
-                max_aspect_ratio=3.0,
-                min_filled_fraction=0.5,
+            clustering_algorithm=HermesTpx3PhotonClustering(
+                settings=HermesTpx3PhotonClusteringSettings(
+                    max_time_spread_ticks=491520,
+                    min_cluster_size=2,
+                    max_cluster_size=64,
+                    min_pixel_tot_raw=1,
+                    min_cluster_tot_raw=2,
+                    max_cluster_tot_raw=65472,
+                    max_aspect_ratio=3.0,
+                    min_filled_fraction=0.5,
+                ),
             ),
         ),
         event_reconstruction=event_reconstruction,
@@ -705,7 +708,7 @@ def test_run_hermes_analysis_event_only_without_unpacking(
     event_exe.touch()
 
     analysis = HermesTpx3AnalysisState(
-        event_reconstruction=Tpx3EventReconstruction(
+        event_reconstruction=HermesTpx3EventReconstruction(
             program=BinaryProgram(
                 name="event-reconstructor-cpp",
                 executable_path=event_exe,

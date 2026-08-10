@@ -31,7 +31,7 @@ from hermes.runner.analysis.hermes.event_reconstruction import (
     log_skipped_input as log_event_reconstruction_skipped,
 )
 from hermes.runner.analysis.hermes.photon_reconstruction import (
-    HermesReconstructionError,
+    HermesPhotonReconstructionError,
     check_previous_reconstructed_file,
     derive_output_path,
     execute_reconstruction,
@@ -59,7 +59,7 @@ from hermes.runner.analysis.hermes.unpacker import (
 from hermes.state.models.analysis.hermes_tpx3_spidr import (
     HermesTpx3AnalysisState,
     HermesTpx3EventReconstructionResult,
-    HermesTpx3ReconstructionResult,
+    HermesTpx3PhotonReconstructionResult,
     HermesTpx3UnpackingResult,
 )
 from hermes.state.models.shared_models import FileReference
@@ -297,7 +297,7 @@ def _run_photon_reconstruction(
         validate_program_and_algorithm(reconstruction)
         pixel_files = resolve_pixel_files(analysis, analysis_root)
         files_to_run: list[FileReference] = []
-        skipped_results: list[HermesTpx3ReconstructionResult] = []
+        skipped_results: list[HermesTpx3PhotonReconstructionResult] = []
         for input_file in pixel_files:
             already_reconstructed = check_previous_reconstructed_file(
                 analysis_root, input_file
@@ -306,7 +306,7 @@ def _run_photon_reconstruction(
                 output_file = derive_output_path(analysis_root, input_file)
                 log_reconstruction_skipped(input_file, output_file)
                 skipped_results.append(
-                    HermesTpx3ReconstructionResult(
+                    HermesTpx3PhotonReconstructionResult(
                         input_file=input_file,
                         output_file=output_file,
                         status="skipped",
@@ -337,11 +337,11 @@ def _run_photon_reconstruction(
             pixel_file_count=len(pixel_files),
             reconstructed_file_count=len(files_to_run),
         )
-    except HermesReconstructionError as exc:
+    except HermesPhotonReconstructionError as exc:
         _apply_reconstruction_results(
             state_manager,
             [
-                HermesTpx3ReconstructionResult(
+                HermesTpx3PhotonReconstructionResult(
                     input_file=input_file,
                     output_file=derive_output_path(analysis_root, input_file),
                     status="failed",
@@ -481,7 +481,7 @@ def _apply_unpacking_results(
 
 def _apply_reconstruction_results(
     state_manager: StateManager,
-    results: list[HermesTpx3ReconstructionResult],
+    results: list[HermesTpx3PhotonReconstructionResult],
     *,
     justification: str,
 ) -> None:

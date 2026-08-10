@@ -40,11 +40,27 @@ class Workflow:
         """Reserve the acquisition entry point until acquisition is implemented."""
         raise NotImplementedError("HERMES acquisition is not implemented")
 
-    def run(self) -> None:
-        """Reserve the combined acquisition-to-analysis entry point."""
-        raise NotImplementedError(
-            "combined HERMES acquisition and analysis is not implemented"
-        )
+    def run(self) -> HermesRecord:
+        """Run the operations the record asks for: acquisition, analysis, or both.
+
+        Acquisition runs before analysis when both are present. Returns the
+        record after the requested operations have updated it.
+        """
+        record = self._state_manager.get_state()
+        if record.acquisition is None and record.analysis is None:
+            raise ValueError(
+                "the record configures neither acquisition nor analysis to run"
+            )
+        if record.acquisition is not None and record.analysis is None:
+            self.run_acquisition()
+        if record.analysis is not None and record.acquisition is None:
+            self.run_analysis()
+        if record.acquisition is not None and record.analysis is not None:
+            raise ValueError(
+                "the record configures both acquisition and analysis to run, "
+                "which is not supported"
+            )
+        return self.record
 
     @property
     def record(self) -> HermesRecord:

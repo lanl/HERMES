@@ -83,15 +83,59 @@ def test_run_analysis_returns_files_and_updates_record(
     assert initial_record.analysis.unpacking.results == []
 
 
-@pytest.mark.parametrize("method_name", ["run_acquisition", "run"])
-def test_unimplemented_workflow_operations_leave_record_unchanged(
+def test_run_acquisition_is_unimplemented_and_leaves_record_unchanged(
     tmp_path: Path,
-    method_name: str,
 ) -> None:
     initial_record = _record(tmp_path)
     workflow = Workflow(initial_record)
 
     with pytest.raises(NotImplementedError, match="not implemented"):
-        getattr(workflow, method_name)()
+        workflow.run_acquisition()
 
     assert workflow.record == initial_record
+
+
+def test_run_dispatches_to_analysis_when_only_analysis_is_configured(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    initial_record = _record(tmp_path)
+    workflow = Workflow(initial_record)
+    calls: list[str] = []
+
+    def complete_analysis(
+        state_manager: StateManager,
+        *,
+        overwrite: bool = False,
+    ) -> list[FileReference]:
+        calls.append("analysis")
+        analysis = state_manager.get_state().analysis
+        assert isinstance(analysis, HermesTpx3AnalysisState)
+        return analysis.unpacking.tpx3_files
+
+    monkeypatch.setattr(
+        "hermes.workflows.workflow.run_analysis",
+        complete_analysis,
+    )
+
+    returned_record = workflow.run()
+
+    assert calls == ["analysis"]
+    assert returned_record == workflow.record
+
+
+def test_run_rejects_a_record_with_nothing_to_run(tmp_path: Path) -> None:
+    record = HermesRecord(
+        measurement_info=MeasurementInfo(
+            measurement_id="workflow-test",
+            run="test-run",
+        ),
+        environment=RuntimeEnvironment(
+            working_directory=tmp_path,
+            analysis_directory=tmp_path / "analysis",
+        ),
+    )
+    workflow = Workflow(record)
+
+    with pytest.raises(ValueError, match="neither acquisition nor analysis"):
+        workflow.run()
