@@ -16,10 +16,10 @@ from hermes.state.models.shared_models import (
 # unpacking output directory. The unpacker binary creates these directories;
 # this mapping lets HERMES validate the relative paths reported in its summary.
 TPX3_PARQUET_CATEGORY_DIRECTORIES = {
-    "pixel_data": "pixelHits",
-    "tdc_timestamps": "tdcTriggers",
-    "heartbeat_packets": "globalTimestamps",
-    "control_packets": "controlPackets",
+    "pixel_data": "pixel_hits",
+    "tdc_timestamps": "tdc_triggers",
+    "heartbeat_packets": "global_timestamps",
+    "control_packets": "control_packets",
     "unrecognized_packets": "unknownPackets",
 }
 SortingStrategy = Literal["in_memory", "external_merge"]
@@ -496,7 +496,7 @@ class Tpx3PhotonReconstructionRuntimeOptions(StrictBaseModel):
 class Tpx3PhotonReconstruction(StrictBaseModel):
     program: BinaryProgram
     # "auto" gathers pixel files from the unpacking stage's output; a list names
-    # specific pixelHits Parquet files to reconstruct.
+    # specific pixel_hits Parquet files to reconstruct.
     pixel_parquet_files: Literal["auto"] | list[FileReference] = "auto"
     clustering_algorithm: ClusteringAlgorithm = "connected_components"
     settings: Tpx3PhotonClusteringSettings
