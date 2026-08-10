@@ -19,8 +19,8 @@ from pydantic import ValidationError
 from hermes.state.models.analysis.hermes_tpx3_spidr import (
     HermesTpx3AnalysisState,
     HermesTpx3EventReconstructionResult,
-    Tpx3EventReconstruction,
-    Tpx3EventReconstructionSummary,
+    HermesTpx3EventReconstruction,
+    HermesTpx3EventReconstructionSummary,
 )
 from hermes.state.models.shared_models import FileReference
 
@@ -117,7 +117,7 @@ def derive_summary_path(output_file: Path) -> Path:
 
 
 def derive_event_reconstruction_command(
-    event_reconstruction: Tpx3EventReconstruction,
+    event_reconstruction: HermesTpx3EventReconstruction,
     input_file: FileReference,
     output_file: Path,
     settings_file: Path,
@@ -298,7 +298,7 @@ def log_overall_failure(error: Exception) -> None:
 
 def _require_event_reconstruction(
     analysis: HermesTpx3AnalysisState,
-) -> Tpx3EventReconstruction:
+) -> HermesTpx3EventReconstruction:
     """Return the event reconstruction config, or raise if it is not set up."""
     event_reconstruction = analysis.event_reconstruction
     if event_reconstruction is None:
@@ -309,7 +309,7 @@ def _require_event_reconstruction(
 
 
 def validate_program_and_algorithm(
-    event_reconstruction: Tpx3EventReconstruction,
+    event_reconstruction: HermesTpx3EventReconstruction,
 ) -> None:
     """Check the algorithm is supported and the binary exists before running."""
     if event_reconstruction.clustering_algorithm != "connected_components":
@@ -324,14 +324,14 @@ def validate_program_and_algorithm(
         )
 
 
-def _load_summary(summary_path: Path) -> Tpx3EventReconstructionSummary:
+def _load_summary(summary_path: Path) -> HermesTpx3EventReconstructionSummary:
     """Read and parse a reconstruction-summary JSON file into a model object."""
     if not summary_path.is_file():
         raise HermesEventReconstructionOutputError(
             f"reconstruction summary is missing: {summary_path}"
         )
     try:
-        return Tpx3EventReconstructionSummary.model_validate_json(
+        return HermesTpx3EventReconstructionSummary.model_validate_json(
             summary_path.read_bytes()
         )
     except OSError as exc:
