@@ -52,11 +52,11 @@ class HermesTpx3OutputError(HermesTpx3PreflightError):
 
 
 def derive_summary_path(
-    analysis: HermesTpx3AnalysisState,
+    analysis_root: Path,
     raw_file: FileReference,
 ) -> Path:
     return (
-        analysis.analysis_directory
+        analysis_root
         / "logs"
         / "unpacker"
         / f"{raw_file.path.stem}-unpacker-summary.json"
@@ -85,19 +85,20 @@ def derive_unpacker_command(
 
 def plan_unpacking(
     analysis: HermesTpx3AnalysisState,
+    analysis_root: Path,
     *,
     overwrite: bool = False,
 ) -> UnpackingPlan:
-    _validate_program_and_inputs(analysis)
+    _validate_program_and_inputs(analysis, analysis_root)
 
     if overwrite:
         return [(raw_file, "run") for raw_file in analysis.unpacking.tpx3_files]
 
     plan: UnpackingPlan = []
     for raw_file in analysis.unpacking.tpx3_files:
-        summary_path = derive_summary_path(analysis, raw_file)
+        summary_path = derive_summary_path(analysis_root, raw_file)
         matching_parquet_files = _matching_parquet_files(
-            analysis.analysis_directory,
+            analysis_root,
             raw_file.path.stem,
         )
 
@@ -106,7 +107,7 @@ def plan_unpacking(
             _validate_completed_files(
                 summary,
                 summary_path,
-                analysis.analysis_directory,
+                analysis_root,
                 raw_file.path.stem,
             )
             plan.append((raw_file, "skip"))
@@ -123,12 +124,13 @@ def plan_unpacking(
 
 def execute_unpacker(
     analysis: HermesTpx3AnalysisState,
+    analysis_root: Path,
     raw_file: FileReference,
     *,
     overwrite: bool = False,
 ) -> Tpx3SpidrSummary:
     command = derive_unpacker_command(analysis, raw_file, overwrite=overwrite)
-    summary_path = derive_summary_path(analysis, raw_file)
+    summary_path = derive_summary_path(analysis_root, raw_file)
     resolved_executable_path = (
         analysis.unpacking.program.executable_path.resolve()
     )
@@ -138,7 +140,7 @@ def execute_unpacker(
         event_type="analysis.tpx3_unpacking.started",
         raw_tpx3_file=str(raw_file.path),
         raw_tpx3_size_bytes=raw_file.path.stat().st_size,
-        analysis_directory=str(analysis.analysis_directory),
+        analysis_directory=str(analysis_root),
         summary_json_file=str(summary_path),
         executable_path=str(analysis.unpacking.program.executable_path),
         resolved_executable_path=str(resolved_executable_path),
@@ -190,7 +192,7 @@ def execute_unpacker(
         _validate_completed_files(
             summary,
             summary_path,
-            analysis.analysis_directory,
+            analysis_root,
             raw_file.path.stem,
         )
     except HermesTpx3Error as exc:
@@ -214,7 +216,7 @@ def execute_unpacker(
         "Unpacked {raw_tpx3_file} in {elapsed_seconds:.2f}s",
         event_type="analysis.tpx3_unpacking.completed",
         raw_tpx3_file=str(raw_file.path),
-        analysis_directory=str(analysis.analysis_directory),
+        analysis_directory=str(analysis_root),
         summary_json_file=str(summary_path),
         command=command,
         exit_code=process.returncode,
@@ -227,15 +229,15 @@ def execute_unpacker(
 
 
 def log_skipped_input(
-    analysis: HermesTpx3AnalysisState,
+    analysis_root: Path,
     raw_file: FileReference,
 ) -> None:
     _ANALYSIS_LOGGER.warning(
         "Skipped {raw_tpx3_file}: valid outputs already exist",
         event_type="analysis.tpx3_unpacking.skipped",
         raw_tpx3_file=str(raw_file.path),
-        analysis_directory=str(analysis.analysis_directory),
-        summary_json_file=str(derive_summary_path(analysis, raw_file)),
+        analysis_directory=str(analysis_root),
+        summary_json_file=str(derive_summary_path(analysis_root, raw_file)),
         reason="valid summary and listed Parquet files already exist",
     )
 
@@ -265,7 +267,10 @@ def log_overall_failure(error: Exception) -> None:
     )
 
 
-def _validate_program_and_inputs(analysis: HermesTpx3AnalysisState) -> None:
+def _validate_program_and_inputs(
+    analysis: HermesTpx3AnalysisState,
+    analysis_root: Path,
+) -> None:
     executable = analysis.unpacking.program.executable_path
     if not executable.is_file():
         raise HermesTpx3PreflightError(
@@ -285,7 +290,7 @@ def _validate_program_and_inputs(analysis: HermesTpx3AnalysisState) -> None:
             "raw TPX3 filename stems must be unique"
         )
 
-    analysis_directory = analysis.analysis_directory
+    analysis_directory = analysis_root
     if analysis_directory.exists():
         if not analysis_directory.is_dir():
             raise HermesTpx3PreflightError(
