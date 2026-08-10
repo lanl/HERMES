@@ -3,11 +3,11 @@ measurement_info:
   run_number: 1
 
 environment:
-  working_dir: data/examples/analysis/event_reconstruction
+  working_directory: data/examples/analysis/event_reconstruction
+  analysis_directory: analysis
 
 analysis:
   mode: hermes
-  analysis_directory: data/examples/analysis/event_reconstruction/analysis
   event_reconstruction:
     program:
       name: event-reconstructor-cpp
