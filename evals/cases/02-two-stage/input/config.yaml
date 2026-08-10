@@ -6,11 +6,11 @@ measurement_info:
 
 environment:
   working_directory: data/02-two-stage
-  run_directory: data/02-two-stage/tantalum-ironpowder
-  log_directory: data/02-two-stage/tantalum-ironpowder/logs
+  run_directory: tantalum-ironpowder
+  log_directory: logs
   raw_data_directory: tests/data/tpx3
-  analysis_directory: data/02-two-stage/tantalum-ironpowder/analysis
-  config_file: data/02-two-stage/tantalum-ironpowder/HERMES_record.yaml
+  analysis_directory: analysis
+  config_file: HERMES_record.yaml
 
 analysis:
   mode: hermes
