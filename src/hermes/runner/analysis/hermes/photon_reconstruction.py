@@ -22,6 +22,7 @@ from hermes.state.models.analysis.hermes_tpx3_spidr import (
     HermesTpx3PhotonReconstruction,
     HermesTpx3PhotonReconstructionSummary,
 )
+from hermes.state.models.measurement import MeasurementInfo
 from hermes.state.models.shared_models import FileReference
 
 _LOG_TEXT_LIMIT = 4_000
@@ -70,16 +71,48 @@ def resolve_pixel_files(
     ]
 
 
+def _parse_pixel_file_name(input_file: FileReference) -> tuple[str, str]:
+    """Return the raw filename stem and part index of a pixel Parquet file.
+
+    The unpacker names pixel files
+    ``<raw-file-stem>_chip_<chip>_pixels_<part>.parquet``. Reconstruction reuses
+    the raw stem and part index when naming its own photon, pixel-cluster, and
+    summary files, so every output for one raw file shares a stem. This mirrors
+    the binary's own filename parsing.
+    """
+    stem = input_file.path.stem
+    chip_position = stem.find("_chip_")
+    pixels_position = stem.rfind("_pixels_")
+    if (
+        chip_position == -1
+        or pixels_position == -1
+        or pixels_position < chip_position
+    ):
+        raise HermesPhotonReconstructionPreflightError(
+            f"pixel filename does not match "
+            f"<stem>_chip_<chip>_pixels_<part>.parquet: {input_file.path}"
+        )
+    raw_file_stem = stem[:chip_position]
+    part_index = stem[pixels_position + len("_pixels_") :]
+    if not raw_file_stem or not part_index:
+        raise HermesPhotonReconstructionPreflightError(
+            f"pixel filename does not match "
+            f"<stem>_chip_<chip>_pixels_<part>.parquet: {input_file.path}"
+        )
+    return raw_file_stem, part_index
+
+
 def derive_output_path(
     analysis_root: Path,
     input_file: FileReference,
 ) -> Path:
-    """Return the photon file path for one pixel file (input basename kept).
+    """Return the photon file path the binary writes for one pixel file.
 
-    Photon files go in a ``photons`` directory the reconstruction stage makes
-    under the analysis directory.
+    Photon files go in a ``photons`` directory under the analysis directory,
+    named ``<raw-file-stem>_photon_<part>.parquet``.
     """
-    return analysis_root / "photons" / f"{input_file.path.stem}.parquet"
+    raw_file_stem, part_index = _parse_pixel_file_name(input_file)
+    return analysis_root / "photons" / f"{raw_file_stem}_photon_{part_index}.parquet"
 
 
 def check_previous_reconstructed_file(
@@ -92,36 +125,54 @@ def check_previous_reconstructed_file(
     (including zero-photon runs that produce no photon parquet), so its presence
     means the file is already done.
     """
-    output_file = derive_output_path(analysis_root, input_file)
-    return derive_summary_path(output_file).is_file()
+    return derive_summary_path(analysis_root, input_file).is_file()
 
 
-def derive_summary_path(output_file: Path) -> Path:
+def derive_summary_path(
+    analysis_root: Path,
+    input_file: FileReference,
+) -> Path:
     """Return the reconstruction-summary JSON file path written by the binary.
 
-    The binary writes the summary to a ``logs/photons`` directory beside the
-    photon output directory (the unpacker writes to ``logs/unpacker``), so it is
-    a log artifact rather than sitting next to the photon files themselves.
+    The binary writes one summary per raw filename stem to a
+    ``logs/photon_reconstruction`` directory under the analysis directory (the
+    unpacker writes to ``logs/unpacking``), named
+    ``<raw-file-stem>_photon_reconstruction_summary.json``.
     """
-    logs_directory = output_file.parent.parent / "logs" / "photons"
-    return logs_directory / f"{output_file.stem}-reconstruction-summary.json"
+    raw_file_stem, _ = _parse_pixel_file_name(input_file)
+    return (
+        analysis_root
+        / "logs"
+        / "photon_reconstruction"
+        / f"{raw_file_stem}_photon_reconstruction_summary.json"
+    )
 
 
 def derive_reconstruction_command(
     reconstruction: HermesTpx3PhotonReconstruction,
+    analysis_root: Path,
     input_file: FileReference,
-    output_file: Path,
     settings_file: Path,
+    measurement_info: MeasurementInfo,
     *,
     overwrite: bool = False,
 ) -> list[str]:
-    """Build the command line that launches the reconstruction binary."""
+    """Build the command line that launches the reconstruction binary.
+
+    ``--output`` is the analysis directory; the binary derives every output
+    filename from the input pixel filename and writes photons/, pixel_clusters/,
+    and logs/photon_reconstruction/ beneath it.
+    """
     command = [
         str(reconstruction.program.executable_path),
         "--input",
         str(input_file.path),
         "--output",
-        str(output_file),
+        str(analysis_root),
+        "--measurement-id",
+        measurement_info.measurement_id,
+        "--run",
+        measurement_info.run,
         "--settings",
         str(settings_file),
     ]
@@ -134,6 +185,7 @@ def execute_reconstruction(
     analysis: HermesTpx3AnalysisState,
     analysis_root: Path,
     input_file: FileReference,
+    measurement_info: MeasurementInfo,
     *,
     overwrite: bool = False,
 ) -> HermesTpx3PhotonReconstructionResult:
@@ -144,7 +196,7 @@ def execute_reconstruction(
     """
     reconstruction = _require_reconstruction(analysis)
     output_file = derive_output_path(analysis_root, input_file)
-    summary_path = derive_summary_path(output_file)
+    summary_path = derive_summary_path(analysis_root, input_file)
     started = perf_counter()
 
     # The complete clustering settings go to the binary in a temporary JSON
@@ -165,9 +217,10 @@ def execute_reconstruction(
 
     command = derive_reconstruction_command(
         reconstruction,
+        analysis_root,
         input_file,
-        output_file,
         settings_file,
+        measurement_info,
         overwrite=overwrite,
     )
     _ANALYSIS_LOGGER.info(
@@ -227,7 +280,7 @@ def execute_reconstruction(
 
     _ANALYSIS_LOGGER.info(
         "Reconstructed {pixel_file} in {elapsed_seconds:.2f}s: "
-        "{photon_count} photons",
+        "{total_photons} photons",
         event_type="analysis.tpx3_reconstruction.completed",
         pixel_file=str(input_file.path),
         output_file=str(output_file),
@@ -237,8 +290,8 @@ def execute_reconstruction(
         elapsed_seconds=elapsed_seconds,
         stdout_excerpt=stdout_excerpt,
         stderr_excerpt=stderr_excerpt,
-        photon_count=summary.reconstruction.photon_count,
-        rejected_component_count=summary.reconstruction.rejected_component_count,
+        total_photons=summary.reconstruction.total_photons,
+        rejected_clusters=summary.reconstruction.rejected_clusters,
     )
     return HermesTpx3PhotonReconstructionResult(
         input_file=input_file,

@@ -58,7 +58,8 @@ void testWorkflowWithEmptyInput(TestContext& test) {
     const auto analysis_directory = makeTestDirectory("empty");
     std::istringstream input("");
     const auto result = runTwoPassWorkflow(
-        input, "/tmp/empty.tpx3", analysis_directory.string());
+        input, "/tmp/empty.tpx3", analysis_directory.string(),
+        "test-measurement", "test-run");
 
     test.expect(result.success, "workflow succeeded with empty input");
     test.expectEqual(result.analysis_directory, analysis_directory.string(),
@@ -66,12 +67,12 @@ void testWorkflowWithEmptyInput(TestContext& test) {
 
     for (const auto* directory : {"pixel_hits", "tdc_triggers",
                                   "global_timestamps", "control_packets",
-                                  "unknownPackets", "logs/unpacker"}) {
+                                  "unknownPackets", "logs/unpacking"}) {
         test.expect(std::filesystem::is_directory(analysis_directory / directory),
                     std::string("created shared directory ") + directory);
     }
     test.expect(std::filesystem::exists(
-                    analysis_directory / "logs/unpacker/empty-unpacker-summary.json"),
+                    analysis_directory / "logs/unpacking/empty_unpacker_summary.json"),
                 "empty-input summary JSON written");
     test.expectEqual(result.summary.writer_diagnostics.pixel_hits.row_count,
                      std::uint64_t{0}, "empty pixel row count recorded");
@@ -88,11 +89,11 @@ void testSharedDirectoriesForTwoInputs(TestContext& test) {
     std::istringstream first_input(bytes);
     const auto first = runTwoPassWorkflow(
         first_input, "/tmp/DT_2p0V_000000.tpx3",
-        analysis_directory.string());
+        analysis_directory.string(), "test-measurement", "test-run");
     std::istringstream second_input(bytes);
     const auto second = runTwoPassWorkflow(
         second_input, "/tmp/DT_2p0V_000001.tpx3",
-        analysis_directory.string());
+        analysis_directory.string(), "test-measurement", "test-run");
 
     printWorkflowErrors(first, "first shared-directory run");
     printWorkflowErrors(second, "second shared-directory run");
@@ -101,13 +102,13 @@ void testSharedDirectoriesForTwoInputs(TestContext& test) {
     test.expect(second.success, "second input wrote shared analysis files");
 
     const auto first_parquet = analysis_directory /
-        "pixel_hits/DT_2p0V_000000-chip-0-part-00000.parquet";
+        "pixel_hits/DT_2p0V_000000_chip_0_pixels_00000.parquet";
     const auto second_parquet = analysis_directory /
-        "pixel_hits/DT_2p0V_000001-chip-0-part-00000.parquet";
+        "pixel_hits/DT_2p0V_000001_chip_0_pixels_00000.parquet";
     const auto first_summary = analysis_directory /
-        "logs/unpacker/DT_2p0V_000000-unpacker-summary.json";
+        "logs/unpacking/DT_2p0V_000000_unpacker_summary.json";
     const auto second_summary = analysis_directory /
-        "logs/unpacker/DT_2p0V_000001-unpacker-summary.json";
+        "logs/unpacking/DT_2p0V_000001_unpacker_summary.json";
 
     test.expect(std::filesystem::exists(first_parquet),
                 "first input-prefixed Parquet file exists");
@@ -121,14 +122,15 @@ void testSharedDirectoriesForTwoInputs(TestContext& test) {
     if (std::filesystem::exists(first_summary)) {
         const auto first_json = readJson(first_summary);
         test.expectEqual(
-            first_json["parquet"]["pixel_data"]["row_count"]
+            first_json["output_parquet"]["pixel_data"]["row_count"]
                 .get<std::uint64_t>(),
             std::uint64_t{1}, "summary records pixel row count");
         test.expectEqual(
-            first_json["parquet"]["pixel_data"]["files"][0]
+            first_json["output_parquet"]["pixel_data"]["files"][0]
                 .get<std::string>(),
-            std::string(
-                "pixel_hits/DT_2p0V_000000-chip-0-part-00000.parquet"),
+            (analysis_directory /
+             "pixel_hits/DT_2p0V_000000_chip_0_pixels_00000.parquet")
+                .string(),
             "summary records input-prefixed Parquet filename");
     }
 
@@ -142,28 +144,31 @@ void testExistingFilesAreNotOverwritten(TestContext& test) {
 
     std::istringstream first_input(bytes);
     const auto first = runTwoPassWorkflow(
-        first_input, source_path, analysis_directory.string());
+        first_input, source_path, analysis_directory.string(),
+        "test-measurement", "test-run");
     test.expect(first.success, "initial input wrote analysis files");
 
     std::istringstream summary_collision_input(bytes);
     const auto summary_collision = runTwoPassWorkflow(
-        summary_collision_input, source_path, analysis_directory.string());
+        summary_collision_input, source_path, analysis_directory.string(),
+        "test-measurement", "test-run");
     test.expect(!summary_collision.success,
                 "existing summary prevents repeated input");
     test.expect(!summary_collision.errors.empty(),
                 "existing summary reports an error");
 
     const auto summary_path =
-        analysis_directory / "logs/unpacker/repeated-unpacker-summary.json";
+        analysis_directory / "logs/unpacking/repeated_unpacker_summary.json";
     std::filesystem::remove(summary_path);
 
     const auto parquet_path = analysis_directory /
-        "pixel_hits/repeated-chip-0-part-00000.parquet";
+        "pixel_hits/repeated_chip_0_pixels_00000.parquet";
     if (std::filesystem::exists(parquet_path)) {
         const auto parquet_size = std::filesystem::file_size(parquet_path);
         std::istringstream parquet_collision_input(bytes);
         const auto parquet_collision = runTwoPassWorkflow(
-            parquet_collision_input, source_path, analysis_directory.string());
+            parquet_collision_input, source_path, analysis_directory.string(),
+            "test-measurement", "test-run");
         test.expect(!parquet_collision.success,
                     "existing Parquet file prevents repeated input");
         test.expectEqual(std::filesystem::file_size(parquet_path), parquet_size,
@@ -198,7 +203,7 @@ void testSummaryJsonGeneration(TestContext& test) {
     content.sorting_diagnostics.estimated_memory_bytes = 2048;
     content.writer_diagnostics.pixel_hits.row_count = 1;
     content.writer_diagnostics.pixel_hits.files.push_back(
-        "pixel_hits/test-chip-0-part-00000.parquet");
+        "pixel_hits/test_chip_0_pixels_00000.parquet");
     content.timing_diagnostics.conversion_seconds = 0.25;
     content.timing_diagnostics.epoch_assignment_seconds = 0.5;
     content.timing_diagnostics.total_seconds = 2.0;
@@ -268,13 +273,13 @@ void testSummaryJsonGeneration(TestContext& test) {
         parsed["sorting"]["estimated_memory_bytes"].get<std::uint64_t>(),
         std::uint64_t{2048}, "JSON contains sorting memory estimate");
     test.expectEqual(
-        parsed["parquet"]["pixel_data"]["row_count"].get<std::uint64_t>(),
+        parsed["output_parquet"]["pixel_data"]["row_count"].get<std::uint64_t>(),
         std::uint64_t{1}, "JSON contains pixel Parquet row count");
     test.expectEqual(
-        parsed["parquet"]["pixel_data"]["files"][0].get<std::string>(),
-        std::string("pixel_hits/test-chip-0-part-00000.parquet"),
-        "JSON contains relative pixel Parquet filename");
-    test.expect(parsed["parquet"]["tdc_timestamps"]["files"].empty(),
+        parsed["output_parquet"]["pixel_data"]["files"][0].get<std::string>(),
+        std::string("pixel_hits/test_chip_0_pixels_00000.parquet"),
+        "JSON contains pixel Parquet filename");
+    test.expect(parsed["output_parquet"]["tdc_timestamps"]["files"].empty(),
                 "JSON contains empty TDC file list");
     test.expectEqual(
         parsed["processing_times_seconds"]["total"].get<double>(),
@@ -306,10 +311,11 @@ void testSummaryJsonStructure(TestContext& test) {
     SummaryJsonContent content;
     const auto parsed = nlohmann::json::parse(generateSummaryJson(content));
 
-    test.expectEqual(parsed.size(), std::size_t{5},
-                     "JSON contains exactly five top-level sections");
-    for (const auto* section : {"unpacking", "timestamp_processing", "sorting",
-                                "parquet", "processing_times_seconds"}) {
+    test.expectEqual(parsed.size(), std::size_t{7},
+                     "JSON contains exactly seven top-level sections");
+    for (const auto* section : {"measurement_info", "inputfile", "unpacking",
+                                "timestamp_processing", "sorting",
+                                "output_parquet", "processing_times_seconds"}) {
         test.expect(parsed.contains(section),
                     std::string("JSON contains ") + section);
     }
@@ -324,7 +330,7 @@ void testSummaryJsonStructure(TestContext& test) {
     for (const auto* category : {"pixel_data", "tdc_timestamps",
                                  "heartbeat_packets", "control_packets",
                                  "unrecognized_packets"}) {
-        const auto& category_json = parsed["parquet"][category];
+        const auto& category_json = parsed["output_parquet"][category];
         test.expectEqual(category_json.size(), std::size_t{2},
                          std::string(category) +
                              " contains only row_count and files");
@@ -360,7 +366,8 @@ void testWorkflowErrorHandling(TestContext& test) {
 
     std::istringstream input(bytes);
     const auto result = runTwoPassWorkflow(
-        input, "/tmp/malformed.tpx3", analysis_directory.string());
+        input, "/tmp/malformed.tpx3", analysis_directory.string(),
+        "test-measurement", "test-run");
 
     test.expect(result.summary.unpack_summary.malformed_chunk_count > 0,
                 "malformed chunks detected");
@@ -377,6 +384,7 @@ void testTimeSortDisabledStillWritesRows(TestContext& test) {
     std::istringstream input(bytes);
     const auto result = runTwoPassWorkflow(
         input, "/tmp/no_time_sort.tpx3", analysis_directory.string(),
+        "test-measurement", "test-run",
         /*overwrite=*/false, /*time_sort=*/false);
 
     printWorkflowErrors(result, "time-sort-disabled run");

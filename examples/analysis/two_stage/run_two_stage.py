@@ -48,12 +48,12 @@ def main(input_yaml_path: Path = DEFAULT_INPUT_YAML_PATH) -> None:
         1 for result in reconstruction_results if result.status == "skipped"
     )
     photon_count = sum(
-        result.counts.photon_count
+        result.counts.total_photons
         for result in reconstruction_results
         if result.counts is not None
     )
     rejected_count = sum(
-        result.counts.rejected_component_count
+        result.counts.rejected_clusters
         for result in reconstruction_results
         if result.counts is not None
     )

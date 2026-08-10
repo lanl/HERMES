@@ -62,6 +62,7 @@ from hermes.state.models.analysis.hermes_tpx3_spidr import (
     HermesTpx3PhotonReconstructionResult,
     HermesTpx3UnpackingResult,
 )
+from hermes.state.models.measurement import MeasurementInfo
 from hermes.state.models.shared_models import FileReference
 from hermes.state_service.state_manager import StateManager
 
@@ -194,6 +195,8 @@ def run_hermes_analysis(
             "environment.analysis_directory must be set to run HERMES analysis"
         )
 
+    measurement_info = state.measurement_info
+
     unpacked_files: list[FileReference] = []
     try:
         if analysis.unpacking is not None:
@@ -229,7 +232,11 @@ def run_hermes_analysis(
                 worker_count = _calculate_worker_count(analysis, files_to_run)
                 completed = _run_parallel(
                     lambda raw_file: execute_unpacker(
-                        analysis, analysis_root, raw_file, overwrite=unpack_overwrite
+                        analysis,
+                        analysis_root,
+                        raw_file,
+                        measurement_info,
+                        overwrite=unpack_overwrite,
                     ),
                     files_to_run,
                     worker_count,
@@ -251,7 +258,11 @@ def run_hermes_analysis(
         current_analysis = _current_hermes_analysis(state_manager)
         if current_analysis.photon_reconstruction is not None:
             _run_photon_reconstruction(
-                state_manager, current_analysis, analysis_root, overwrite=overwrite
+                state_manager,
+                current_analysis,
+                analysis_root,
+                measurement_info,
+                overwrite=overwrite,
             )
 
         current_analysis = _current_hermes_analysis(state_manager)
@@ -286,6 +297,7 @@ def _run_photon_reconstruction(
     state_manager: StateManager,
     analysis: HermesTpx3AnalysisState,
     analysis_root: Path,
+    measurement_info: MeasurementInfo,
     *,
     overwrite: bool = False,
 ) -> None:
@@ -319,7 +331,11 @@ def _run_photon_reconstruction(
             worker_count = _calculate_worker_count(analysis, files_to_run)
             completed = _run_parallel(
                 lambda input_file: execute_reconstruction(
-                    analysis, analysis_root, input_file, overwrite=recon_overwrite
+                    analysis,
+                    analysis_root,
+                    input_file,
+                    measurement_info,
+                    overwrite=recon_overwrite,
                 ),
                 files_to_run,
                 worker_count,
@@ -343,7 +359,9 @@ def _run_photon_reconstruction(
             [
                 HermesTpx3PhotonReconstructionResult(
                     input_file=input_file,
-                    output_file=derive_output_path(analysis_root, input_file),
+                    output_file=_best_effort_output_path(
+                        analysis_root, input_file
+                    ),
                     status="failed",
                 )
                 for input_file in _reconstruction_inputs(analysis, analysis_root)
@@ -352,6 +370,17 @@ def _run_photon_reconstruction(
         )
         log_reconstruction_failure(exc)
         raise
+
+
+def _best_effort_output_path(
+    analysis_root: Path,
+    input_file: FileReference,
+) -> Path:
+    """Photon output path for failure reporting; never raises on a bad name."""
+    try:
+        return derive_output_path(analysis_root, input_file)
+    except Exception:
+        return analysis_root / "photons" / f"{input_file.path.stem}.parquet"
 
 
 def _reconstruction_inputs(

@@ -166,19 +166,27 @@ reserved timing values and must be rejected until implemented.
 
 ## Photon Parquet Files
 
-The `analysis/photons/` directory contains two distinct filename groups:
+Reconstruction writes two tables in two directories under `analysis/`. The
+photon table goes in `photons/` and the pixel-to-cluster table goes in
+`pixel_clusters/`. Both filenames join the raw TPX3 filename stem, a descriptive
+label, and the pixel file's five-digit part index with underscores:
 
 ```text
-<raw-file-stem>-chip-<chip-index>-photon-events-part-<five-digit-part-index>.parquet
-<raw-file-stem>-chip-<chip-index>-photon-pixels-part-<five-digit-part-index>.parquet
+photons/<raw-file-stem>_photon_<five-digit-part-index>.parquet
+pixel_clusters/<raw-file-stem>_pixel_clusters_<five-digit-part-index>.parquet
 ```
 
-Part numbers start at zero independently for each raw input, chip, and file
-group. `photon_events` is always written when accepted photons exist.
-`photon_pixels` is written only when `save_photon_pixels` is true. An empty file
-group has zero files and a zero row count in the summary.
+For example, reconstructing
+`pixel_hits/Tantalum_IronPowder_chip_0_pixels_00000.parquet` writes
+`photons/Tantalum_IronPowder_photon_00000.parquet` and, when
+`save_photon_pixels` is true, `pixel_clusters/Tantalum_IronPowder_pixel_clusters_00000.parquet`.
 
-### `photon_events`
+The part index matches the pixel file the run read. The photon table is always
+written when accepted photons exist. The pixel-to-cluster table is written only
+when `save_photon_pixels` is true, in its own `pixel_clusters/` directory. An
+empty table has zero files and a zero row count in the summary.
+
+### photon table
 
 | Column | Arrow type | Nullable | Description |
 | --- | --- | --- | --- |
@@ -192,11 +200,11 @@ group has zero files and a zero row count in the summary.
 The first position rule is `arithmetic`. ToT-weighted or fitted positions are
 reserved for later work.
 
-### `photon_pixels`
+### pixel-to-cluster table
 
 | Column | Arrow type | Nullable | Description |
 | --- | --- | --- | --- |
-| `photon_id` | `uint64` | no | Photon number matching `photon_events` for the same raw input and chip |
+| `photon_id` | `uint64` | no | Photon number matching the photon table for the same raw input and chip |
 | `pixel_event_id` | `uint64` | no | Zero-based row number after reading the chip's sorted input parts in order |
 | `x` | `uint16` | no | Source pixel `local_x` |
 | `y` | `uint16` | no | Source pixel `local_y` |
@@ -217,25 +225,30 @@ Every photon Parquet file records these string metadata values:
 
 ## Reconstruction Summary JSON File
 
-Each raw TPX3 filename stem has one reconstruction summary:
+Each raw TPX3 filename stem has one reconstruction summary in
+`analysis/logs/photon_reconstruction/`:
 
 ```text
-analysis/logs/<raw-file-stem>-reconstruction-summary.json
+analysis/logs/photon_reconstruction/<raw-file-stem>_photon_reconstruction_summary.json
 ```
 
-It is written only after every final photon Parquet file closes successfully.
-Paths are relative to the analysis directory. The summary has this structure:
+The reconstruction program reads the same run-identity inputs as the unpacker
+(`--measurement-id` and `--run`) and copies them into the summary so it names
+the measurement and run it belongs to. The summary is written only after every
+final photon Parquet file closes successfully. Each listed Parquet path is the
+`--input` path or the output path the program wrote, so a reader can open the
+file directly from the working directory. The summary has this structure:
 
 ```yaml
-schema_version: 1
+measurement_info:
+  measurement_id: 02-two-stage
+  run: tantalum-ironpowder
 
 reconstruction:
-  pixel_rows_read: 0
-  pixel_rows_below_min_tot: 0
-  components_formed: 0
-  photon_count: 0
-  rejected_component_count: 0
-  rejection_counts:
+  pixels_read: 0
+  clusters_formed: 0
+  rejected_clusters: 0
+  rejection_reasons:
     below_min_cluster_size: 0
     above_max_cluster_size: 0
     below_min_cluster_tot: 0
@@ -247,6 +260,7 @@ reconstruction:
     bridged_components: 0
   warnings: []
   errors: []
+  total_photons: 0
 
 clustering:
   algorithm: connected_components
@@ -259,12 +273,12 @@ photon_timing:
   parameters: {}
   high_tot_anchor: null
 
-parquet:
-  input_pixel_data_files: []
-  photon_events:
+parquet_files:
+  input_pixel_data_file: []
+  photons:
     row_count: 0
     files: []
-  photon_pixels:
+  pixel_clusters:
     requested: false
     row_count: 0
     files: []
@@ -279,9 +293,10 @@ processing_times_seconds:
     photons_per_second: 0.0
 ```
 
-The complete saved settings include adjacency, maximum time spread, cluster-size
-limits, pixel and cluster ToT limits, maximum aspect ratio, minimum filled
-fraction, position rule, timing rule, optional calibration path, and
-`save_photon_pixels`. Detailed per-input counts, filenames, warnings, errors,
-timing, and throughput stay in this summary and are not copied into the HERMES
-YAML file.
+`clustering.settings` holds the complete settings the run used: adjacency,
+maximum time spread, cluster-size limits, pixel and cluster ToT limits, maximum
+aspect ratio, minimum filled fraction, position rule, timing rule, optional
+calibration path, and `save_photon_pixels`. `pixel_clusters.requested` mirrors
+`save_photon_pixels`, and its `row_count` counts the pixels in accepted
+clusters. Detailed per-input counts, filenames, warnings, errors, timing, and
+throughput stay in this summary and are not copied into the HERMES YAML file.

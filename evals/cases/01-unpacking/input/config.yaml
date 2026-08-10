@@ -6,11 +6,11 @@ measurement_info:
 
 environment:
   working_directory: data/01-unpacking
-  run_directory: data/01-unpacking/1kHz-testing
-  log_directory: data/01-unpacking/1kHz-testing/logs
+  run_directory: 1kHz-testing
+  log_directory: logs
   raw_data_directory: tests/data/tpx3
-  analysis_directory: data/01-unpacking/1kHz-testing/analysis
-  config_file: data/01-unpacking/1kHz-testing/HERMES_record.yaml
+  analysis_directory: analysis
+  config_file: HERMES_record.yaml
 
 analysis:
   mode: hermes

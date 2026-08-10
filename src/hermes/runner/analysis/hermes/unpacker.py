@@ -14,15 +14,20 @@ from hermes.state.models.analysis.hermes_tpx3_spidr import (
     HermesTpx3AnalysisState,
     Tpx3SpidrSummary,
 )
+from hermes.state.models.measurement import MeasurementInfo
 from hermes.state.models.shared_models import FileReference
 
-_PARQUET_DIRECTORIES = (
-    "pixel_hits",
-    "tdc_triggers",
-    "global_timestamps",
-    "control_packets",
-    "unknownPackets",
-)
+# Each Parquet category directory and the filename label the unpacker uses in it.
+# Pixel files are named "<stem>_chip_<chip>_pixels_<part>.parquet"; every other
+# category is named "<stem>_<label>_<part>.parquet".
+_PARQUET_DIRECTORY_LABELS = {
+    "pixel_hits": None,
+    "tdc_triggers": "tdc_triggers",
+    "global_timestamps": "global_timestamps",
+    "control_packets": "control_packets",
+    "unknownPackets": "unrecognized_packets",
+}
+_PARQUET_DIRECTORIES = tuple(_PARQUET_DIRECTORY_LABELS)
 _LOG_TEXT_LIMIT = 4_000
 _ANALYSIS_LOGGER = logger.bind(
     domain="analysis",
@@ -54,8 +59,8 @@ def derive_summary_path(
     return (
         analysis_root
         / "logs"
-        / "unpacker"
-        / f"{raw_file.path.stem}-unpacker-summary.json"
+        / "unpacking"
+        / f"{raw_file.path.stem}_unpacker_summary.json"
     )
 
 
@@ -75,6 +80,7 @@ def derive_unpacker_command(
     analysis: HermesTpx3AnalysisState,
     analysis_root: Path,
     raw_file: FileReference,
+    measurement_info: MeasurementInfo,
     *,
     overwrite: bool = False,
 ) -> list[str]:
@@ -84,6 +90,10 @@ def derive_unpacker_command(
         str(raw_file.path),
         "--output",
         str(analysis_root),
+        "--measurement-id",
+        measurement_info.measurement_id,
+        "--run",
+        measurement_info.run,
     ]
     if overwrite:
         command.append("--overwrite")
@@ -95,11 +105,12 @@ def execute_unpacker(
     analysis: HermesTpx3AnalysisState,
     analysis_root: Path,
     raw_file: FileReference,
+    measurement_info: MeasurementInfo,
     *,
     overwrite: bool = False,
 ) -> Tpx3SpidrSummary:
     command = derive_unpacker_command(
-        analysis, analysis_root, raw_file, overwrite=overwrite
+        analysis, analysis_root, raw_file, measurement_info, overwrite=overwrite
     )
     summary_path = derive_summary_path(analysis_root, raw_file)
     resolved_executable_path = (
@@ -302,46 +313,51 @@ def _validate_completed_files(
     analysis_directory: Path,
     raw_file_stem: str,
 ) -> None:
-    if summary.unpacking.errors or summary.parquet.errors:
+    if summary.unpacking.errors or summary.output_parquet.errors:
         raise HermesTpx3OutputError(
             f"summary reports unpacking or Parquet errors: {summary_path}"
         )
 
     analysis_root = analysis_directory.resolve()
     categories = (
-        ("pixel_hits", summary.parquet.pixel_data, True),  # includes chip ID
-        ("tdc_triggers", summary.parquet.tdc_timestamps, False),  # no chip ID
-        ("global_timestamps", summary.parquet.heartbeat_packets, False),
-        ("control_packets", summary.parquet.control_packets, False),
-        ("unknownPackets", summary.parquet.unrecognized_packets, False),
+        ("pixel_hits", summary.output_parquet.pixel_data, True),  # chip in name
+        ("tdc_triggers", summary.output_parquet.tdc_timestamps, False),
+        ("global_timestamps", summary.output_parquet.heartbeat_packets, False),
+        ("control_packets", summary.output_parquet.control_packets, False),
+        ("unknownPackets", summary.output_parquet.unrecognized_packets, False),
     )
     listed_files: set[Path] = set()
+    # The binary names pixel files "<stem>_chip_<chip>_pixels_<part>.parquet"
+    # and every other category "<stem>_<label>_<part>.parquet".
     filename_pattern_with_chip = re.compile(
-        rf"^{re.escape(raw_file_stem)}-chip-(\d+)-part-(\d{{5}})\.parquet$"
-    )
-    filename_pattern_without_chip = re.compile(
-        rf"^{re.escape(raw_file_stem)}-part-(\d{{5}})\.parquet$"
+        rf"^{re.escape(raw_file_stem)}_chip_(\d+)_pixels_(\d{{5}})\.parquet$"
     )
     for expected_directory, category, has_chip_id in categories:
         observed_rows = 0
         parts_by_chip: dict[int, list[int]] = {}
-        filename_pattern = filename_pattern_with_chip if has_chip_id else filename_pattern_without_chip
+        if has_chip_id:
+            filename_pattern = filename_pattern_with_chip
+        else:
+            label = _PARQUET_DIRECTORY_LABELS[expected_directory]
+            filename_pattern = re.compile(
+                rf"^{re.escape(raw_file_stem)}_{re.escape(label)}_"
+                rf"(\d{{5}})\.parquet$"
+            )
 
-        for relative_path in category.files:
-            filename_match = filename_pattern.fullmatch(relative_path.name)
+        for parquet_path in category.files:
+            filename_match = filename_pattern.fullmatch(parquet_path.name)
             if (
-                len(relative_path.parts) != 2
-                or relative_path.parts[0] != expected_directory
+                parquet_path.parent.name != expected_directory
                 or filename_match is None
             ):
                 raise HermesTpx3OutputError(
                     f"unexpected Parquet filename for {raw_file_stem}: "
-                    f"{relative_path}"
+                    f"{parquet_path}"
                 )
-            if relative_path in listed_files:
+            if parquet_path in listed_files:
                 raise HermesTpx3OutputError(
                     f"summary lists the same Parquet file more than once: "
-                    f"{relative_path}"
+                    f"{parquet_path}"
                 )
 
             if has_chip_id:
@@ -352,24 +368,23 @@ def _validate_completed_files(
                 part_index = int(filename_match.group(1))
 
             parts_by_chip.setdefault(chip_index, []).append(part_index)
-            parquet_path = analysis_directory / relative_path
             resolved_path = parquet_path.resolve()
             if not resolved_path.is_relative_to(analysis_root):
                 raise HermesTpx3OutputError(
                     f"summary lists a Parquet file outside the analysis "
-                    f"directory: {relative_path}"
+                    f"directory: {parquet_path}"
                 )
-            if not parquet_path.is_file():
+            if not resolved_path.is_file():
                 raise HermesTpx3OutputError(
-                    f"summary lists a missing Parquet file: {parquet_path}"
+                    f"summary lists a missing Parquet file: {resolved_path}"
                 )
             try:
-                observed_rows += pq.read_metadata(parquet_path).num_rows
+                observed_rows += pq.read_metadata(resolved_path).num_rows
             except Exception as exc:
                 raise HermesTpx3OutputError(
-                    f"cannot read Parquet metadata: {parquet_path}"
+                    f"cannot read Parquet metadata: {resolved_path}"
                 ) from exc
-            listed_files.add(relative_path)
+            listed_files.add(parquet_path)
 
         for chip_index, part_indexes in parts_by_chip.items():
             if sorted(part_indexes) != list(range(len(part_indexes))):
@@ -386,15 +401,16 @@ def _validate_completed_files(
             )
 
     matching_files = {
-        path.relative_to(analysis_directory)
+        path.resolve()
         for path in _matching_parquet_files(
             analysis_directory,
             raw_file_stem,
         )
     }
-    if matching_files != listed_files:
-        unexpected = sorted(str(path) for path in matching_files - listed_files)
-        missing = sorted(str(path) for path in listed_files - matching_files)
+    listed_resolved = {path.resolve() for path in listed_files}
+    if matching_files != listed_resolved:
+        unexpected = sorted(str(path) for path in matching_files - listed_resolved)
+        missing = sorted(str(path) for path in listed_resolved - matching_files)
         raise HermesTpx3OutputError(
             f"summary Parquet file list does not match files for "
             f"{raw_file_stem}; unexpected={unexpected}, missing={missing}"
@@ -406,7 +422,7 @@ def _matching_parquet_files(
     raw_file_stem: str,
 ) -> list[Path]:
     matches: list[Path] = []
-    pattern = f"{raw_file_stem}-*.parquet"
+    pattern = f"{raw_file_stem}_*.parquet"
     for directory in _PARQUET_DIRECTORIES:
         category_directory = analysis_directory / directory
         if category_directory.is_dir():

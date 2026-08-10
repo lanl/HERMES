@@ -128,12 +128,10 @@ analysis:
             assert isinstance(analysis, HermesTpx3AnalysisState)
             tpx3_files = analysis.unpacking.tpx3_files
             counts = HermesTpx3PhotonReconstructionCountsSummary(
-                pixel_rows_read=10,
-                pixel_rows_below_min_tot=0,
-                components_formed=5,
-                photon_count=3,
-                rejected_component_count=2,
-                rejection_counts=HermesTpx3PhotonRejectionCountsSummary(
+                pixels_read=10,
+                clusters_formed=5,
+                rejected_clusters=2,
+                rejection_reasons=HermesTpx3PhotonRejectionCountsSummary(
                     below_min_cluster_size=0,
                     above_max_cluster_size=0,
                     below_min_cluster_tot=0,
@@ -147,6 +145,7 @@ analysis:
                 ),
                 warnings=[],
                 errors=[],
+                total_photons=3,
             )
             completed_unpacking = analysis.unpacking.model_copy(
                 update={

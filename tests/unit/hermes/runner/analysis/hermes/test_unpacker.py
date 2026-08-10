@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import sys
-import textwrap
 from pathlib import Path
 from typing import Any
 
@@ -12,8 +10,6 @@ from loguru import logger
 
 from hermes.runner.analysis.hermes.run import HermesAnalysisError, run_hermes_analysis
 from hermes.runner.analysis.hermes.unpacker import (
-    HermesTpx3ExecutionError,
-    HermesTpx3OutputError,
     HermesTpx3PreflightError,
     check_previous_unpacked_file,
     derive_summary_path,
@@ -31,15 +27,8 @@ from hermes.state.models.measurement import MeasurementInfo
 from hermes.state.models.shared_models import BinaryProgram, FileReference
 from hermes.state.state import HermesRecord
 from hermes.state_service.change_requests import ChangeRequest
-from hermes.state_service.shared_types import (
-    ChangeApprovalError,
-    StateServiceConfig,
-)
+from hermes.state_service.shared_types import StateServiceConfig
 from hermes.state_service.state_manager import StateManager
-from hermes.state_service.state_io import (
-    load_hermes_record_from_yaml,
-    save_hermes_record_to_yaml,
-)
 
 
 class CapturingStateLogger:
@@ -66,6 +55,10 @@ class CapturingStateLogger:
 
 def _analysis_root(tmp_path: Path) -> Path:
     return tmp_path / "analysis"
+
+
+def _measurement_info() -> MeasurementInfo:
+    return MeasurementInfo(measurement_id="stage-3", run="test-run")
 
 
 def _analysis(tmp_path: Path, *raw_names: str) -> HermesTpx3AnalysisState:
@@ -110,14 +103,32 @@ def _record(
     )
 
 
-def _summary(raw_stem: str, *, pixel_rows: int = 0) -> Tpx3SpidrSummary:
+def _summary(
+    analysis_root: Path,
+    raw_stem: str,
+    *,
+    pixel_rows: int = 0,
+) -> Tpx3SpidrSummary:
+    # The binary writes each Parquet path as the analysis directory it was given
+    # joined with the category subdirectory and filename.
     pixel_files = (
-        [f"pixel_hits/{raw_stem}-chip-0-part-00000.parquet"]
+        [
+            str(
+                analysis_root
+                / "pixel_hits"
+                / f"{raw_stem}_chip_0_pixels_00000.parquet"
+            )
+        ]
         if pixel_rows
         else []
     )
     return Tpx3SpidrSummary.model_validate(
         {
+            "measurement_info": {
+                "measurement_id": "stage-3",
+                "run": "test-run",
+            },
+            "inputfile": f"rawTpx3/{raw_stem}.tpx3",
             "unpacking": {
                 "bytes_read": 0,
                 "chunks_read": 0,
@@ -151,9 +162,9 @@ def _summary(raw_stem: str, *, pixel_rows: int = 0) -> Tpx3SpidrSummary:
                 "strategy": "in_memory",
                 "memory_budget_bytes": 0,
                 "estimated_memory_bytes": 0,
-                "temporary_runs_created": 0,
+                "sorting_time_seconds": 0.0,
             },
-            "parquet": {
+            "output_parquet": {
                 "pixel_data": {
                     "row_count": pixel_rows,
                     "files": pixel_files,
@@ -187,9 +198,8 @@ def _save_completed_files(
     *,
     pixel_rows: int = 0,
 ) -> None:
-    summary = _summary(raw_file.path.stem, pixel_rows=pixel_rows)
-    for relative_path in summary.parquet.pixel_data.files:
-        parquet_path = analysis_root / relative_path
+    summary = _summary(analysis_root, raw_file.path.stem, pixel_rows=pixel_rows)
+    for parquet_path in summary.output_parquet.pixel_data.files:
         parquet_path.parent.mkdir(parents=True, exist_ok=True)
         pq.write_table(pa.table({"value": [1]}), parquet_path)
     summary_path = derive_summary_path(analysis_root, raw_file)
@@ -197,156 +207,26 @@ def _save_completed_files(
     summary_path.write_text(summary.model_dump_json(), encoding="utf-8")
 
 
-def _write_fake_unpacker(executable: Path) -> None:
-    script = textwrap.dedent(
-        f"""\
-        #!{sys.executable}
-        import json
-        import sys
-        from pathlib import Path
-
-        import pyarrow as pa
-        import pyarrow.parquet as pq
-
-        args = sys.argv[1:]
-        raw_file = Path(args[args.index("--input") + 1])
-        analysis_directory = Path(args[args.index("--output") + 1])
-        raw_stem = raw_file.stem
-        mode = raw_file.read_text(encoding="utf-8").strip() or "success"
-
-        print("o" * 5000)
-        print("e" * 5000, file=sys.stderr)
-        if mode == "nonzero":
-            raise SystemExit(7)
-
-        summary_path = (
-            analysis_directory
-            / "logs"
-            / "unpacker"
-            / f"{{raw_stem}}-unpacker-summary.json"
-        )
-        summary_path.parent.mkdir(parents=True, exist_ok=True)
-        if mode == "missing_summary":
-            raise SystemExit(0)
-        if mode == "invalid_summary":
-            summary_path.write_text("not JSON", encoding="utf-8")
-            raise SystemExit(0)
-
-        if mode == "unsafe_path":
-            relative_parquet = Path("../outside.parquet")
-        elif mode == "bad_prefix":
-            relative_parquet = Path("pixel_hits/other-chip-0-part-00000.parquet")
-        elif mode == "bad_part":
-            relative_parquet = Path(
-                f"pixel_hits/{{raw_stem}}-chip-0-part-00001.parquet"
-            )
-        else:
-            relative_parquet = Path(
-                f"pixel_hits/{{raw_stem}}-chip-0-part-00000.parquet"
-            )
-
-        parquet_path = analysis_directory / relative_parquet
-        if mode not in {{"missing_parquet", "unsafe_path"}}:
-            parquet_path.parent.mkdir(parents=True, exist_ok=True)
-            pq.write_table(pa.table({{"value": [1]}}), parquet_path)
-
-        if mode == "unexpected_parquet":
-            unexpected = (
-                analysis_directory
-                / "pixel_hits"
-                / f"{{raw_stem}}-chip-0-part-00001.parquet"
-            )
-            pq.write_table(pa.table({{"value": [2]}}), unexpected)
-
-        row_count = 2 if mode == "row_mismatch" else 1
-        summary = {{
-            "unpacking": {{
-                "bytes_read": 16,
-                "chunks_read": 1,
-                "packets_read": 1,
-                "pixel_data_packets": 1,
-                "tdc_timestamps": 0,
-                "heartbeat_packets": 0,
-                "spidr_control_packets": 0,
-                "tpx3_control_packets": 0,
-                "unrecognized_packets": 0,
-                "tdc1_rising": 0,
-                "tdc1_falling": 0,
-                "tdc2_rising": 0,
-                "tdc2_falling": 0,
-                "unknown_tdc_edges": 0,
-                "errors": (
-                    ["test unpacking error"]
-                    if mode == "unpacking_errors"
-                    else []
-                ),
-                "warnings": ["test warning"],
-            }},
-            "timestamp_processing": {{
-                "heartbeat_pairs": {{
-                    "number_of_beats": 0,
-                }},
-                "time_adjustments": {{
-                    "pixel_packets": 1,
-                    "tdc_packets": 0,
-                    "control_packets": 0,
-                    "failed": 0,
-                }},
-            }},
-            "sorting": {{
-                "strategy": "in_memory",
-                "memory_budget_bytes": 1000,
-                "estimated_memory_bytes": 100,
-                "temporary_runs_created": 0,
-            }},
-            "parquet": {{
-                "pixel_data": {{
-                    "row_count": row_count,
-                    "files": [str(relative_parquet)],
-                }},
-                "tdc_timestamps": {{"row_count": 0, "files": []}},
-                "heartbeat_packets": {{"row_count": 0, "files": []}},
-                "control_packets": {{"row_count": 0, "files": []}},
-                "unrecognized_packets": {{"row_count": 0, "files": []}},
-                "errors": (
-                    ["test Parquet error"] if mode == "summary_errors" else []
-                ),
-            }},
-            "processing_times_seconds": {{
-                "canonical_time_seconds": 2.0345e-12,
-                "unpacking": 0.1,
-                "canonical_conversion": 0.1,
-                "time_adjustments": 0.1,
-                "sorting": 0.1,
-                "parquet_writing": 0.1,
-                "total": 0.5,
-                "throughput": {{
-                    "packets_per_second": 2.0,
-                    "megabytes_per_second": 0.000032,
-                }},
-            }},
-        }}
-        summary_path.write_text(json.dumps(summary), encoding="utf-8")
-        """
-    )
-    executable.write_text(script, encoding="utf-8")
-    executable.chmod(0o755)
-
-
 def test_derives_command_and_input_specific_summary_path(tmp_path: Path) -> None:
     analysis = _analysis(tmp_path, "first.tpx3")
     analysis_root = _analysis_root(tmp_path)
     raw_file = analysis.unpacking.tpx3_files[0]
 
-    assert derive_unpacker_command(analysis, analysis_root, raw_file) == [
+    assert derive_unpacker_command(
+        analysis, analysis_root, raw_file, _measurement_info()
+    ) == [
         str(analysis.unpacking.program.executable_path),
         "--input",
         str(raw_file.path),
         "--output",
         str(analysis_root),
+        "--measurement-id",
+        "stage-3",
+        "--run",
+        "test-run",
     ]
     assert derive_summary_path(analysis_root, raw_file) == (
-        analysis_root / "logs/unpacker/first-unpacker-summary.json"
+        analysis_root / "logs/unpacking/first_unpacker_summary.json"
     )
 
 
@@ -358,12 +238,18 @@ def test_command_includes_time_sort_false_when_time_sort_disabled(
     analysis.unpacking.runtime_options.time_sort = False
     raw_file = analysis.unpacking.tpx3_files[0]
 
-    assert derive_unpacker_command(analysis, analysis_root, raw_file) == [
+    assert derive_unpacker_command(
+        analysis, analysis_root, raw_file, _measurement_info()
+    ) == [
         str(analysis.unpacking.program.executable_path),
         "--input",
         str(raw_file.path),
         "--output",
         str(analysis_root),
+        "--measurement-id",
+        "stage-3",
+        "--run",
+        "test-run",
         "--time-sort",
         "false",
     ]
@@ -432,8 +318,8 @@ def test_run_marks_analysis_only_state_running_through_state_manager(
     )
     monkeypatch.setattr(
         "hermes.runner.analysis.hermes.run.execute_unpacker",
-        lambda analysis, analysis_root, raw_file, **kwargs: _summary(
-            raw_file.path.stem
+        lambda analysis, analysis_root, raw_file, measurement_info, **kwargs: (
+            _summary(analysis_root, raw_file.path.stem)
         ),
     )
 
@@ -523,195 +409,6 @@ def test_run_rejects_missing_analysis(tmp_path: Path) -> None:
     assert invalid_mode["extra"]["actual_analysis_mode"] is None
 
 
-def test_disabled_bypass_leaves_results_change_pending(
-    tmp_path: Path,
-) -> None:
-    analysis = _analysis(tmp_path, "first.tpx3")
-    _write_fake_unpacker(analysis.unpacking.program.executable_path)
-    analysis.unpacking.tpx3_files[0].path.write_text("success", encoding="utf-8")
-    state_logger = CapturingStateLogger()
-    manager = StateManager(
-        _record(tmp_path, analysis),
-        state_logger=state_logger,
-    )
-
-    with pytest.raises(ChangeApprovalError, match="requires approval"):
-        run_hermes_analysis(manager)
-
-    assert manager.get_state().analysis.unpacking.results == []
-    pending = manager.list_pending_changes()
-    assert len(pending) == 1
-    assert pending[0].path == "analysis.unpacking.results"
-    assert pending[0].origin == "trusted_workflow"
-    assert pending[0].proposer == "tpx3_spidr_unpacking"
-
-
-def test_run_executes_fake_unpacker_logs_details_and_round_trips_yaml(
-    tmp_path: Path,
-) -> None:
-    analysis = _analysis(tmp_path, "success.tpx3")
-    _write_fake_unpacker(analysis.unpacking.program.executable_path)
-    state_logger = CapturingStateLogger()
-    manager = StateManager(
-        _record(tmp_path, analysis),
-        config=StateServiceConfig(allow_trusted_workflow_bypass=True),
-        state_logger=state_logger,
-    )
-    records: list[dict[str, Any]] = []
-    sink_id = logger.add(
-        lambda message: records.append(message.record),
-        filter=lambda record: record["extra"].get("domain") == "analysis",
-    )
-    try:
-        files_run = run_hermes_analysis(manager)
-    finally:
-        logger.remove(sink_id)
-
-    assert files_run == analysis.unpacking.tpx3_files
-    results = manager.get_state().analysis.unpacking.results
-    assert len(results) == 1
-    assert results[0].status == "completed"
-
-    started = next(
-        record
-        for record in records
-        if record["extra"].get("event_type")
-        == "analysis.tpx3_unpacking.started"
-    )
-    assert started["extra"]["command"] == derive_unpacker_command(
-        analysis,
-        _analysis_root(tmp_path),
-        analysis.unpacking.tpx3_files[0],
-    )
-    completed = next(
-        record
-        for record in records
-        if record["extra"].get("summary") is not None
-    )
-    assert completed["extra"]["exit_code"] == 0
-    assert len(completed["extra"]["stdout_excerpt"]) == 4_000
-    assert len(completed["extra"]["stderr_excerpt"]) == 4_000
-    assert completed["extra"]["summary"]["unpacking"]["pixel_data_packets"] == 1
-    assert completed["extra"]["summary"]["sorting"]["strategy"] == "in_memory"
-    assert completed["extra"]["summary"]["parquet"]["pixel_data"][
-        "row_count"
-    ] == 1
-
-    record_path = tmp_path / "hermes-record.yaml"
-    save_hermes_record_to_yaml(manager.get_state(), record_path)
-    loaded = load_hermes_record_from_yaml(record_path)
-    assert loaded == manager.get_state()
-
-
-def test_run_processes_multiple_inputs_and_then_skips_them(
-    tmp_path: Path,
-) -> None:
-    analysis = _analysis(tmp_path, "first.tpx3", "second.tpx3")
-    _write_fake_unpacker(analysis.unpacking.program.executable_path)
-    manager = StateManager(
-        _record(tmp_path, analysis),
-        config=StateServiceConfig(allow_trusted_workflow_bypass=True),
-        state_logger=CapturingStateLogger(),
-    )
-
-    analysis_root = _analysis_root(tmp_path)
-    assert run_hermes_analysis(manager) == analysis.unpacking.tpx3_files
-    for raw_file in analysis.unpacking.tpx3_files:
-        assert (
-            analysis_root
-            / "pixel_hits"
-            / f"{raw_file.path.stem}-chip-0-part-00000.parquet"
-        ).is_file()
-
-    records: list[dict[str, Any]] = []
-    sink_id = logger.add(
-        lambda message: records.append(message.record),
-        filter=lambda record: record["extra"].get("domain") == "analysis",
-    )
-    try:
-        assert run_hermes_analysis(manager) == []
-    finally:
-        logger.remove(sink_id)
-
-    skipped = [
-        record
-        for record in records
-        if record["extra"].get("event_type")
-        == "analysis.tpx3_unpacking.skipped"
-    ]
-    assert [Path(record["extra"]["raw_tpx3_file"]).name for record in skipped] == [
-        "first.tpx3",
-        "second.tpx3",
-    ]
-
-
-@pytest.mark.parametrize(
-    ("mode", "expected_exception", "message"),
-    [
-        ("nonzero", HermesTpx3ExecutionError, "code 7"),
-        ("missing_summary", HermesTpx3PreflightError, "summary path"),
-        ("invalid_summary", HermesTpx3PreflightError, "invalid summary"),
-        ("summary_errors", HermesTpx3OutputError, "reports"),
-        ("unpacking_errors", HermesTpx3OutputError, "reports"),
-        ("unsafe_path", HermesTpx3PreflightError, "invalid summary"),
-        ("missing_parquet", HermesTpx3OutputError, "missing Parquet"),
-        ("bad_prefix", HermesTpx3OutputError, "unexpected Parquet filename"),
-        ("bad_part", HermesTpx3OutputError, "part numbers"),
-        ("unexpected_parquet", HermesTpx3OutputError, "does not match"),
-        ("row_mismatch", HermesTpx3OutputError, "row count mismatch"),
-    ],
-)
-def test_run_saves_failed_state_before_raising_for_output_failures(
-    tmp_path: Path,
-    mode: str,
-    expected_exception: type[Exception],
-    message: str,
-) -> None:
-    analysis = _analysis(tmp_path, f"{mode}.tpx3")
-    analysis.unpacking.tpx3_files[0].path.write_text(mode, encoding="utf-8")
-    _write_fake_unpacker(analysis.unpacking.program.executable_path)
-    manager = StateManager(
-        _record(tmp_path, analysis),
-        config=StateServiceConfig(allow_trusted_workflow_bypass=True),
-        state_logger=CapturingStateLogger(),
-    )
-
-    records: list[dict[str, Any]] = []
-    sink_id = logger.add(
-        lambda log_message: records.append(log_message.record),
-        filter=lambda record: record["extra"].get("domain") == "analysis",
-    )
-    try:
-        with pytest.raises(expected_exception, match=message):
-            run_hermes_analysis(manager)
-    finally:
-        logger.remove(sink_id)
-
-    results = manager.get_state().analysis.unpacking.results
-    assert results
-    assert all(result.status == "failed" for result in results)
-    failures = [
-        record
-        for record in records
-        if record["extra"].get("event_type")
-        == "analysis.tpx3_unpacking.failed"
-    ]
-    assert failures
-    if mode == "nonzero":
-        process_failure = next(
-            record for record in failures if record["extra"].get("exit_code") == 7
-        )
-        assert len(process_failure["extra"]["stdout_excerpt"]) == 4_000
-        assert len(process_failure["extra"]["stderr_excerpt"]) == 4_000
-    if mode == "summary_errors":
-        summary_failure = next(
-            record for record in failures if record["extra"].get("summary")
-        )
-        assert summary_failure["extra"]["summary"]["parquet"]["errors"] == [
-            "test Parquet error"
-        ]
-
-
 def test_resource_limit_percent_field_defaults_to_90(tmp_path: Path) -> None:
     analysis = _analysis(tmp_path, "file.tpx3")
     assert analysis.resource_limit_percent == 90
@@ -757,165 +454,3 @@ def test_resource_limit_percent_rejects_zero_and_above_100(tmp_path: Path) -> No
                     tpx3_files=[FileReference(path=raw_file)],
                 ),
             )
-
-
-def test_parallel_unpacking_returns_files_in_input_order(tmp_path: Path) -> None:
-    analysis = _analysis(tmp_path, "c.tpx3", "a.tpx3", "b.tpx3")
-    _write_fake_unpacker(analysis.unpacking.program.executable_path)
-    for raw_file in analysis.unpacking.tpx3_files:
-        raw_file.path.write_text("success", encoding="utf-8")
-
-    records: list[dict[str, Any]] = []
-    sink_id = logger.add(lambda msg: records.append(msg.record))
-
-    try:
-        manager = StateManager(
-            _record(tmp_path, analysis),
-            config=StateServiceConfig(allow_trusted_workflow_bypass=True),
-            state_logger=CapturingStateLogger(),
-        )
-        unpacked_files = run_hermes_analysis(manager)
-    finally:
-        logger.remove(sink_id)
-
-    assert len(unpacked_files) == 3
-    assert unpacked_files[0].path.name == "c.tpx3"
-    assert unpacked_files[1].path.name == "a.tpx3"
-    assert unpacked_files[2].path.name == "b.tpx3"
-
-
-def test_parallel_unpacking_logs_resource_calculation(tmp_path: Path) -> None:
-    analysis = _analysis(tmp_path, "a.tpx3", "b.tpx3")
-    _write_fake_unpacker(analysis.unpacking.program.executable_path)
-    for raw_file in analysis.unpacking.tpx3_files:
-        raw_file.path.write_text("success", encoding="utf-8")
-
-    records: list[dict[str, Any]] = []
-    sink_id = logger.add(lambda msg: records.append(msg.record))
-
-    try:
-        manager = StateManager(
-            _record(tmp_path, analysis),
-            config=StateServiceConfig(allow_trusted_workflow_bypass=True),
-            state_logger=CapturingStateLogger(),
-        )
-        run_hermes_analysis(manager)
-    finally:
-        logger.remove(sink_id)
-
-    resource_records = [
-        r
-        for r in records
-        if r["extra"].get("event_type")
-        == "analysis.tpx3_unpacking.resource_calculation"
-    ]
-    assert len(resource_records) == 1
-    resource_record = resource_records[0]
-    assert resource_record["extra"]["resource_limit_percent"] == 90
-    assert resource_record["extra"]["pending_file_count"] == 2
-    assert resource_record["extra"]["worker_count"] >= 1
-    assert "physical_cpu_count" in resource_record["extra"]
-    assert "cpu_slots" in resource_record["extra"]
-    assert "memory_slots" in resource_record["extra"]
-
-
-def test_parallel_unpacking_one_failure_stops_remaining_work(tmp_path: Path) -> None:
-    analysis = _analysis(tmp_path, "a.tpx3", "failing.tpx3", "c.tpx3", "d.tpx3")
-    analysis.resource_limit_percent = 1
-    _write_fake_unpacker(analysis.unpacking.program.executable_path)
-    analysis.unpacking.tpx3_files[0].path.write_text("success", encoding="utf-8")
-    analysis.unpacking.tpx3_files[1].path.write_text("nonzero", encoding="utf-8")
-    analysis.unpacking.tpx3_files[2].path.write_text("success", encoding="utf-8")
-    analysis.unpacking.tpx3_files[3].path.write_text("success", encoding="utf-8")
-
-    manager = StateManager(
-        _record(tmp_path, analysis),
-        config=StateServiceConfig(allow_trusted_workflow_bypass=True),
-        state_logger=CapturingStateLogger(),
-    )
-
-    with pytest.raises(HermesTpx3ExecutionError, match="exited with code 7"):
-        run_hermes_analysis(manager)
-
-    results = manager.get_state().analysis.unpacking.results
-    assert results
-    assert all(result.status == "failed" for result in results)
-
-    summary_files = list(
-        (_analysis_root(tmp_path) / "logs" / "unpacker").glob("*.json")
-    )
-    completed_count = len(summary_files)
-    assert completed_count < 4
-
-
-def test_parallel_unpacking_skips_valid_files(tmp_path: Path) -> None:
-    analysis = _analysis(tmp_path, "skip-me.tpx3", "run-me.tpx3")
-    _write_fake_unpacker(analysis.unpacking.program.executable_path)
-    _save_completed_files(
-        _analysis_root(tmp_path), analysis.unpacking.tpx3_files[0], pixel_rows=1
-    )
-    analysis.unpacking.tpx3_files[1].path.write_text("success", encoding="utf-8")
-
-    records: list[dict[str, Any]] = []
-    sink_id = logger.add(lambda msg: records.append(msg.record))
-
-    try:
-        manager = StateManager(
-            _record(tmp_path, analysis),
-            config=StateServiceConfig(allow_trusted_workflow_bypass=True),
-            state_logger=CapturingStateLogger(),
-        )
-        unpacked_files = run_hermes_analysis(manager)
-    finally:
-        logger.remove(sink_id)
-
-    assert len(unpacked_files) == 1
-    assert unpacked_files[0].path.name == "run-me.tpx3"
-
-    skipped_records = [
-        r
-        for r in records
-        if r["extra"].get("event_type") == "analysis.tpx3_unpacking.skipped"
-    ]
-    assert len(skipped_records) == 1
-    assert "skip-me" in skipped_records[0]["extra"]["raw_tpx3_file"]
-
-
-def test_resource_calculation_uses_only_pending_files(tmp_path: Path) -> None:
-    analysis = _analysis(tmp_path, "large-skip.tpx3", "small-run.tpx3")
-    _write_fake_unpacker(analysis.unpacking.program.executable_path)
-
-    # Make the first file large but already completed (will be skipped)
-    analysis.unpacking.tpx3_files[0].path.write_bytes(b"x" * (100 * 1024 * 1024))
-    _save_completed_files(
-        _analysis_root(tmp_path), analysis.unpacking.tpx3_files[0], pixel_rows=1
-    )
-
-    # Make the second file small (will be run)
-    analysis.unpacking.tpx3_files[1].path.write_text("success", encoding="utf-8")
-
-    records: list[dict[str, Any]] = []
-    sink_id = logger.add(lambda msg: records.append(msg.record))
-
-    try:
-        manager = StateManager(
-            _record(tmp_path, analysis),
-            config=StateServiceConfig(allow_trusted_workflow_bypass=True),
-            state_logger=CapturingStateLogger(),
-        )
-        run_hermes_analysis(manager)
-    finally:
-        logger.remove(sink_id)
-
-    resource_records = [
-        r
-        for r in records
-        if r["extra"].get("event_type")
-        == "analysis.tpx3_unpacking.resource_calculation"
-    ]
-    assert len(resource_records) == 1
-    resource_record = resource_records[0]
-
-    # The resource calculation should be based on the small file, not the large skipped one
-    assert resource_record["extra"]["pending_file_count"] == 1
-    assert resource_record["extra"]["largest_pending_file_mb"] < 1.0

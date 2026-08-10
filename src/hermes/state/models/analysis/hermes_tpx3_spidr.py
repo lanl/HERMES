@@ -154,8 +154,15 @@ class HermesTpx3EventReconstructionSettings(StrictBaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Unpacker summary (parsed from the unpacker binary's sidecar JSON)
+# Unpacker summary (parsed from the unpacker binary's summary JSON)
 # ---------------------------------------------------------------------------
+
+
+class Tpx3MeasurementInfoSummary(StrictBaseModel):
+    # The measurement identity the binary copies from --measurement-id and --run
+    # so the summary names the measurement and run it belongs to.
+    measurement_id: str = Field(min_length=1)
+    run: str = Field(min_length=1)
 
 
 class Tpx3SpidrUnpackingSummary(StrictBaseModel):
@@ -197,7 +204,7 @@ class Tpx3SpidrSortingSummary(StrictBaseModel):
     strategy: SortingStrategy
     memory_budget_bytes: int = Field(ge=0)
     estimated_memory_bytes: int = Field(ge=0)
-    temporary_runs_created: int = Field(ge=0)
+    sorting_time_seconds: float = Field(ge=0)
 
 
 class Tpx3SpidrParquetCategorySummary(StrictBaseModel):
@@ -213,7 +220,7 @@ class Tpx3SpidrParquetCategorySummary(StrictBaseModel):
         return self
 
 
-class Tpx3SpidrParquetSummary(StrictBaseModel):
+class Tpx3SpidrOutputParquetSummary(StrictBaseModel):
     pixel_data: Tpx3SpidrParquetCategorySummary
     tdc_timestamps: Tpx3SpidrParquetCategorySummary
     heartbeat_packets: Tpx3SpidrParquetCategorySummary
@@ -222,21 +229,25 @@ class Tpx3SpidrParquetSummary(StrictBaseModel):
     errors: list[str]
 
     @model_validator(mode="after")
-    def require_category_relative_paths(self) -> Tpx3SpidrParquetSummary:
+    def require_category_directory(self) -> Tpx3SpidrOutputParquetSummary:
+        # The binary writes each Parquet path as the analysis directory it was
+        # given joined with the category subdirectory and filename, so every
+        # path ends with ``<category-directory>/<filename>``. Check that
+        # trailing directory segment without assuming where the analysis
+        # directory itself lives.
         for field_name, expected_directory in (
             TPX3_PARQUET_CATEGORY_DIRECTORIES.items()
         ):
             category = getattr(self, field_name)
             for file_path in category.files:
-                if file_path.is_absolute() or ".." in file_path.parts:
+                if ".." in file_path.parts:
                     raise ValueError(
-                        f"{field_name} Parquet paths must be relative to the "
-                        "analysis directory"
+                        f"{field_name} Parquet paths must not contain '..'"
                     )
-                if not file_path.parts or file_path.parts[0] != expected_directory:
+                if file_path.parent.name != expected_directory:
                     raise ValueError(
-                        f"{field_name} Parquet paths must begin with "
-                        f"{expected_directory}/"
+                        f"{field_name} Parquet paths must sit in a "
+                        f"{expected_directory}/ directory"
                     )
         return self
 
@@ -258,10 +269,12 @@ class Tpx3SpidrProcessingTimesSummary(StrictBaseModel):
 
 
 class Tpx3SpidrSummary(StrictBaseModel):
+    measurement_info: Tpx3MeasurementInfoSummary
+    inputfile: Path
     unpacking: Tpx3SpidrUnpackingSummary
     timestamp_processing: Tpx3SpidrTimestampProcessingSummary
     sorting: Tpx3SpidrSortingSummary
-    parquet: Tpx3SpidrParquetSummary
+    output_parquet: Tpx3SpidrOutputParquetSummary
     processing_times_seconds: Tpx3SpidrProcessingTimesSummary
 
 
@@ -285,38 +298,82 @@ class HermesTpx3PhotonQualityFlagCountsSummary(StrictBaseModel):
 
 
 class HermesTpx3PhotonReconstructionCountsSummary(StrictBaseModel):
-    pixel_rows_read: int = Field(ge=0)
-    pixel_rows_below_min_tot: int = Field(ge=0)
-    components_formed: int = Field(ge=0)
-    photon_count: int = Field(ge=0)
-    rejected_component_count: int = Field(ge=0)
-    rejection_counts: HermesTpx3PhotonRejectionCountsSummary
+    pixels_read: int = Field(ge=0)
+    clusters_formed: int = Field(ge=0)
+    rejected_clusters: int = Field(ge=0)
+    rejection_reasons: HermesTpx3PhotonRejectionCountsSummary
     quality_flag_counts: HermesTpx3PhotonQualityFlagCountsSummary
     warnings: list[str]
     errors: list[str]
+    total_photons: int = Field(ge=0)
 
     @model_validator(mode="after")
-    def require_component_counts_to_match(
+    def require_cluster_counts_to_match(
         self,
     ) -> HermesTpx3PhotonReconstructionCountsSummary:
-        if self.pixel_rows_below_min_tot > self.pixel_rows_read:
+        if self.total_photons + self.rejected_clusters != self.clusters_formed:
             raise ValueError(
-                "pixel_rows_below_min_tot cannot exceed pixel_rows_read"
+                "clusters_formed must equal total_photons plus rejected_clusters"
             )
         if (
-            self.photon_count + self.rejected_component_count
-            != self.components_formed
+            self.quality_flag_counts.saturated_pixel > self.total_photons
+            or self.quality_flag_counts.bridged_components > self.total_photons
         ):
-            raise ValueError(
-                "components_formed must equal photon_count plus "
-                "rejected_component_count"
-            )
-        if (
-            self.quality_flag_counts.saturated_pixel > self.photon_count
-            or self.quality_flag_counts.bridged_components > self.photon_count
-        ):
-            raise ValueError("quality flag counts cannot exceed photon_count")
+            raise ValueError("quality flag counts cannot exceed total_photons")
         return self
+
+
+class HermesTpx3PhotonClusteringEchoSummary(StrictBaseModel):
+    # The clustering algorithm and the complete settings the run used, echoed by
+    # the binary. The binary owns the settings shape and renders it verbatim, so
+    # it is kept as a plain mapping rather than re-validated field by field.
+    algorithm: ClusteringAlgorithm
+    settings: dict[str, float | int | bool | str | None]
+
+
+class HermesTpx3PhotonTimingSummary(StrictBaseModel):
+    estimator: PhotonTimeEstimator
+    correction_model: Literal["none", "inverse", "linear"]
+    calibration_file: Path | None
+    parameters: dict[str, float]
+    high_tot_anchor: float | None
+
+
+class HermesTpx3PhotonParquetCategorySummary(StrictBaseModel):
+    row_count: int = Field(ge=0)
+    files: list[Path]
+
+    @model_validator(mode="after")
+    def require_files_for_saved_rows(
+        self,
+    ) -> HermesTpx3PhotonParquetCategorySummary:
+        if self.row_count == 0 and self.files:
+            raise ValueError("a table with zero rows cannot list Parquet files")
+        if self.row_count > 0 and not self.files:
+            raise ValueError("a table with saved rows must list a Parquet file")
+        return self
+
+
+class HermesTpx3PhotonPixelClustersSummary(StrictBaseModel):
+    requested: bool
+    row_count: int = Field(ge=0)
+    files: list[Path]
+
+    @model_validator(mode="after")
+    def require_files_for_saved_rows(
+        self,
+    ) -> HermesTpx3PhotonPixelClustersSummary:
+        if self.row_count == 0 and self.files:
+            raise ValueError("a table with zero rows cannot list Parquet files")
+        if self.row_count > 0 and not self.files:
+            raise ValueError("a table with saved rows must list a Parquet file")
+        return self
+
+
+class HermesTpx3PhotonParquetSummary(StrictBaseModel):
+    input_pixel_data_file: list[Path]
+    photons: HermesTpx3PhotonParquetCategorySummary
+    pixel_clusters: HermesTpx3PhotonPixelClustersSummary
 
 
 class HermesTpx3PhotonThroughputSummary(StrictBaseModel):
@@ -333,8 +390,11 @@ class HermesTpx3PhotonProcessingTimesSummary(StrictBaseModel):
 
 
 class HermesTpx3PhotonReconstructionSummary(StrictBaseModel):
-    schema_version: Literal[1] = 1
+    measurement_info: Tpx3MeasurementInfoSummary
     reconstruction: HermesTpx3PhotonReconstructionCountsSummary
+    clustering: HermesTpx3PhotonClusteringEchoSummary
+    photon_timing: HermesTpx3PhotonTimingSummary
+    parquet_files: HermesTpx3PhotonParquetSummary
     processing_times_seconds: HermesTpx3PhotonProcessingTimesSummary
 
 

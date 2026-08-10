@@ -34,13 +34,22 @@ void printHelp(const char* program_name) {
     std::cout << "HERMES Photon Clusterer v" << hermes_photon_clusterer::kVersion
               << "\n\n";
     std::cout << "Usage: " << program_name
-              << " --input <pixel_file> [--output <photon_file>]"
+              << " --input <pixel_file> [--output <analysis_directory>"
+                 " --measurement-id <id> --run <run>]"
                  " [--settings <file>] [--overwrite]\n\n";
     std::cout << "Options:\n";
     std::cout << "  --input <pixel_file>           One pixel_hits Parquet file "
                  "to reconstruct (required)\n";
-    std::cout << "  --output <photon_file>         Full path of the photon file "
-                 "to write (optional)\n";
+    std::cout << "  --output <analysis_directory>  Analysis directory the photon "
+                 "files are\n";
+    std::cout << "                                 written under (optional)\n";
+    std::cout << "  --measurement-id <id>          Measurement identifier copied "
+                 "into the\n";
+    std::cout << "                                 summary JSON (required with "
+                 "--output)\n";
+    std::cout << "  --run <run>                    Run label copied into the "
+                 "summary JSON\n";
+    std::cout << "                                 (required with --output)\n";
     std::cout << "  --settings <file>              JSON file overriding "
                  "individual clustering\n";
     std::cout << "                                 settings (any field omitted "
@@ -53,12 +62,10 @@ void printHelp(const char* program_name) {
     std::cout << "  Without --output:\n";
     std::cout << "    Prints summary counts only; writes no files.\n\n";
     std::cout << "  With --output:\n";
-    std::cout << "    Writes one photon file at the given path and a "
-                 "photon_pixels\n";
-    std::cout << "    sidecar when enabled. The reconstruction-summary JSON is "
-                 "written\n";
-    std::cout << "    to a logs/photons/ directory beside the output "
-                 "directory.\n";
+    std::cout << "    Writes the photon table to photons/ and, when enabled, the\n";
+    std::cout << "    pixel-to-cluster table to pixel_clusters/. The "
+                 "reconstruction\n";
+    std::cout << "    summary JSON is written to logs/photon_reconstruction/.\n";
 }
 
 void printVersion() {
@@ -108,15 +115,49 @@ std::vector<std::pair<std::string, double>> correctionParameters(
     return {{"m", c.m}};
 }
 
+// The raw TPX3 filename stem and five-digit part index carried by an unpacked
+// pixel file. The unpacker names pixel files
+// "<raw_file_stem>_chip_<chip>_pixels_<part>.parquet"; reconstruction reuses the
+// raw stem and part index when naming its own photon, pixel-cluster, and summary
+// files so every output for one raw file shares a stem.
+struct PixelFileName {
+    std::string raw_file_stem;
+    std::string part_index;
+    bool matched = false;
+};
+
+PixelFileName parsePixelFileName(const std::string& input_stem) {
+    PixelFileName parsed;
+    const std::string chip_marker = "_chip_";
+    const std::string pixels_marker = "_pixels_";
+    const auto chip_position = input_stem.find(chip_marker);
+    const auto pixels_position = input_stem.rfind(pixels_marker);
+    if (chip_position == std::string::npos ||
+        pixels_position == std::string::npos ||
+        pixels_position < chip_position) {
+        return parsed;
+    }
+    parsed.raw_file_stem = input_stem.substr(0, chip_position);
+    parsed.part_index =
+        input_stem.substr(pixels_position + pixels_marker.size());
+    parsed.matched =
+        !parsed.raw_file_stem.empty() && !parsed.part_index.empty();
+    return parsed;
+}
+
 }  // namespace
 
 int main(const int argc, char* argv[]) {
     std::string input_file;
-    std::string output_file;
+    std::string analysis_directory;
     std::string settings_file;
+    std::string measurement_id;
+    std::string run;
     bool overwrite = false;
     bool have_input = false;
     bool have_output = false;
+    bool have_measurement_id = false;
+    bool have_run = false;
 
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
@@ -151,11 +192,29 @@ int main(const int argc, char* argv[]) {
         }
         if (arg == "--output") {
             if (i + 1 >= argc) {
-                std::cerr << "Error: --output requires a file path\n";
+                std::cerr << "Error: --output requires a directory path\n";
                 return 2;
             }
-            output_file = argv[++i];
+            analysis_directory = argv[++i];
             have_output = true;
+            continue;
+        }
+        if (arg == "--measurement-id") {
+            if (i + 1 >= argc) {
+                std::cerr << "Error: --measurement-id requires a value\n";
+                return 2;
+            }
+            measurement_id = argv[++i];
+            have_measurement_id = true;
+            continue;
+        }
+        if (arg == "--run") {
+            if (i + 1 >= argc) {
+                std::cerr << "Error: --run requires a value\n";
+                return 2;
+            }
+            run = argv[++i];
+            have_run = true;
             continue;
         }
         std::cerr << "Error: unrecognized argument: " << arg << "\n\n";
@@ -165,6 +224,12 @@ int main(const int argc, char* argv[]) {
 
     if (!have_input) {
         std::cerr << "Error: --input <pixel_file> is required\n";
+        return 2;
+    }
+
+    if (have_output && (!have_measurement_id || !have_run)) {
+        std::cerr << "Error: --measurement-id and --run are required with "
+                     "--output\n";
         return 2;
     }
 
@@ -197,25 +262,33 @@ int main(const int argc, char* argv[]) {
         }
     }
 
-    // Sidecar photon_pixels and summary paths derive from the output file: same
-    // directory, output basename with a suffix. Only used when --output is set.
+    // Every output for one raw file shares its raw filename stem and part index.
+    // The photon table goes in photons/, the pixel-to-cluster table in
+    // pixel_clusters/, and the summary in logs/photon_reconstruction/, all under
+    // the analysis directory. The directories are created up front so the
+    // summary is written even when reconstruction produces zero photons.
+    const std::string input_stem = fs::path(input_file).stem().string();
+    const PixelFileName pixel_name = parsePixelFileName(input_stem);
+    std::string photon_output_file;
     std::string pixels_output_file;
     std::string summary_path;
     if (have_output) {
-        const fs::path output_path(output_file);
-        const fs::path parent = output_path.parent_path();
-        const std::string stem = output_path.stem().string();
-        // The summary is a log artifact: it goes in a logs/photons/ directory
-        // beside the photon output directory (the unpacker writes to
-        // logs/unpacker/), while the photon file and its photon_pixels sidecar
-        // stay at the output path. Both directories are created up front so the
-        // summary is written even when reconstruction produces zero photons (no
-        // parquet files).
-        const fs::path logs_dir = parent.parent_path() / "logs" / "photons";
-        for (const fs::path& directory : {parent, logs_dir}) {
-            if (directory.empty()) {
-                continue;
-            }
+        if (!pixel_name.matched) {
+            std::cerr << "Error: input filename does not match "
+                         "<stem>_chip_<chip>_pixels_<part>.parquet: "
+                      << input_file << "\n";
+            return 2;
+        }
+        const fs::path analysis_path(analysis_directory);
+        const fs::path photons_dir = analysis_path / "photons";
+        const fs::path clusters_dir = analysis_path / "pixel_clusters";
+        const fs::path logs_dir =
+            analysis_path / "logs" / "photon_reconstruction";
+        std::vector<fs::path> directories = {photons_dir, logs_dir};
+        if (settings.save_photon_pixels) {
+            directories.push_back(clusters_dir);
+        }
+        for (const fs::path& directory : directories) {
             std::error_code ec;
             fs::create_directories(directory, ec);
             if (ec) {
@@ -224,17 +297,26 @@ int main(const int argc, char* argv[]) {
                 return 1;
             }
         }
+        photon_output_file =
+            (photons_dir / (pixel_name.raw_file_stem + "_photon_" +
+                            pixel_name.part_index + ".parquet"))
+                .string();
         pixels_output_file =
-            (parent / (stem + "-photon-pixels.parquet")).string();
+            (clusters_dir / (pixel_name.raw_file_stem + "_pixel_clusters_" +
+                             pixel_name.part_index + ".parquet"))
+                .string();
         summary_path =
-            (logs_dir / (stem + "-reconstruction-summary.json")).string();
+            (logs_dir / (pixel_name.raw_file_stem +
+                         "_photon_reconstruction_summary.json"))
+                .string();
     }
 
     const auto total_start = Clock::now();
 
-    // Photon-file metadata; provenance lives here, not in the summary.
+    // Photon-file metadata; provenance lives here as well as in the summary.
     hermes_photon_clusterer::PhotonFileMetadata metadata;
-    metadata.raw_file_stem = fs::path(input_file).stem().string();
+    metadata.raw_file_stem =
+        pixel_name.matched ? pixel_name.raw_file_stem : input_stem;
     metadata.canonical_tick_seconds = kCanonicalTickSeconds;
     metadata.clustering_algorithm = "connected_components";
     metadata.clustering_settings_json = settingsToJson(settings).dump();
@@ -253,6 +335,17 @@ int main(const int argc, char* argv[]) {
     metadata.save_photon_pixels = settings.save_photon_pixels;
 
     hermes_photon_clusterer::ReconstructionSummaryContent summary;
+    summary.measurement_id = measurement_id;
+    summary.run = run;
+    summary.clustering_algorithm = "connected_components";
+    summary.settings = settings;
+    summary.photon_time_estimator = settings.photon_time_estimator;
+    summary.has_correction = has_correction;
+    if (has_correction) {
+        summary.correction = correction;
+    }
+    summary.input_pixel_data_file = input_file;
+    summary.pixel_clusters_requested = settings.save_photon_pixels;
 
     const hermes_photon_clusterer::TimewalkCorrection* correction_ptr =
         has_correction ? &correction : nullptr;
@@ -289,46 +382,52 @@ int main(const int argc, char* argv[]) {
         next_hit, settings, correction_ptr, settings.save_photon_pixels);
     summary.clustering_and_filtering_seconds = secondsSince(cluster_start);
 
-    summary.pixel_rows_read = result.counts.pixel_rows_read;
-    summary.pixel_rows_below_min_tot = result.counts.pixel_rows_below_min_tot;
-    summary.components_formed = result.counts.components_formed;
-    summary.photon_count = result.counts.photon_count;
-    summary.rejected_component_count = result.counts.rejected_component_count;
-    summary.rejection_counts = result.counts.rejection_counts;
+    summary.pixels_read = result.counts.pixel_rows_read;
+    summary.clusters_formed = result.counts.components_formed;
+    summary.total_photons = result.counts.photon_count;
+    summary.rejected_clusters = result.counts.rejected_component_count;
+    summary.rejection_reasons = result.counts.rejection_counts;
     summary.saturated_pixel_count = result.counts.saturated_pixel_count;
     summary.bridged_components_count = result.counts.bridged_components_count;
 
-    std::cout << "Reconstructed " << summary.photon_count << " photons from "
-              << summary.pixel_rows_read << " pixel rows.\n";
+    std::cout << "Reconstructed " << summary.total_photons << " photons from "
+              << summary.pixels_read << " pixel rows.\n";
 
     // Without --output, print the summary counts and write no files.
     if (!have_output) {
-        std::cout << "Rejected " << summary.rejected_component_count
-                  << " component(s); no files written (no --output).\n";
+        std::cout << "Rejected " << summary.rejected_clusters
+                  << " cluster(s); no files written (no --output).\n";
         return 0;
     }
 
-    // Write the single photon file, plus a photon_pixels sidecar when enabled.
+    // Write the photon table, plus the pixel-to-cluster table when enabled. The
+    // summary records the paths written (empty when a table has no rows) and
+    // their row counts.
     const auto write_start = Clock::now();
     std::vector<std::string> write_errors;
-    hermes_photon_clusterer::writePhotonEventsParquet(
-        result.photons, output_file, metadata, overwrite, write_errors);
+    const auto photon_write = hermes_photon_clusterer::writePhotonEventsParquet(
+        result.photons, photon_output_file, metadata, overwrite, write_errors);
     if (!write_errors.empty()) {
         for (const auto& error : write_errors) {
             std::cerr << "Error: " << error << "\n";
         }
         return 1;
     }
+    summary.photons_file = photon_write.file;
+    summary.photons_row_count = photon_write.row_count;
     if (settings.save_photon_pixels) {
-        hermes_photon_clusterer::writePhotonPixelsParquet(
-            result.photon_pixels, pixels_output_file, metadata, overwrite,
-            write_errors);
+        const auto pixels_write =
+            hermes_photon_clusterer::writePhotonPixelsParquet(
+                result.photon_pixels, pixels_output_file, metadata, overwrite,
+                write_errors);
         if (!write_errors.empty()) {
             for (const auto& error : write_errors) {
                 std::cerr << "Error: " << error << "\n";
             }
             return 1;
         }
+        summary.pixel_clusters_file = pixels_write.file;
+        summary.pixel_clusters_row_count = pixels_write.row_count;
     }
     summary.parquet_writing_seconds = secondsSince(write_start);
     summary.total_seconds = secondsSince(total_start);
@@ -341,7 +440,7 @@ int main(const int argc, char* argv[]) {
         return 1;
     }
 
-    std::cout << "Wrote: " << output_file << "\n";
+    std::cout << "Wrote: " << photon_output_file << "\n";
     std::cout << "Summary: " << summary_path << "\n";
     return 0;
 }

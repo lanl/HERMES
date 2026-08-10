@@ -43,6 +43,7 @@ def test_real_cpp_unpacker_handles_two_inputs_and_skips_completed_files(
 
     raw_directory = tmp_path / "rawTpx3"
     raw_directory.mkdir()
+    analysis_root = tmp_path / "analysis"
     raw_paths = [
         raw_directory / "example-first.tpx3",
         raw_directory / "example-second.tpx3",
@@ -68,7 +69,7 @@ def test_real_cpp_unpacker_handles_two_inputs_and_skips_completed_files(
             ),
             environment=RuntimeEnvironment(
                 working_directory=tmp_path,
-                analysis_directory=tmp_path / "analysis",
+                analysis_directory=analysis_root,
             ),
             acquisition=None,
             analysis=analysis,
@@ -96,40 +97,35 @@ def test_real_cpp_unpacker_handles_two_inputs_and_skips_completed_files(
     summaries: list[Tpx3SpidrSummary] = []
     generated_paths: set[Path] = set()
     for raw_file in analysis.unpacking.tpx3_files:
-        summary_path = derive_summary_path(
-            analysis.unpacking.output_directory, raw_file
-        )
+        summary_path = derive_summary_path(analysis_root, raw_file)
         assert summary_path.is_file()
         summary = Tpx3SpidrSummary.model_validate_json(summary_path.read_bytes())
         summaries.append(summary)
 
         listed_paths = {
-            relative_path
+            parquet_path
             for category in (
-                summary.parquet.pixel_data,
-                summary.parquet.tdc_timestamps,
-                summary.parquet.heartbeat_packets,
-                summary.parquet.control_packets,
-                summary.parquet.unrecognized_packets,
+                summary.output_parquet.pixel_data,
+                summary.output_parquet.tdc_timestamps,
+                summary.output_parquet.heartbeat_packets,
+                summary.output_parquet.control_packets,
+                summary.output_parquet.unrecognized_packets,
             )
-            for relative_path in category.files
+            for parquet_path in category.files
         }
         assert listed_paths
         assert all(
-            relative_path.name.startswith(f"{raw_file.path.stem}-")
-            for relative_path in listed_paths
+            parquet_path.name.startswith(f"{raw_file.path.stem}_")
+            for parquet_path in listed_paths
         )
         assert generated_paths.isdisjoint(listed_paths)
         generated_paths.update(listed_paths)
-        assert all(
-            (analysis.unpacking.output_directory / relative_path).is_file()
-            for relative_path in listed_paths
-        )
+        assert all(parquet_path.is_file() for parquet_path in listed_paths)
 
     assert all(not summary.unpacking.errors for summary in summaries)
-    assert all(not summary.parquet.errors for summary in summaries)
+    assert all(not summary.output_parquet.errors for summary in summaries)
     assert sum(
-        summary.parquet.pixel_data.row_count for summary in summaries
+        summary.output_parquet.pixel_data.row_count for summary in summaries
     ) > 0
 
     saved_analysis = completed_state.analysis.model_dump(mode="json")
@@ -144,7 +140,6 @@ def test_real_cpp_unpacker_handles_two_inputs_and_skips_completed_files(
     assert set(saved_analysis["unpacking"]) == {
         "program",
         "tpx3_files",
-        "output_directory",
         "runtime_options",
         "results",
     }
@@ -157,7 +152,7 @@ def test_real_cpp_unpacker_handles_two_inputs_and_skips_completed_files(
         saved_analysis,
         {
             "summary_json_file",
-            "parquet",
+            "output_parquet",
             "warnings",
             "errors",
             "exit_code",
@@ -177,12 +172,9 @@ def test_real_cpp_unpacker_handles_two_inputs_and_skips_completed_files(
     ]
 
     saved_files = [
-        derive_summary_path(analysis.unpacking.output_directory, raw_file)
+        derive_summary_path(analysis_root, raw_file)
         for raw_file in analysis.unpacking.tpx3_files
-    ] + [
-        analysis.unpacking.output_directory / relative_path
-        for relative_path in generated_paths
-    ]
+    ] + list(generated_paths)
     modification_times = {
         path: path.stat().st_mtime_ns
         for path in saved_files

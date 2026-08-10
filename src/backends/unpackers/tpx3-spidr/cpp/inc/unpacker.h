@@ -31,6 +31,8 @@ struct WorkflowResult {
 WorkflowResult runTwoPassWorkflow(std::istream& input,
                                   const std::string& source_file_path,
                                   const std::string& analysis_directory,
+                                  const std::string& measurement_id,
+                                  const std::string& run,
                                   bool overwrite = false,
                                   bool time_sort = true);
 
