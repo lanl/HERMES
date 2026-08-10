@@ -26,10 +26,10 @@ void printHelp(const char* program_name) {
     std::cout << "    Prints summary statistics only; writes no files.\n\n";
     std::cout << "  With --output:\n";
     std::cout << "    Creates Parquet files under the analysis directory:\n";
-    std::cout << "      - pixelHits/          Sorted pixel hit events\n";
-    std::cout << "      - tdcTriggers/        Sorted TDC trigger events\n";
-    std::cout << "      - globalTimestamps/   Global timestamp anchors\n";
-    std::cout << "      - controlPackets/     Control packets\n";
+    std::cout << "      - pixel_hits/          Sorted pixel hit events\n";
+    std::cout << "      - tdc_triggers/        Sorted TDC trigger events\n";
+    std::cout << "      - global_timestamps/   Global timestamp anchors\n";
+    std::cout << "      - control_packets/     Control packets\n";
     std::cout << "      - unknownPackets/     Unknown packets\n";
     std::cout << "      - logs/unpacker/      Input-specific summary JSON\n\n";
     std::cout << "Examples:\n";
