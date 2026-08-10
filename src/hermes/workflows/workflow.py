@@ -51,10 +51,15 @@ class Workflow:
             raise ValueError(
                 "the record configures neither acquisition nor analysis to run"
             )
-        if record.acquisition is not None:
+        if record.acquisition is not None and record.analysis is None:
             self.run_acquisition()
-        if record.analysis is not None:
+        if record.analysis is not None and record.acquisition is None:
             self.run_analysis()
+        if record.acquisition is not None and record.analysis is not None:
+            raise ValueError(
+                "the record configures both acquisition and analysis to run, "
+                "which is not supported"
+            )
         return self.record
 
     @property
