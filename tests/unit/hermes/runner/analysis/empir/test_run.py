@@ -70,7 +70,7 @@ def _record(tmp_path: Path, analysis: EmpirAnalysisState) -> HermesRecord:
     return HermesRecord(
         measurement_info=MeasurementInfo(
             measurement_id="empir-test",
-            run_number=1,
+            run="test-run",
         ),
         environment=RuntimeEnvironment(working_directory=tmp_path),
         analysis=analysis,

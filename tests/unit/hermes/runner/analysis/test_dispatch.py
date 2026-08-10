@@ -35,7 +35,7 @@ def _manager(tmp_path: Path, analysis: object | None) -> StateManager:
     record = HermesRecord(
         measurement_info=MeasurementInfo(
             measurement_id="dispatch-test",
-            run_number=1,
+            run="test-run",
         ),
         environment=RuntimeEnvironment(
             working_directory=tmp_path,

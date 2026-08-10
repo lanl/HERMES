@@ -614,7 +614,7 @@ def _manager(analysis: HermesTpx3AnalysisState, tmp_path: Path) -> StateManager:
         HermesRecord(
             measurement_info=MeasurementInfo(
                 measurement_id="stage-9c",
-                run_number=1,
+                run="test-run",
             ),
             environment=RuntimeEnvironment(
                 working_directory=tmp_path,

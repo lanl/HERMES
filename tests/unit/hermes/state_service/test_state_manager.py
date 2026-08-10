@@ -58,7 +58,7 @@ def _record(tmp_path: Path, *, acquisition: bool = True) -> HermesRecord:
     return HermesRecord(
         measurement_info=MeasurementInfo(
             measurement_id="LC-20260505",
-            run_number=1,
+            run="test-run",
         ),
         environment=RuntimeEnvironment(working_directory=tmp_path / "run-001"),
         acquisition=(

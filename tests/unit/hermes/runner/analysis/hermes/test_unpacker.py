@@ -99,7 +99,7 @@ def _record(
     return HermesRecord(
         measurement_info=MeasurementInfo(
             measurement_id="stage-3",
-            run_number=1,
+            run="test-run",
         ),
         environment=RuntimeEnvironment(
             working_directory=tmp_path,
@@ -495,7 +495,7 @@ def test_run_rejects_empir_analysis(tmp_path: Path) -> None:
     assert invalid_mode["level"].name == "ERROR"
     assert "Cannot run HERMES analysis" in invalid_mode["message"]
     assert invalid_mode["extra"]["measurement_id"] == "stage-3"
-    assert invalid_mode["extra"]["run_number"] == 1
+    assert invalid_mode["extra"]["run"] == "test-run"
     assert invalid_mode["extra"]["expected_analysis_mode"] == "hermes"
     assert invalid_mode["extra"]["actual_analysis_mode"] == "empir"
 
