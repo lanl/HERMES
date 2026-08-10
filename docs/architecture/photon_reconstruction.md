@@ -2,7 +2,7 @@
 
 Photon reconstruction is a separate analysis step, not a required part of the
 unpacker. A user-selected HERMES program reads sorted `pixel_data` Parquet files
-from `analysis/pixelHits/` and writes photon Parquet files under
+from `analysis/pixel_hits/` and writes photon Parquet files under
 `analysis/photons/`. C++ and Rust versions live beside each other:
 
 ```text
