@@ -911,6 +911,6 @@ def _write_comparison_plot(
 
 
 def _relative_pixel_path(path: Path) -> Path:
-    if path.parent.name == "pixelHits":
-        return Path("pixelHits") / path.name
+    if path.parent.name == "pixel_hits":
+        return Path("pixel_hits") / path.name
     return path
