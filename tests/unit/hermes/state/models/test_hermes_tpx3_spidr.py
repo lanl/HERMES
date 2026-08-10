@@ -86,7 +86,7 @@ def _summary_data() -> dict[str, object]:
             "pixel_data": {
                 "row_count": 1,
                 "files": [
-                    "pixelHits/raw-chip-0-part-00000.parquet",
+                    "pixel_hits/raw-chip-0-part-00000.parquet",
                 ],
             },
             "tdc_timestamps": {"row_count": 0, "files": []},
@@ -299,7 +299,7 @@ def test_reconstruction_result_defaults_and_rejects_undefined_fields(
     tmp_path: Path,
 ) -> None:
     result = HermesTpx3ReconstructionResult(
-        input_file=FileReference(path=tmp_path / "pixelHits/raw.parquet"),
+        input_file=FileReference(path=tmp_path / "pixel_hits/raw.parquet"),
         output_file=tmp_path / "photons/raw.parquet",
         status="completed",
     )
@@ -309,7 +309,7 @@ def test_reconstruction_result_defaults_and_rejects_undefined_fields(
 
     with pytest.raises(ValidationError, match="extra_forbidden"):
         HermesTpx3ReconstructionResult(
-            input_file=FileReference(path=tmp_path / "pixelHits/raw.parquet"),
+            input_file=FileReference(path=tmp_path / "pixel_hits/raw.parquet"),
             output_file=tmp_path / "photons/raw.parquet",
             settings={},
         )
@@ -422,7 +422,7 @@ def test_summary_validates_every_section() -> None:
     assert summary.sorting.strategy == "in_memory"
     assert summary.parquet.pixel_data.row_count == 1
     assert summary.parquet.pixel_data.files == [
-        Path("pixelHits/raw-chip-0-part-00000.parquet")
+        Path("pixel_hits/raw-chip-0-part-00000.parquet")
     ]
     assert summary.processing_times_seconds.canonical_time_seconds == 2.0345e-12
     assert (
@@ -465,8 +465,8 @@ def test_summary_rejects_unknown_and_removed_fields() -> None:
     "file_path",
     [
         "/absolute/raw-chip-0-part-00000.parquet",
-        "../pixelHits/raw-chip-0-part-00000.parquet",
-        "tdcTriggers/raw-chip-0-part-00000.parquet",
+        "../pixel_hits/raw-chip-0-part-00000.parquet",
+        "tdc_triggers/raw-chip-0-part-00000.parquet",
     ],
 )
 def test_summary_rejects_invalid_pixel_parquet_paths(file_path: str) -> None:
@@ -484,7 +484,7 @@ def test_summary_rejects_invalid_pixel_parquet_paths(file_path: str) -> None:
 @pytest.mark.parametrize(
     ("row_count", "files"),
     [
-        (0, ["pixelHits/raw-chip-0-part-00000.parquet"]),
+        (0, ["pixel_hits/raw-chip-0-part-00000.parquet"]),
         (1, []),
     ],
 )

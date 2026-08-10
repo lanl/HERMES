@@ -74,8 +74,8 @@ def _analysis(
     raw_path.parent.mkdir(parents=True, exist_ok=True)
     raw_path.touch()
 
-    # Pixel Parquet inputs for reconstruction live under pixelHits/.
-    pixel_directory = analysis_directory / "pixelHits"
+    # Pixel Parquet inputs for reconstruction live under pixel_hits/.
+    pixel_directory = analysis_directory / "pixel_hits"
     for pixel_name in pixel_names:
         pixel_path = pixel_directory / pixel_name
         pixel_path.parent.mkdir(parents=True, exist_ok=True)
@@ -212,7 +212,7 @@ def test_summary_marks_file_previously_reconstructed(tmp_path: Path) -> None:
     analysis = _analysis(tmp_path, "run_000000-chip-0-part-00000.parquet")
     analysis_root = tmp_path / "analysis"
     input_file = FileReference(
-        path=analysis_root / "pixelHits" / "run_000000-chip-0-part-00000.parquet"
+        path=analysis_root / "pixel_hits" / "run_000000-chip-0-part-00000.parquet"
     )
     summary_path = derive_summary_path(
         derive_output_path(analysis_root, input_file)
@@ -230,7 +230,7 @@ def test_photon_parquet_without_summary_is_not_complete(tmp_path: Path) -> None:
     analysis = _analysis(tmp_path, "run_000000-chip-0-part-00000.parquet")
     analysis_root = tmp_path / "analysis"
     input_file = FileReference(
-        path=analysis_root / "pixelHits" / "run_000000-chip-0-part-00000.parquet"
+        path=analysis_root / "pixel_hits" / "run_000000-chip-0-part-00000.parquet"
     )
     output_file = derive_output_path(analysis_root, input_file)
     output_file.parent.mkdir(parents=True, exist_ok=True)
@@ -281,7 +281,7 @@ def test_command_passes_named_flags_and_settings(tmp_path: Path) -> None:
     reconstruction = analysis.photon_reconstruction
     input_file = FileReference(
         path=tmp_path / "analysis"
-        / "pixelHits"
+        / "pixel_hits"
         / "run_000000-chip-0-part-00000.parquet"
     )
     output_file = derive_output_path(tmp_path / "analysis", input_file)
@@ -307,7 +307,7 @@ def test_command_appends_overwrite_when_requested(tmp_path: Path) -> None:
     reconstruction = analysis.photon_reconstruction
     input_file = FileReference(
         path=tmp_path / "analysis"
-        / "pixelHits"
+        / "pixel_hits"
         / "run_000000-chip-0-part-00000.parquet"
     )
     command = derive_reconstruction_command(
@@ -331,7 +331,7 @@ def test_execute_success_returns_summary(tmp_path: Path) -> None:
     )
     input_file = FileReference(
         path=tmp_path / "analysis"
-        / "pixelHits"
+        / "pixel_hits"
         / "run_000000-chip-0-part-00000.parquet"
     )
     result = execute_reconstruction(analysis, tmp_path / "analysis", input_file)
@@ -345,7 +345,7 @@ def test_execute_removes_temp_settings_file(tmp_path: Path) -> None:
     _write_fake_clusterer(analysis.photon_reconstruction.program.executable_path)
     input_file = FileReference(
         path=tmp_path / "analysis"
-        / "pixelHits"
+        / "pixel_hits"
         / "run_000000-chip-0-part-00000.parquet"
     )
     execute_reconstruction(analysis, tmp_path / "analysis", input_file)
@@ -366,7 +366,7 @@ def test_execute_raises_on_nonzero_exit(tmp_path: Path) -> None:
     )
     input_file = FileReference(
         path=tmp_path / "analysis"
-        / "pixelHits"
+        / "pixel_hits"
         / "run_000000-chip-0-part-00000.parquet"
     )
     with pytest.raises(
@@ -383,7 +383,7 @@ def test_execute_raises_on_missing_summary(tmp_path: Path) -> None:
     )
     input_file = FileReference(
         path=tmp_path / "analysis"
-        / "pixelHits"
+        / "pixel_hits"
         / "run_000000-chip-0-part-00000.parquet"
     )
     with pytest.raises(HermesReconstructionOutputError):
@@ -410,7 +410,7 @@ def _write_fake_unpacker(executable: Path) -> None:
         analysis_dir = Path(args[args.index("--output") + 1])
         stem = raw_file.stem
 
-        pixel_hits = analysis_dir / "pixelHits"
+        pixel_hits = analysis_dir / "pixel_hits"
         pixel_hits.mkdir(parents=True, exist_ok=True)
         pq.write_table(
             pa.table({{
@@ -445,7 +445,7 @@ def _write_fake_unpacker(executable: Path) -> None:
             "parquet": {{
                 "pixel_data": {{
                     "row_count": 1,
-                    "files": ["pixelHits/" + stem + "-chip-0-part-00000.parquet"],
+                    "files": ["pixel_hits/" + stem + "-chip-0-part-00000.parquet"],
                 }},
                 "tdc_timestamps": {{"row_count": 0, "files": []}},
                 "heartbeat_packets": {{"row_count": 0, "files": []}},

@@ -69,7 +69,7 @@ def test_main_runs_workflow_and_calibrates(
 ) -> None:
     working_directory = tmp_path / "run"
     analysis_directory = working_directory / "analysis"
-    pixel_directory = analysis_directory / "pixelHits"
+    pixel_directory = analysis_directory / "pixel_hits"
     pixel_directory.mkdir(parents=True)
     pixel_file = pixel_directory / "input-chip-0-part-00000.parquet"
     pixel_file.write_bytes(b"pixels")

@@ -112,7 +112,7 @@ def _record(
 
 def _summary(raw_stem: str, *, pixel_rows: int = 0) -> Tpx3SpidrSummary:
     pixel_files = (
-        [f"pixelHits/{raw_stem}-chip-0-part-00000.parquet"]
+        [f"pixel_hits/{raw_stem}-chip-0-part-00000.parquet"]
         if pixel_rows
         else []
     )
@@ -235,14 +235,14 @@ def _write_fake_unpacker(executable: Path) -> None:
         if mode == "unsafe_path":
             relative_parquet = Path("../outside.parquet")
         elif mode == "bad_prefix":
-            relative_parquet = Path("pixelHits/other-chip-0-part-00000.parquet")
+            relative_parquet = Path("pixel_hits/other-chip-0-part-00000.parquet")
         elif mode == "bad_part":
             relative_parquet = Path(
-                f"pixelHits/{{raw_stem}}-chip-0-part-00001.parquet"
+                f"pixel_hits/{{raw_stem}}-chip-0-part-00001.parquet"
             )
         else:
             relative_parquet = Path(
-                f"pixelHits/{{raw_stem}}-chip-0-part-00000.parquet"
+                f"pixel_hits/{{raw_stem}}-chip-0-part-00000.parquet"
             )
 
         parquet_path = analysis_directory / relative_parquet
@@ -253,7 +253,7 @@ def _write_fake_unpacker(executable: Path) -> None:
         if mode == "unexpected_parquet":
             unexpected = (
                 analysis_directory
-                / "pixelHits"
+                / "pixel_hits"
                 / f"{{raw_stem}}-chip-0-part-00001.parquet"
             )
             pq.write_table(pa.table({{"value": [2]}}), unexpected)
@@ -619,7 +619,7 @@ def test_run_processes_multiple_inputs_and_then_skips_them(
     for raw_file in analysis.unpacking.tpx3_files:
         assert (
             analysis_root
-            / "pixelHits"
+            / "pixel_hits"
             / f"{raw_file.path.stem}-chip-0-part-00000.parquet"
         ).is_file()
 

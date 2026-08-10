@@ -472,7 +472,7 @@ def _write_fake_unpacker(executable: Path) -> None:
         analysis_dir = Path(args[args.index("--output") + 1])
         stem = raw_file.stem
 
-        pixel_hits = analysis_dir / "pixelHits"
+        pixel_hits = analysis_dir / "pixel_hits"
         pixel_hits.mkdir(parents=True, exist_ok=True)
         pq.write_table(
             pa.table({{
@@ -507,7 +507,7 @@ def _write_fake_unpacker(executable: Path) -> None:
             "parquet": {{
                 "pixel_data": {{
                     "row_count": 1,
-                    "files": ["pixelHits/" + stem + "-chip-0-part-00000.parquet"],
+                    "files": ["pixel_hits/" + stem + "-chip-0-part-00000.parquet"],
                 }},
                 "tdc_timestamps": {{"row_count": 0, "files": []}},
                 "heartbeat_packets": {{"row_count": 0, "files": []}},
