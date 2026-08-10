@@ -473,10 +473,13 @@ def _write_fake_unpacker(executable: Path) -> None:
         args = sys.argv[1:]
         raw_file = Path(args[args.index("--input") + 1])
         analysis_dir = Path(args[args.index("--output") + 1])
+        measurement_id = args[args.index("--measurement-id") + 1]
+        run = args[args.index("--run") + 1]
         stem = raw_file.stem
 
         pixel_hits = analysis_dir / "pixel_hits"
         pixel_hits.mkdir(parents=True, exist_ok=True)
+        pixel_file = pixel_hits / (stem + "_chip_0_pixels_00000.parquet")
         pq.write_table(
             pa.table({{
                 "local_x": pa.array([0], pa.uint16()),
@@ -484,9 +487,13 @@ def _write_fake_unpacker(executable: Path) -> None:
                 "tot_raw": pa.array([10], pa.uint16()),
                 "timestamp_canonical": pa.array([1], pa.uint64()),
             }}),
-            pixel_hits / (stem + "-chip-0-part-00000.parquet"),
+            pixel_file,
         )
         summary = {{
+            "measurement_info": {{
+                "measurement_id": measurement_id, "run": run,
+            }},
+            "inputfile": str(raw_file),
             "unpacking": {{
                 "bytes_read": 0, "chunks_read": 0, "packets_read": 1,
                 "pixel_data_packets": 1, "tdc_timestamps": 0,
@@ -505,12 +512,12 @@ def _write_fake_unpacker(executable: Path) -> None:
             }},
             "sorting": {{
                 "strategy": "in_memory", "memory_budget_bytes": 0,
-                "estimated_memory_bytes": 0, "temporary_runs_created": 0,
+                "estimated_memory_bytes": 0, "sorting_time_seconds": 0.0,
             }},
-            "parquet": {{
+            "output_parquet": {{
                 "pixel_data": {{
                     "row_count": 1,
-                    "files": ["pixel_hits/" + stem + "-chip-0-part-00000.parquet"],
+                    "files": [str(pixel_file)],
                 }},
                 "tdc_timestamps": {{"row_count": 0, "files": []}},
                 "heartbeat_packets": {{"row_count": 0, "files": []}},
@@ -527,9 +534,11 @@ def _write_fake_unpacker(executable: Path) -> None:
                 }},
             }},
         }}
-        logs = analysis_dir / "logs" / "unpacker"
+        logs = analysis_dir / "logs" / "unpacking"
         logs.mkdir(parents=True, exist_ok=True)
-        (logs / (stem + "-unpacker-summary.json")).write_text(json.dumps(summary))
+        (logs / (stem + "_unpacker_summary.json")).write_text(
+            json.dumps(summary)
+        )
         sys.exit(0)
         """
     )

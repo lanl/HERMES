@@ -48,6 +48,11 @@ def _analysis_state(tmp_path: Path, *raw_names: str) -> HermesTpx3AnalysisState:
 
 def _summary_data() -> dict[str, object]:
     return {
+        "measurement_info": {
+            "measurement_id": "harness-unit",
+            "run": "raw",
+        },
+        "inputfile": "tests/data/tpx3/raw.tpx3",
         "unpacking": {
             "bytes_read": 24,
             "chunks_read": 2,
@@ -81,13 +86,13 @@ def _summary_data() -> dict[str, object]:
             "strategy": "in_memory",
             "memory_budget_bytes": 1_000_000,
             "estimated_memory_bytes": 128,
-            "temporary_runs_created": 0,
+            "sorting_time_seconds": 0.0,
         },
-        "parquet": {
+        "output_parquet": {
             "pixel_data": {
                 "row_count": 1,
                 "files": [
-                    "pixel_hits/raw-chip-0-part-00000.parquet",
+                    "analysis/pixel_hits/raw_chip_0_pixels_00000.parquet",
                 ],
             },
             "tdc_timestamps": {"row_count": 0, "files": []},
@@ -127,17 +132,18 @@ def _clustering_settings_data() -> dict[str, object]:
 
 def _photon_summary_data() -> dict[str, object]:
     return {
-        "schema_version": 1,
+        "measurement_info": {
+            "measurement_id": "harness-unit",
+            "run": "raw",
+        },
         "reconstruction": {
-            "pixel_rows_read": 12,
-            "pixel_rows_below_min_tot": 1,
-            "components_formed": 3,
-            "photon_count": 2,
-            "rejected_component_count": 1,
-            "rejection_counts": {
+            "pixels_read": 12,
+            "clusters_formed": 3,
+            "rejected_clusters": 1,
+            "rejection_reasons": {
                 "below_min_cluster_size": 1,
                 "above_max_cluster_size": 0,
-                "below_min_cluster_tot": 1,
+                "below_min_cluster_tot": 0,
                 "above_max_cluster_tot": 0,
                 "above_max_aspect_ratio": 0,
                 "below_min_filled_fraction": 0,
@@ -148,6 +154,48 @@ def _photon_summary_data() -> dict[str, object]:
             },
             "warnings": [],
             "errors": [],
+            "total_photons": 2,
+        },
+        "clustering": {
+            "algorithm": "connected_components",
+            "settings": {
+                "max_time_spread_ticks": 491_520,
+                "min_cluster_size": 2,
+                "max_cluster_size": 64,
+                "min_pixel_tot_raw": 1,
+                "min_cluster_tot_raw": 2,
+                "max_cluster_tot_raw": 65_472,
+                "max_aspect_ratio": 3.0,
+                "min_filled_fraction": 0.5,
+                "adjacency": 8,
+                "position_averaging": "arithmetic",
+                "photon_time_estimator": "leading_edge",
+                "timewalk_calibration_file": None,
+                "save_photon_pixels": False,
+            },
+        },
+        "photon_timing": {
+            "estimator": "leading_edge",
+            "correction_model": "none",
+            "calibration_file": None,
+            "parameters": {},
+            "high_tot_anchor": None,
+        },
+        "parquet_files": {
+            "input_pixel_data_file": [
+                "analysis/pixel_hits/raw_chip_0_pixels_00000.parquet",
+            ],
+            "photons": {
+                "row_count": 2,
+                "files": [
+                    "analysis/photons/raw_photon_00000.parquet",
+                ],
+            },
+            "pixel_clusters": {
+                "requested": False,
+                "row_count": 0,
+                "files": [],
+            },
         },
         "processing_times_seconds": {
             "parquet_reading": 0.1,
@@ -420,12 +468,16 @@ def test_hermes_analysis_state_accepts_photon_reconstruction(
 def test_summary_validates_every_section() -> None:
     summary = Tpx3SpidrSummary.model_validate(_summary_data())
 
+    assert summary.measurement_info.measurement_id == "harness-unit"
+    assert summary.measurement_info.run == "raw"
+    assert summary.inputfile == Path("tests/data/tpx3/raw.tpx3")
     assert summary.unpacking.pixel_data_packets == 1
     assert summary.timestamp_processing.time_adjustments.pixel_packets == 1
     assert summary.sorting.strategy == "in_memory"
-    assert summary.parquet.pixel_data.row_count == 1
-    assert summary.parquet.pixel_data.files == [
-        Path("pixel_hits/raw-chip-0-part-00000.parquet")
+    assert summary.sorting.sorting_time_seconds == 0.0
+    assert summary.output_parquet.pixel_data.row_count == 1
+    assert summary.output_parquet.pixel_data.files == [
+        Path("analysis/pixel_hits/raw_chip_0_pixels_00000.parquet")
     ]
     assert summary.processing_times_seconds.canonical_time_seconds == 2.0345e-12
     assert (
@@ -467,16 +519,16 @@ def test_summary_rejects_unknown_and_removed_fields() -> None:
 @pytest.mark.parametrize(
     "file_path",
     [
-        "/absolute/raw-chip-0-part-00000.parquet",
-        "../pixel_hits/raw-chip-0-part-00000.parquet",
-        "tdc_triggers/raw-chip-0-part-00000.parquet",
+        "/absolute/raw_chip_0_pixels_00000.parquet",
+        "../pixel_hits/raw_chip_0_pixels_00000.parquet",
+        "tdc_triggers/raw_chip_0_pixels_00000.parquet",
     ],
 )
 def test_summary_rejects_invalid_pixel_parquet_paths(file_path: str) -> None:
     summary_data = _summary_data()
-    parquet = summary_data["parquet"]
-    assert isinstance(parquet, dict)
-    pixel_data = parquet["pixel_data"]
+    output_parquet = summary_data["output_parquet"]
+    assert isinstance(output_parquet, dict)
+    pixel_data = output_parquet["pixel_data"]
     assert isinstance(pixel_data, dict)
     pixel_data["files"] = [file_path]
 
@@ -487,7 +539,7 @@ def test_summary_rejects_invalid_pixel_parquet_paths(file_path: str) -> None:
 @pytest.mark.parametrize(
     ("row_count", "files"),
     [
-        (0, ["pixel_hits/raw-chip-0-part-00000.parquet"]),
+        (0, ["analysis/pixel_hits/raw_chip_0_pixels_00000.parquet"]),
         (1, []),
     ],
 )
@@ -496,9 +548,9 @@ def test_summary_requires_parquet_files_to_match_saved_rows(
     files: list[str],
 ) -> None:
     summary_data = _summary_data()
-    parquet = summary_data["parquet"]
-    assert isinstance(parquet, dict)
-    pixel_data = parquet["pixel_data"]
+    output_parquet = summary_data["output_parquet"]
+    assert isinstance(output_parquet, dict)
+    pixel_data = output_parquet["pixel_data"]
     assert isinstance(pixel_data, dict)
     pixel_data["row_count"] = row_count
     pixel_data["files"] = files
@@ -512,11 +564,16 @@ def test_photon_reconstruction_summary_validates_every_section() -> None:
         _photon_summary_data()
     )
 
-    assert summary.schema_version == 1
-    assert summary.reconstruction.photon_count == 2
-    assert summary.reconstruction.components_formed == 3
-    assert summary.reconstruction.rejection_counts.below_min_cluster_size == 1
+    assert summary.measurement_info.measurement_id == "harness-unit"
+    assert summary.reconstruction.total_photons == 2
+    assert summary.reconstruction.clusters_formed == 3
+    assert summary.reconstruction.rejected_clusters == 1
+    assert summary.reconstruction.rejection_reasons.below_min_cluster_size == 1
     assert summary.reconstruction.quality_flag_counts.saturated_pixel == 1
+    assert summary.clustering.algorithm == "connected_components"
+    assert summary.clustering.settings["save_photon_pixels"] is False
+    assert summary.photon_timing.correction_model == "none"
+    assert summary.parquet_files.pixel_clusters.requested is False
     assert summary.processing_times_seconds.total == 0.4
     assert summary.processing_times_seconds.throughput.photons_per_second == 5.0
 
@@ -524,8 +581,8 @@ def test_photon_reconstruction_summary_validates_every_section() -> None:
 @pytest.mark.parametrize(
     ("field", "value", "error"),
     [
-        ("components_formed", 4, "components_formed"),
-        ("pixel_rows_below_min_tot", 13, "cannot exceed"),
+        ("clusters_formed", 4, "clusters_formed"),
+        ("total_photons", 3, "clusters_formed"),
     ],
 )
 def test_photon_reconstruction_summary_rejects_inconsistent_values(
