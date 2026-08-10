@@ -159,8 +159,8 @@ raw TPX3 files
 TPX3 file listed in `HermesTpx3AnalysisState.tpx3_files`. The state contains one
 unpacker program, one shared analysis directory, one resource limit percentage,
 and one overall unpacking result for the complete list. All inputs use the
-shared analysis directory with `pixelHits/`, `tdcTriggers/`,
-`globalTimestamps/`, `controlPackets/`, `unknownPackets/`, and `logs/`
+shared analysis directory with `pixel_hits/`, `tdc_triggers/`,
+`global_timestamps/`, `control_packets/`, `unknownPackets/`, and `logs/`
 directories. The unpacker carries the raw TPX3 filename stem into every
 Parquet filename and its summary JSON filename. The runner rejects duplicate
 raw filename stems before launching any unpacker.
@@ -178,7 +178,7 @@ in that file. They are not copied into the HERMES YAML file.
 When photon reconstruction is configured, `hermes/run.py` calls
 `hermes/reconstruction.py` after every raw TPX3 file has valid unpacker output.
 Photon reconstruction is optional. It reads the time-sorted `pixel_data` files
-for one raw filename stem from `analysis/pixelHits/`, processes each chip
+for one raw filename stem from `analysis/pixel_hits/`, processes each chip
 independently, then writes `photon_events` and optional `photon_pixels` files
 under `analysis/photons/`. It does not read TDC files or perform
 photon-to-event reconstruction.
@@ -198,7 +198,7 @@ command remains positional with an explicit settings flag:
 
 The settings JSON file contains the chip-independent clustering settings and
 optional time-correction calibration path. The program processes every chip
-for the named raw input, derives `pixelHits/`, `photons/`, and `logs/` from the
+for the named raw input, derives `pixel_hits/`, `photons/`, and `logs/` from the
 analysis directory, and records the complete settings in its summary. HERMES
 removes the temporary settings file after the process exits.
 

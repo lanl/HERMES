@@ -5,7 +5,7 @@ file to reconstructed events:
 
 ```text
 raw TPX3 file
-  -> pixel-hit Parquet file    (analysis/pixelHits/, from unpacking)
+  -> pixel-hit Parquet file    (analysis/pixel_hits/, from unpacking)
   -> photon Parquet file       (analysis/photons/, from photon reconstruction)
   -> event Parquet file        (analysis/events/, from event reconstruction)
 ```
@@ -60,7 +60,7 @@ data/examples/analysis/end_to_end/
 ├── rawTpx3/
 │   └── Tantalum_IronPowder.tpx3
 └── analysis/
-    ├── pixelHits/
+    ├── pixel_hits/
     │   └── Tantalum_IronPowder-chip-0-part-00000.parquet
     ├── photons/
     │   ├── Tantalum_IronPowder-chip-0-part-00000.parquet
@@ -76,8 +76,8 @@ data/examples/analysis/end_to_end/
             └── Tantalum_IronPowder-chip-0-part-00000-reconstruction-summary.json
 ```
 
-(The unpacker also writes `controlPackets/`, `globalTimestamps/`, and
-`tdcTriggers/` Parquet files under `analysis/`, omitted here for brevity.)
+(The unpacker also writes `control_packets/`, `global_timestamps/`, and
+`tdc_triggers/` Parquet files under `analysis/`, omitted here for brevity.)
 
 Each stage writes its own Parquet files and a summary JSON. Running the example
 again validates the existing summaries, skips complete work, and refreshes

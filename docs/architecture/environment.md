@@ -15,13 +15,7 @@ Important environment fields include:
 - selected photon reconstruction backend name, executable path, and version
 - selected event reconstruction backend name, executable path, and version
 - Python version and platform, when useful for provenance
-- `working_dir`
-- `data_dir`
-- `raw_data_dir`
-- `analyzed_data_dir`
-- `log_dir`
-- `preview_dir`
-- `config_dir`, if needed for user-provided run inputs
+- A working directory is required to be defined in HERMES
 
 ## Directory State
 
@@ -44,19 +38,19 @@ the concrete path HERMES will actually use for the run. A separate stored
 can derive `resolved` from `resolved_path is not None`, or expose it as a
 computed field if it is useful in serialized output.
 
-Only `working_dir` is intrinsically required by the base environment model. If a
-user does not provide it, `working_dir` should default to the current process
+Only `working_directory` is intrinsically required by the base environment model. If a
+user does not provide it, `working_directory` should default to the current process
 directory where HERMES was called. Other directories should default to
 `required = false` so users can decide what a run needs:
 
 ```text
-working_dir.required = true
-data_dir.required = false
-raw_data_dir.required = false
-analyzed_data_dir.required = false
-log_dir.required = false
-preview_dir.required = false
-config_dir.required = false
+working_directory.required = true
+run_directory.required = false
+raw_data_directory.required = false
+analysis_directory.required = false
+log_directory.required = false
+preview_directory.required = false
+config_file.required = false
 ```
 
 A directory that is not marked required may remain unresolved in a partially
@@ -73,24 +67,24 @@ directory and the user has not provided one, HERMES may resolve practical
 defaults from `working_dir`, such as:
 
 ```text
-working_dir = /tmp/myfakemeasurements
-data_dir = working_dir / "data"
-raw_data_dir = data_dir / "rawTpx3"
-analyzed_data_dir = data_dir / "analysis"
-log_dir = working_dir / "logs"
-preview_dir = working_dir / "preview"
+working_directory = /tmp/myfakemeasurements
+run_directory = working_directory / "my_measurement_001"
+raw_data_directory = run_directory / "rawTpx3"
+analysis_directory = run_directory / "analysis"
+log_directory = working_directory / "logs"
+preview_directory = working_directory / "preview"
 ```
 
-HERMES unpacking uses `analyzed_data_dir` as one shared analysis directory for
-all raw TPX3 files in the measurement. Its unpacked data directories are
-`pixelHits/`, `tdcTriggers/`, `globalTimestamps/`, `controlPackets/`, and
-`unknownPackets/`. Input-specific unpacker summaries are saved under
-`analyzed_data_dir / "logs"`. The separate runtime `log_dir` may still contain
-the overall HERMES process log.
+HERMES unpacking uses `analysis_directory` as one shared analysis directory for
+The `analysis_directory` lives under the 
+run directory. Its unpacked data directories are `pixel_hits/`, `tdc_triggers/`, 
+`global_timestamps/`, `control_packets/`, and`unknown_packets/`. Input-specific 
+unpacker summaries are saved under `analysis_directory/logs/unpacker/`. The separate 
+runtime `log_directory` may still contain the overall HERMES process log.
 
 If a user provides any field explicitly, that value should be used instead of the
-default. For example, a run may use the default `data_dir` but send preview
-images to a separate fast disk by setting only `preview_dir`.
+default. For example, a run may use the default `run_directory` but send preview
+images to a separate fast disk by setting only `preview_directory`.
 
 The model should save concrete resolved paths for every directory used by the
 run so the record is unambiguous later. The model may also record which paths
@@ -101,8 +95,8 @@ Path models should validate relationships and catch obvious mistakes:
 
 - directory and executable path fields should validate into `Path` values in the
   Pydantic model, not remain loose strings
-- relative paths should be resolved relative to `working_dir`
-- `raw_data_dir`, `analyzed_data_dir`, and `preview_dir` should not silently
+- relative paths should be resolved relative to `working_directory`
+`raw_data_directory`, `analysis_directory`, and `preview_directory` should not silently
   point to the same directory unless explicitly allowed
 - the model should not create directories by itself; directory creation belongs
   in workflow or I/O code

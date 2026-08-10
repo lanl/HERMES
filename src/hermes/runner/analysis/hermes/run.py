@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from math import floor
+from pathlib import Path
 
 import psutil
 from loguru import logger
@@ -9,10 +10,16 @@ from loguru import logger
 from hermes.runner.analysis.hermes.event_reconstruction import (
     HermesEventReconstructionError,
     execute_event_reconstruction,
-    plan_event_reconstruction,
+    resolve_photon_files,
+)
+from hermes.runner.analysis.hermes.event_reconstruction import (
+    check_previous_reconstructed_file as check_previous_event_reconstructed_file,
 )
 from hermes.runner.analysis.hermes.event_reconstruction import (
     derive_output_path as derive_event_output_path,
+)
+from hermes.runner.analysis.hermes.event_reconstruction import (
+    validate_program_and_algorithm as validate_event_program_and_algorithm,
 )
 from hermes.runner.analysis.hermes.event_reconstruction import (
     log_overall_completion as log_event_reconstruction_completion,
@@ -23,28 +30,31 @@ from hermes.runner.analysis.hermes.event_reconstruction import (
 from hermes.runner.analysis.hermes.event_reconstruction import (
     log_skipped_input as log_event_reconstruction_skipped,
 )
-from hermes.runner.analysis.hermes.reconstruction import (
+from hermes.runner.analysis.hermes.photon_reconstruction import (
     HermesReconstructionError,
+    check_previous_reconstructed_file,
     derive_output_path,
     execute_reconstruction,
-    plan_reconstruction,
+    resolve_pixel_files,
+    validate_program_and_algorithm,
 )
-from hermes.runner.analysis.hermes.reconstruction import (
+from hermes.runner.analysis.hermes.photon_reconstruction import (
     log_overall_completion as log_reconstruction_completion,
 )
-from hermes.runner.analysis.hermes.reconstruction import (
+from hermes.runner.analysis.hermes.photon_reconstruction import (
     log_overall_failure as log_reconstruction_failure,
 )
-from hermes.runner.analysis.hermes.reconstruction import (
+from hermes.runner.analysis.hermes.photon_reconstruction import (
     log_skipped_input as log_reconstruction_skipped,
 )
 from hermes.runner.analysis.hermes.unpacker import (
     HermesTpx3Error,
+    check_previous_unpacked_file,
     execute_unpacker,
     log_overall_completion,
     log_overall_failure,
     log_skipped_input,
-    plan_unpacking,
+    validate_program_and_inputs,
 )
 from hermes.state.models.analysis.hermes_tpx3_spidr import (
     HermesTpx3AnalysisState,
@@ -178,41 +188,52 @@ def run_hermes_analysis(
         )
         raise HermesAnalysisError(error)
 
+analysis_root = state.environment.analysis_directory.resolved_path
+if analysis_root is None:
+    raise HermesAnalysisError("environment.analysis_directory must be set to run HERMES analysis")
+
     unpacked_files: list[FileReference] = []
     try:
         if analysis.unpacking is not None:
+            validate_program_and_inputs(analysis, analysis_root)
             unpack_overwrite = (
                 overwrite or analysis.unpacking.runtime_options.overwrite
             )
-            unpacking_plan = plan_unpacking(analysis, overwrite=unpack_overwrite)
-            files_to_run = [
-                raw_file
-                for raw_file, action in unpacking_plan
-                if action == "run"
-            ]
-
-            for raw_file, action in unpacking_plan:
-                if action == "skip":
-                    log_skipped_input(analysis, raw_file)
+            raw_files = analysis.unpacking.tpx3_files
+            files_to_run: list[FileReference] = []
+            unpacking_results: list[HermesTpx3UnpackingResult] = []
+            for raw_file in raw_files:
+                already_unpacked = check_previous_unpacked_file(
+                    analysis_root, raw_file
+                )
+                if not unpack_overwrite and already_unpacked:
+                    log_skipped_input(analysis_root, raw_file)
+                    unpacking_results.append(
+                        HermesTpx3UnpackingResult(
+                            input_file=raw_file,
+                            status="skipped",
+                        )
+                    )
+                else:
+                    files_to_run.append(raw_file)
+                    unpacking_results.append(
+                        HermesTpx3UnpackingResult(
+                            input_file=raw_file,
+                            status="completed",
+                        )
+                    )
 
             if files_to_run:
                 worker_count = _calculate_worker_count(analysis, files_to_run)
                 completed = _run_parallel(
                     lambda raw_file: execute_unpacker(
-                        analysis, raw_file, overwrite=unpack_overwrite
+                        analysis, analysis_root, raw_file, overwrite=unpack_overwrite
                     ),
                     files_to_run,
                     worker_count,
                 )
                 unpacked_files = [files_to_run[i] for i in sorted(completed)]
 
-            unpacking_results = [
-                HermesTpx3UnpackingResult(
-                    input_file=raw_file,
-                    status="completed" if action == "run" else "skipped",
-                )
-                for raw_file, action in unpacking_plan
-            ]
             _apply_unpacking_results(
                 state_manager,
                 unpacking_results,
@@ -221,20 +242,20 @@ def run_hermes_analysis(
                 ),
             )
             log_overall_completion(
-                raw_file_count=len(unpacking_plan),
+                raw_file_count=len(raw_files),
                 unpacked_file_count=len(files_to_run),
             )
 
         current_analysis = _current_hermes_analysis(state_manager)
         if current_analysis.photon_reconstruction is not None:
             _run_photon_reconstruction(
-                state_manager, current_analysis, overwrite=overwrite
+                state_manager, current_analysis, analysis_root, overwrite=overwrite
             )
 
         current_analysis = _current_hermes_analysis(state_manager)
         if current_analysis.event_reconstruction is not None:
             _run_event_reconstruction(
-                state_manager, current_analysis, overwrite=overwrite
+                state_manager, current_analysis, analysis_root, overwrite=overwrite
             )
 
         return unpacked_files
@@ -262,6 +283,7 @@ def run_hermes_analysis(
 def _run_photon_reconstruction(
     state_manager: StateManager,
     analysis: HermesTpx3AnalysisState,
+    analysis_root: Path,
     *,
     overwrite: bool = False,
 ) -> None:
@@ -270,19 +292,16 @@ def _run_photon_reconstruction(
     assert reconstruction is not None
     recon_overwrite = overwrite or reconstruction.runtime_options.overwrite
     try:
-        reconstruction_plan = plan_reconstruction(
-            analysis, overwrite=recon_overwrite
-        )
-        files_to_run = [
-            input_file
-            for input_file, action in reconstruction_plan
-            if action == "run"
-        ]
-
+        validate_program_and_algorithm(reconstruction)
+        pixel_files = resolve_pixel_files(analysis, analysis_root)
+        files_to_run: list[FileReference] = []
         skipped_results: list[HermesTpx3ReconstructionResult] = []
-        for input_file, action in reconstruction_plan:
-            if action == "skip":
-                output_file = derive_output_path(reconstruction, input_file)
+        for input_file in pixel_files:
+            already_reconstructed = check_previous_reconstructed_file(
+                analysis_root, input_file
+            )
+            if not recon_overwrite and already_reconstructed:
+                output_file = derive_output_path(analysis_root, input_file)
                 log_reconstruction_skipped(input_file, output_file)
                 skipped_results.append(
                     HermesTpx3ReconstructionResult(
@@ -291,12 +310,14 @@ def _run_photon_reconstruction(
                         status="skipped",
                     )
                 )
+            else:
+                files_to_run.append(input_file)
 
         if files_to_run:
             worker_count = _calculate_worker_count(analysis, files_to_run)
             completed = _run_parallel(
                 lambda input_file: execute_reconstruction(
-                    analysis, input_file, overwrite=recon_overwrite
+                    analysis, analysis_root, input_file, overwrite=recon_overwrite
                 ),
                 files_to_run,
                 worker_count,
@@ -311,7 +332,7 @@ def _run_photon_reconstruction(
             justification="every pixel file passed photon reconstruction",
         )
         log_reconstruction_completion(
-            pixel_file_count=len(reconstruction_plan),
+            pixel_file_count=len(pixel_files),
             reconstructed_file_count=len(files_to_run),
         )
     except HermesReconstructionError as exc:
@@ -320,10 +341,10 @@ def _run_photon_reconstruction(
             [
                 HermesTpx3ReconstructionResult(
                     input_file=input_file,
-                    output_file=derive_output_path(reconstruction, input_file),
+                    output_file=derive_output_path(analysis_root, input_file),
                     status="failed",
                 )
-                for input_file in _reconstruction_inputs(analysis)
+                for input_file in _reconstruction_inputs(analysis, analysis_root)
             ],
             justification=f"photon reconstruction failed: {exc}",
         )
@@ -333,12 +354,11 @@ def _run_photon_reconstruction(
 
 def _reconstruction_inputs(
     analysis: HermesTpx3AnalysisState,
+    analysis_root: Path,
 ) -> list[FileReference]:
     """Best-effort pixel-file list for failure reporting (never raises)."""
-    from hermes.runner.analysis.hermes.reconstruction import resolve_pixel_files
-
     try:
-        return resolve_pixel_files(analysis)
+        return resolve_pixel_files(analysis, analysis_root)
     except Exception:
         return []
 
@@ -346,6 +366,7 @@ def _reconstruction_inputs(
 def _run_event_reconstruction(
     state_manager: StateManager,
     analysis: HermesTpx3AnalysisState,
+    analysis_root: Path,
     *,
     overwrite: bool = False,
 ) -> None:
@@ -354,21 +375,16 @@ def _run_event_reconstruction(
     assert event_reconstruction is not None
     event_overwrite = overwrite or event_reconstruction.runtime_options.overwrite
     try:
-        event_plan = plan_event_reconstruction(
-            analysis, overwrite=event_overwrite
-        )
-        files_to_run = [
-            input_file
-            for input_file, action in event_plan
-            if action == "run"
-        ]
-
+        validate_event_program_and_algorithm(event_reconstruction)
+        photon_files = resolve_photon_files(analysis, analysis_root)
+        files_to_run: list[FileReference] = []
         skipped_results: list[HermesTpx3EventReconstructionResult] = []
-        for input_file, action in event_plan:
-            if action == "skip":
-                output_file = derive_event_output_path(
-                    event_reconstruction, input_file
-                )
+        for input_file in photon_files:
+            already_reconstructed = check_previous_event_reconstructed_file(
+                analysis_root, input_file
+            )
+            if not event_overwrite and already_reconstructed:
+                output_file = derive_event_output_path(analysis_root, input_file)
                 log_event_reconstruction_skipped(input_file, output_file)
                 skipped_results.append(
                     HermesTpx3EventReconstructionResult(
@@ -377,12 +393,14 @@ def _run_event_reconstruction(
                         status="skipped",
                     )
                 )
+            else:
+                files_to_run.append(input_file)
 
         if files_to_run:
             worker_count = _calculate_worker_count(analysis, files_to_run)
             completed = _run_parallel(
                 lambda input_file: execute_event_reconstruction(
-                    analysis, input_file, overwrite=event_overwrite
+                    analysis, analysis_root, input_file, overwrite=event_overwrite
                 ),
                 files_to_run,
                 worker_count,
@@ -397,7 +415,7 @@ def _run_event_reconstruction(
             justification="every photon file passed event reconstruction",
         )
         log_event_reconstruction_completion(
-            photon_file_count=len(event_plan),
+            photon_file_count=len(photon_files),
             reconstructed_file_count=len(files_to_run),
         )
     except HermesEventReconstructionError as exc:
@@ -407,11 +425,13 @@ def _run_event_reconstruction(
                 HermesTpx3EventReconstructionResult(
                     input_file=input_file,
                     output_file=derive_event_output_path(
-                        event_reconstruction, input_file
+                        analysis_root, input_file
                     ),
                     status="failed",
                 )
-                for input_file in _event_reconstruction_inputs(analysis)
+                for input_file in _event_reconstruction_inputs(
+                    analysis, analysis_root
+                )
             ],
             justification=f"event reconstruction failed: {exc}",
         )
@@ -421,14 +441,11 @@ def _run_event_reconstruction(
 
 def _event_reconstruction_inputs(
     analysis: HermesTpx3AnalysisState,
+    analysis_root: Path,
 ) -> list[FileReference]:
     """Best-effort photon-file list for failure reporting (never raises)."""
-    from hermes.runner.analysis.hermes.event_reconstruction import (
-        resolve_photon_files,
-    )
-
     try:
-        return resolve_photon_files(analysis)
+        return resolve_photon_files(analysis, analysis_root)
     except Exception:
         return []
 

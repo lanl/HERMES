@@ -3,11 +3,11 @@ measurement_info:
   run_number: 1
 
 environment:
-  working_dir: data/examples/analysis/timewalk_calibration
+  working_directory: data/examples/analysis/timewalk_calibration
+  analysis_directory: analysis
 
 analysis:
   mode: hermes
-  analysis_directory: data/examples/analysis/timewalk_calibration/analysis
   unpacking:
     program:
       name: tpx3-spidr-cpp

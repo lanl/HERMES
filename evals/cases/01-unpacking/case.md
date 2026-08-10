@@ -6,7 +6,7 @@ reconstruction.
 
 - **Input data:** `tests/data/tpx3/Example_1kHz_5frames.tpx3` (ASI, 1 kHz frame
   rate, 5 frames).
-- **Working directory:** `data/harness/01-unpacking/` (all output goes here).
+- **Working directory:** `data/01-unpacking/` (all output goes here).
 
 The `tpx3_files` list in `input/config.yaml` accepts one or many files. To
 unpack several files, add more `- path:` entries, or point the field at a text
@@ -23,6 +23,6 @@ file that lists them (`tpx3_files: <path-to-list>.txt`).
 ## Notes
 
 - The unpacking backend `hermes-tpx3-spidr` creates the `analysis/`
-  sub-directory layout and writes the summary log under `logs/unpacking/`.
+  sub-directory layout and writes the summary log under `analysis/logs/unpacking/`.
 - A final HERMES record is saved at the working-directory root.
 - The counts in the summary are real, taken from an actual unpack of this file.

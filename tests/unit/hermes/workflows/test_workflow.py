@@ -23,9 +23,11 @@ def _record(tmp_path: Path) -> HermesRecord:
             measurement_id="workflow-test",
             run_number=1,
         ),
-        environment=RuntimeEnvironment(working_dir=tmp_path),
-        analysis=HermesTpx3AnalysisState(
+        environment=RuntimeEnvironment(
+            working_directory=tmp_path,
             analysis_directory=tmp_path / "analysis",
+        ),
+        analysis=HermesTpx3AnalysisState(
             unpacking=Tpx3Unpacking(
                 program=BinaryProgram(
                     name="test-unpacker",

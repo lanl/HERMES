@@ -5,7 +5,6 @@ import re
 import subprocess
 from time import perf_counter
 from pathlib import Path
-from typing import Literal, TypeAlias
 
 import pyarrow.parquet as pq
 from loguru import logger
@@ -17,14 +16,11 @@ from hermes.state.models.analysis.hermes_tpx3_spidr import (
 )
 from hermes.state.models.shared_models import FileReference
 
-ContinuationAction: TypeAlias = Literal["run", "skip"]
-UnpackingPlan: TypeAlias = list[tuple[FileReference, ContinuationAction]]
-
 _PARQUET_DIRECTORIES = (
-    "pixelHits",
-    "tdcTriggers",
-    "globalTimestamps",
-    "controlPackets",
+    "pixel_hits",
+    "tdc_triggers",
+    "global_timestamps",
+    "control_packets",
     "unknownPackets",
 )
 _LOG_TEXT_LIMIT = 4_000
@@ -36,11 +32,11 @@ _ANALYSIS_LOGGER = logger.bind(
 
 
 class HermesTpx3Error(Exception):
-    """Base exception for HERMES TPX3 unpacking failures."""
+    """Base exception for HERMES TPX3 SPIDR unpacking failures."""
 
 
 class HermesTpx3PreflightError(HermesTpx3Error):
-    """Raised when HERMES cannot safely start or continue TPX3 unpacking."""
+    """Raised when HERMES cannot safely start or continue unpacking."""
 
 
 class HermesTpx3ExecutionError(HermesTpx3Error):
@@ -52,19 +48,32 @@ class HermesTpx3OutputError(HermesTpx3PreflightError):
 
 
 def derive_summary_path(
-    analysis: HermesTpx3AnalysisState,
+    analysis_root: Path,
     raw_file: FileReference,
 ) -> Path:
     return (
-        analysis.analysis_directory
+        analysis_root
         / "logs"
         / "unpacker"
         / f"{raw_file.path.stem}-unpacker-summary.json"
     )
 
 
+def check_previous_unpacked_file(
+    analysis_root: Path,
+    raw_file: FileReference,
+) -> bool:
+    """Return True when this raw file was already unpacked with valid outputs."""
+    summary_path = derive_summary_path(analysis_root, raw_file)
+    if not summary_path.is_file():
+        return False
+    summary = _load_summary(summary_path)
+    _validate_completed_files(summary, summary_path, analysis_root, raw_file.path.stem)
+    return True
+
 def derive_unpacker_command(
     analysis: HermesTpx3AnalysisState,
+    analysis_root: Path,
     raw_file: FileReference,
     *,
     overwrite: bool = False,
@@ -74,7 +83,7 @@ def derive_unpacker_command(
         "--input",
         str(raw_file.path),
         "--output",
-        str(analysis.unpacking.output_directory),
+        str(analysis_root),
     ]
     if overwrite:
         command.append("--overwrite")
@@ -82,53 +91,17 @@ def derive_unpacker_command(
         command.extend(["--time-sort", "false"])
     return command
 
-
-def plan_unpacking(
-    analysis: HermesTpx3AnalysisState,
-    *,
-    overwrite: bool = False,
-) -> UnpackingPlan:
-    _validate_program_and_inputs(analysis)
-
-    if overwrite:
-        return [(raw_file, "run") for raw_file in analysis.unpacking.tpx3_files]
-
-    plan: UnpackingPlan = []
-    for raw_file in analysis.unpacking.tpx3_files:
-        summary_path = derive_summary_path(analysis, raw_file)
-        matching_parquet_files = _matching_parquet_files(
-            analysis.analysis_directory,
-            raw_file.path.stem,
-        )
-
-        if summary_path.exists():
-            summary = _load_summary(summary_path)
-            _validate_completed_files(
-                summary,
-                summary_path,
-                analysis.analysis_directory,
-                raw_file.path.stem,
-            )
-            plan.append((raw_file, "skip"))
-        elif matching_parquet_files:
-            raise HermesTpx3PreflightError(
-                f"Parquet files exist without a valid summary for "
-                f"{raw_file.path}: {matching_parquet_files[0]}"
-            )
-        else:
-            plan.append((raw_file, "run"))
-
-    return plan
-
-
 def execute_unpacker(
     analysis: HermesTpx3AnalysisState,
+    analysis_root: Path,
     raw_file: FileReference,
     *,
     overwrite: bool = False,
 ) -> Tpx3SpidrSummary:
-    command = derive_unpacker_command(analysis, raw_file, overwrite=overwrite)
-    summary_path = derive_summary_path(analysis, raw_file)
+    command = derive_unpacker_command(
+        analysis, analysis_root, raw_file, overwrite=overwrite
+    )
+    summary_path = derive_summary_path(analysis_root, raw_file)
     resolved_executable_path = (
         analysis.unpacking.program.executable_path.resolve()
     )
@@ -138,7 +111,7 @@ def execute_unpacker(
         event_type="analysis.tpx3_unpacking.started",
         raw_tpx3_file=str(raw_file.path),
         raw_tpx3_size_bytes=raw_file.path.stat().st_size,
-        analysis_directory=str(analysis.analysis_directory),
+        analysis_directory=str(analysis_root),
         summary_json_file=str(summary_path),
         executable_path=str(analysis.unpacking.program.executable_path),
         resolved_executable_path=str(resolved_executable_path),
@@ -190,7 +163,7 @@ def execute_unpacker(
         _validate_completed_files(
             summary,
             summary_path,
-            analysis.analysis_directory,
+            analysis_root,
             raw_file.path.stem,
         )
     except HermesTpx3Error as exc:
@@ -214,7 +187,7 @@ def execute_unpacker(
         "Unpacked {raw_tpx3_file} in {elapsed_seconds:.2f}s",
         event_type="analysis.tpx3_unpacking.completed",
         raw_tpx3_file=str(raw_file.path),
-        analysis_directory=str(analysis.analysis_directory),
+        analysis_directory=str(analysis_root),
         summary_json_file=str(summary_path),
         command=command,
         exit_code=process.returncode,
@@ -227,15 +200,15 @@ def execute_unpacker(
 
 
 def log_skipped_input(
-    analysis: HermesTpx3AnalysisState,
+    analysis_root: Path,
     raw_file: FileReference,
 ) -> None:
     _ANALYSIS_LOGGER.warning(
         "Skipped {raw_tpx3_file}: valid outputs already exist",
         event_type="analysis.tpx3_unpacking.skipped",
         raw_tpx3_file=str(raw_file.path),
-        analysis_directory=str(analysis.analysis_directory),
-        summary_json_file=str(derive_summary_path(analysis, raw_file)),
+        analysis_directory=str(analysis_root),
+        summary_json_file=str(derive_summary_path(analysis_root, raw_file)),
         reason="valid summary and listed Parquet files already exist",
     )
 
@@ -265,7 +238,10 @@ def log_overall_failure(error: Exception) -> None:
     )
 
 
-def _validate_program_and_inputs(analysis: HermesTpx3AnalysisState) -> None:
+def validate_program_and_inputs(
+    analysis: HermesTpx3AnalysisState,
+    analysis_root: Path,
+) -> None:
     executable = analysis.unpacking.program.executable_path
     if not executable.is_file():
         raise HermesTpx3PreflightError(
@@ -279,13 +255,7 @@ def _validate_program_and_inputs(analysis: HermesTpx3AnalysisState) -> None:
                 f"raw TPX3 file does not exist: {raw_file.path}"
             )
 
-    stems = [raw_file.path.stem for raw_file in analysis.unpacking.tpx3_files]
-    if len(stems) != len(set(stems)):
-        raise HermesTpx3PreflightError(
-            "raw TPX3 filename stems must be unique"
-        )
-
-    analysis_directory = analysis.analysis_directory
+    analysis_directory = analysis_root
     if analysis_directory.exists():
         if not analysis_directory.is_dir():
             raise HermesTpx3PreflightError(
@@ -339,10 +309,10 @@ def _validate_completed_files(
 
     analysis_root = analysis_directory.resolve()
     categories = (
-        ("pixelHits", summary.parquet.pixel_data, True),  # includes chip ID
-        ("tdcTriggers", summary.parquet.tdc_timestamps, False),  # no chip ID
-        ("globalTimestamps", summary.parquet.heartbeat_packets, False),
-        ("controlPackets", summary.parquet.control_packets, False),
+        ("pixel_hits", summary.parquet.pixel_data, True),  # includes chip ID
+        ("tdc_triggers", summary.parquet.tdc_timestamps, False),  # no chip ID
+        ("global_timestamps", summary.parquet.heartbeat_packets, False),
+        ("control_packets", summary.parquet.control_packets, False),
         ("unknownPackets", summary.parquet.unrecognized_packets, False),
     )
     listed_files: set[Path] = set()

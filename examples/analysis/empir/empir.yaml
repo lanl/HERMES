@@ -3,11 +3,9 @@ measurement_info:
   run_number: 1
 
 environment:
-  working_dir: data/examples/analysis/empir
-  # Relative log_dir resolves under working_dir, so analysis.jsonl is written
-  # to data/examples/analysis/empir/logs/analysis.jsonl. Without log_dir set,
-  # no analysis.jsonl is written and the timing data goes only to the console.
-  log_dir: logs
+  working_directory: data/examples/analysis/empir
+  run_directory: example_001
+  log_directory: logs
 
 analysis:
   mode: empir

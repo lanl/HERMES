@@ -9,13 +9,13 @@ from pydantic import Field, model_validator
 from hermes.state.models.shared_models import StrictBaseModel
 
 DIRECTORY_FIELDS = (
-    "working_dir",
-    "data_dir",
-    "raw_data_dir",
-    "analyzed_data_dir",
-    "log_dir",
-    "preview_dir",
-    "config_dir",
+    "working_directory",
+    "run_directory",
+    "raw_data_directory",
+    "analysis_directory",
+    "log_directory",
+    "preview_directory",
+    "config_file",
 )
 
 
@@ -115,13 +115,13 @@ def _working_dir_base(value: object) -> Path | None:
 class RuntimeEnvironment(StrictBaseModel):
     """Directory state and tool provenance for a HERMES run."""
 
-    working_dir: DirectoryState = Field(default_factory=_default_working_dir)
-    data_dir: DirectoryState = Field(default_factory=_directory_state)
-    raw_data_dir: DirectoryState = Field(default_factory=_directory_state)
-    analyzed_data_dir: DirectoryState = Field(default_factory=_directory_state)
-    log_dir: DirectoryState = Field(default_factory=_directory_state)
-    preview_dir: DirectoryState = Field(default_factory=_directory_state)
-    config_dir: DirectoryState = Field(default_factory=_directory_state)
+    working_directory: DirectoryState = Field(default_factory=_default_working_dir)
+    run_directory: DirectoryState = Field(default_factory=_directory_state)
+    raw_data_directory: DirectoryState = Field(default_factory=_directory_state)
+    analysis_directory: DirectoryState = Field(default_factory=_directory_state)
+    log_directory: DirectoryState = Field(default_factory=_directory_state)
+    preview_directory: DirectoryState = Field(default_factory=_directory_state)
+    config_file: DirectoryState = Field(default_factory=_directory_state)
     hermes_version: str | None = None
     python_version: str | None = None
     platform: str | None = None
@@ -131,17 +131,17 @@ class RuntimeEnvironment(StrictBaseModel):
     @model_validator(mode="before")
     @classmethod
     def resolve_directory_paths(cls, data: Any) -> Any:
-        if not isinstance(data, dict) or data.get("working_dir") is None:
+        if not isinstance(data, dict) or data.get("working_directory") is None:
             return data
 
         resolved = dict(data)
-        working_dir_base = _working_dir_base(resolved["working_dir"])
-        resolved["working_dir"] = _normalize_directory_input(
-            resolved["working_dir"],
+        working_dir_base = _working_dir_base(resolved["working_directory"])
+        resolved["working_directory"] = _normalize_directory_input(
+            resolved["working_directory"],
             base=None,
             required_default=True,
         )
-        resolved["working_dir"]["required"] = True
+        resolved["working_directory"]["required"] = True
 
         for key in DIRECTORY_FIELDS[1:]:
             if resolved.get(key) is not None:
@@ -155,11 +155,11 @@ class RuntimeEnvironment(StrictBaseModel):
 
     @model_validator(mode="after")
     def validate_working_dir(self) -> RuntimeEnvironment:
-        if not self.working_dir.required:
-            msg = "working_dir is intrinsically required"
+        if not self.working_directory.required:
+            msg = "working_directory is intrinsically required"
             raise ValueError(msg)
-        if self.working_dir.resolved_path is None:
-            msg = "working_dir must have a resolved_path"
+        if self.working_directory.resolved_path is None:
+            msg = "working_directory must have a resolved_path"
             raise ValueError(msg)
         return self
 
@@ -169,9 +169,9 @@ class RuntimeEnvironment(StrictBaseModel):
             return self
 
         output_dirs = {
-            "raw_data_dir": self.raw_data_dir.resolved_path,
-            "analyzed_data_dir": self.analyzed_data_dir.resolved_path,
-            "preview_dir": self.preview_dir.resolved_path,
+            "raw_data_directory": self.raw_data_directory.resolved_path,
+            "analysis_directory": self.analysis_directory.resolved_path,
+            "preview_directory": self.preview_directory.resolved_path,
         }
         seen: dict[Path, str] = {}
         for name, path in output_dirs.items():

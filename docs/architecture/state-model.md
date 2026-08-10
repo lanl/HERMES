@@ -687,7 +687,7 @@ and repeatable.
 
 Photon reconstruction is omitted when only unpacking is requested. When it is
 present, `pixel_data_directory` must equal
-`<analysis_directory>/pixelHits` and `photon_output_directory` must equal
+`<analysis_directory>/pixel_hits` and `photon_output_directory` must equal
 `<analysis_directory>/photons`. Keeping the paths explicit makes an
 analysis-only HERMES state readable, while validation prevents two directory
 settings from disagreeing.
@@ -713,8 +713,8 @@ The clustering thresholds remain explicit saved settings because their useful
 values depend on the image intensifier, phosphor, detector threshold, and
 measurement.
 
-The shared directory contains `pixelHits/`, `tdcTriggers/`,
-`globalTimestamps/`, `controlPackets/`, `unknownPackets/`, `logs/`,
+The shared directory contains `pixel_hits/`, `tdc_triggers/`,
+`global_timestamps/`, `control_packets/`, `unknownPackets/`, `logs/`,
 `photons/`, and later `events/`. Parquet filenames begin with the corresponding
 raw TPX3 filename stem. Input-specific summary paths are derived as:
 

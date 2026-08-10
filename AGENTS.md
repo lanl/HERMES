@@ -36,5 +36,4 @@ workflow code, run the cases and fix any deviation before finishing:
 Each case under `evals/cases/` has an `input/` (the config the workflow loads)
 and an `expected/` (the output tree, the JSON-lines workflow log, and the
 per-file summaries). Any value written as `<...>` changes every run and is not
-checked. If you change the intended design on purpose, update the affected case
-in the same change so the eval stays honest. See `evals/README.md`.
+checked. 

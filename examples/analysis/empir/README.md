@@ -76,14 +76,14 @@ pixi run python examples/analysis/empir/run_empir.py \
 
 ## Timing
 
-The example sets `environment.log_dir: logs`, which resolves under the working
+The example sets `environment.log_directory: logs`, which resolves under the working
 directory, so the analysis log is written to:
 
 ```text
 data/examples/analysis/empir/logs/analysis.jsonl
 ```
 
-Without `log_dir` set, no `analysis.jsonl` is written and timing goes only to
+Without `log_directory` set, no `analysis.jsonl` is written and timing goes only to
 the console. Each stage emits a `...completed` event carrying `elapsed_seconds`.
 Read the per-stage durations with `jq`:
 

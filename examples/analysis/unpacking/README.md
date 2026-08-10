@@ -69,13 +69,13 @@ data/examples/analysis/unpacking/
 ├── single_file/
 │   ├── hermes-record_final.yaml
 │   └── analysis/
-│       ├── pixelHits/
+│       ├── pixel_hits/
 │       └── logs/
 └── multiple_files/
     ├── input/
     ├── hermes-record_final.yaml
     └── analysis/
-        ├── pixelHits/
+        ├── pixel_hits/
         └── logs/
 ```
 

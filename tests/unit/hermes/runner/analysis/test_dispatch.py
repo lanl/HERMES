@@ -37,7 +37,10 @@ def _manager(tmp_path: Path, analysis: object | None) -> StateManager:
             measurement_id="dispatch-test",
             run_number=1,
         ),
-        environment=RuntimeEnvironment(working_dir=tmp_path),
+        environment=RuntimeEnvironment(
+            working_directory=tmp_path,
+            analysis_directory=tmp_path / "analysis",
+        ),
         analysis=analysis,
     )
     return StateManager(
@@ -98,7 +101,6 @@ def _empir_analysis(tmp_path: Path) -> EmpirAnalysisState:
 
 def _hermes_analysis(tmp_path: Path) -> HermesTpx3AnalysisState:
     return HermesTpx3AnalysisState(
-        analysis_directory=tmp_path / "analysis",
         unpacking=Tpx3Unpacking(
             program=BinaryProgram(
                 name="test-unpacker",

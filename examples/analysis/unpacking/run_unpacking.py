@@ -44,7 +44,7 @@ def main(input_yaml_path: Path = DEFAULT_INPUT_YAML_PATH) -> None:
     initial_record = load_hermes_record_from_yaml(input_yaml_path)
 
     # Step 3: Choose a separate path for the completed HERMES record
-    working_directory = initial_record.environment.working_dir.resolved_path
+    working_directory = initial_record.environment.working_directory.resolved_path
     final_record_path = working_directory / "hermes-record_final.yaml"
 
     # Step 4: Create the workflow and run the configured analysis
@@ -53,11 +53,10 @@ def main(input_yaml_path: Path = DEFAULT_INPUT_YAML_PATH) -> None:
 
     # Step 5: Read and save the final HERMES record
     final_record = workflow.record
-    final_analysis = final_record.analysis
     save_hermes_record_to_yaml(final_record, final_record_path)
 
     # Step 6: Display the unpacking results
-    raw_tpx3_files = final_analysis.unpacking.tpx3_files
+    raw_tpx3_files = final_record.analysis.unpacking.tpx3_files
     print(f"Raw TPX3 files: {len(raw_tpx3_files)}")
     for raw_tpx3_file in raw_tpx3_files:
         print(f"  - {raw_tpx3_file.path}")
@@ -66,8 +65,10 @@ def main(input_yaml_path: Path = DEFAULT_INPUT_YAML_PATH) -> None:
         "Skipped existing valid outputs: "
         f"{len(raw_tpx3_files) - len(unpacked_raw_files)}"
     )
-    print(f"Analysis directory: {final_analysis.analysis_directory}")
+    analysis_directory = final_record.environment.analysis_directory.resolved_path
+    print(f"Analysis directory: {analysis_directory}")
     print(f"HERMES state file: {final_record_path}")
+
 
 
 if __name__ == "__main__":

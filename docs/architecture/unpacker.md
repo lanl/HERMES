@@ -72,10 +72,10 @@ data/
 │   ├── DT_2p0V_000000.tpx3
 │   └── DT_2p0V_000001.tpx3
 └── analysis/
-    ├── pixelHits/
-    ├── tdcTriggers/
-    ├── globalTimestamps/
-    ├── controlPackets/
+    ├── pixel_hits/
+    ├── tdc_triggers/
+    ├── global_timestamps/
+    ├── control_packets/
     ├── unknownPackets/
     ├── logs/
     ├── photons/
@@ -92,10 +92,10 @@ The directory names and the corresponding Parquet data category names are:
 
 | Saved data | Directory | Parquet data category |
 | --- | --- | --- |
-| Pixel data | `pixelHits/` | `pixel_data` |
-| TDC timestamps | `tdcTriggers/` | `tdc_timestamps` |
-| Heartbeat packets | `globalTimestamps/` | `heartbeat_packets` |
-| Control packets | `controlPackets/` | `control_packets` |
+| Pixel data | `pixel_hits/` | `pixel_data` |
+| TDC timestamps | `tdc_triggers/` | `tdc_timestamps` |
+| Heartbeat packets | `global_timestamps/` | `heartbeat_packets` |
+| Control packets | `control_packets/` | `control_packets` |
 | Unrecognized packets | `unknownPackets/` | `unrecognized_packets` |
 
 ## Parquet Filenames
@@ -111,10 +111,10 @@ For example, the first pixel-data part for chip 0 from
 `DT_2p0V_000000.tpx3` is:
 
 ```text
-analysis/pixelHits/DT_2p0V_000000-chip-0-part-00000.parquet
+analysis/pixel_hits/DT_2p0V_000000-chip-0-part-00000.parquet
 ```
 
-The other categories (`tdcTriggers`, `globalTimestamps`, `controlPackets`, and
+The other categories (`tdc_triggers`, `global_timestamps`, `control_packets`, and
 `unknownPackets`) are not associated with a chip, so their filenames omit the
 chip index and carry only the raw TPX3 filename stem and part index:
 
@@ -125,7 +125,7 @@ chip index and carry only the raw TPX3 filename stem and part index:
 For example, the first TDC-timestamps part from `DT_2p0V_000000.tpx3` is:
 
 ```text
-analysis/tdcTriggers/DT_2p0V_000000-part-00000.parquet
+analysis/tdc_triggers/DT_2p0V_000000-part-00000.parquet
 ```
 
 Part numbers start at zero independently for each raw file, data category, and
@@ -336,8 +336,8 @@ parquet:
   pixel_data:
     row_count: 1200000
     files:
-      - pixelHits/DT_2p0V_000000-chip-0-part-00000.parquet
-      - pixelHits/DT_2p0V_000000-chip-0-part-00001.parquet
+      - pixel_hits/DT_2p0V_000000-chip-0-part-00000.parquet
+      - pixel_hits/DT_2p0V_000000-chip-0-part-00001.parquet
   tdc_timestamps:
     row_count: 0
     files: []

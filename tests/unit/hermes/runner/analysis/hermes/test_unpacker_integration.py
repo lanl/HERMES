@@ -51,7 +51,6 @@ def test_real_cpp_unpacker_handles_two_inputs_and_skips_completed_files(
         shutil.copyfile(_TPX3_FIXTURE, raw_path)
 
     analysis = HermesTpx3AnalysisState(
-        analysis_directory=tmp_path / "analysis",
         unpacking=Tpx3Unpacking(
             program=BinaryProgram(
                 name="tpx3-spidr-cpp",
@@ -67,7 +66,10 @@ def test_real_cpp_unpacker_handles_two_inputs_and_skips_completed_files(
                 measurement_id="real-tpx3-unpacker",
                 run_number=1,
             ),
-            environment=RuntimeEnvironment(working_dir=tmp_path),
+            environment=RuntimeEnvironment(
+                working_directory=tmp_path,
+                analysis_directory=tmp_path / "analysis",
+            ),
             acquisition=None,
             analysis=analysis,
         ),
@@ -94,7 +96,9 @@ def test_real_cpp_unpacker_handles_two_inputs_and_skips_completed_files(
     summaries: list[Tpx3SpidrSummary] = []
     generated_paths: set[Path] = set()
     for raw_file in analysis.unpacking.tpx3_files:
-        summary_path = derive_summary_path(analysis, raw_file)
+        summary_path = derive_summary_path(
+            analysis.unpacking.output_directory, raw_file
+        )
         assert summary_path.is_file()
         summary = Tpx3SpidrSummary.model_validate_json(summary_path.read_bytes())
         summaries.append(summary)
@@ -118,7 +122,7 @@ def test_real_cpp_unpacker_handles_two_inputs_and_skips_completed_files(
         assert generated_paths.isdisjoint(listed_paths)
         generated_paths.update(listed_paths)
         assert all(
-            (analysis.analysis_directory / relative_path).is_file()
+            (analysis.unpacking.output_directory / relative_path).is_file()
             for relative_path in listed_paths
         )
 
@@ -131,10 +135,10 @@ def test_real_cpp_unpacker_handles_two_inputs_and_skips_completed_files(
     saved_analysis = completed_state.analysis.model_dump(mode="json")
     assert set(saved_analysis) == {
         "mode",
-        "analysis_directory",
         "resource_limit_percent",
         "unpacking",
         "photon_reconstruction",
+        "event_reconstruction",
     }
     assert saved_analysis["photon_reconstruction"] is None
     assert set(saved_analysis["unpacking"]) == {
@@ -173,10 +177,10 @@ def test_real_cpp_unpacker_handles_two_inputs_and_skips_completed_files(
     ]
 
     saved_files = [
-        derive_summary_path(analysis, raw_file)
+        derive_summary_path(analysis.unpacking.output_directory, raw_file)
         for raw_file in analysis.unpacking.tpx3_files
     ] + [
-        analysis.analysis_directory / relative_path
+        analysis.unpacking.output_directory / relative_path
         for relative_path in generated_paths
     ]
     modification_times = {

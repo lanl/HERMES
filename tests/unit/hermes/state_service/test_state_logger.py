@@ -69,7 +69,7 @@ def _record(tmp_path: Path) -> HermesRecord:
             measurement_id="LC-20260505",
             run_number=7,
         ),
-        environment=RuntimeEnvironment(working_dir=tmp_path / "run-007"),
+        environment=RuntimeEnvironment(working_directory=tmp_path / "run-007"),
     )
 
 

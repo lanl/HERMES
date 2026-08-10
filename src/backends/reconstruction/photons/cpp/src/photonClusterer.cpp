@@ -37,7 +37,7 @@ void printHelp(const char* program_name) {
               << " --input <pixel_file> [--output <photon_file>]"
                  " [--settings <file>] [--overwrite]\n\n";
     std::cout << "Options:\n";
-    std::cout << "  --input <pixel_file>           One pixelHits Parquet file "
+    std::cout << "  --input <pixel_file>           One pixel_hits Parquet file "
                  "to reconstruct (required)\n";
     std::cout << "  --output <photon_file>         Full path of the photon file "
                  "to write (optional)\n";

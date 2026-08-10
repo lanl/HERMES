@@ -26,9 +26,9 @@ def main(input_yaml_path: Path = DEFAULT_INPUT_YAML_PATH) -> None:
     initial_record = load_hermes_record_from_yaml(input_yaml_path)
 
     # Step 2: Choose paths for the completed record and calibration outputs
-    working_directory = initial_record.environment.working_dir.resolved_path
+    working_directory = initial_record.environment.working_directory.resolved_path
     final_record_path = working_directory / "hermes-record_final.yaml"
-    analysis_directory = initial_record.analysis.analysis_directory
+    analysis_directory = initial_record.environment.analysis_directory.resolved_path
     calibration_file = analysis_directory / "logs/timewalk-calibration.json"
     correction_file = analysis_directory / "logs/timewalk-calibration-correction.json"
 
@@ -45,7 +45,7 @@ def main(input_yaml_path: Path = DEFAULT_INPUT_YAML_PATH) -> None:
     )
 
     # Step 5: Fit and save the time-walk calibration from the unpacked pixel data
-    pixel_files = sorted((analysis_directory / "pixelHits").glob("*.parquet"))
+    pixel_files = sorted((analysis_directory / "pixel_hits").glob("*.parquet"))
     calibration = calibrate_timewalk(
         pixel_files,
         clustering_settings,

@@ -64,8 +64,8 @@ void testWorkflowWithEmptyInput(TestContext& test) {
     test.expectEqual(result.analysis_directory, analysis_directory.string(),
                      "analysis directory preserved");
 
-    for (const auto* directory : {"pixelHits", "tdcTriggers",
-                                  "globalTimestamps", "controlPackets",
+    for (const auto* directory : {"pixel_hits", "tdc_triggers",
+                                  "global_timestamps", "control_packets",
                                   "unknownPackets", "logs/unpacker"}) {
         test.expect(std::filesystem::is_directory(analysis_directory / directory),
                     std::string("created shared directory ") + directory);
@@ -101,9 +101,9 @@ void testSharedDirectoriesForTwoInputs(TestContext& test) {
     test.expect(second.success, "second input wrote shared analysis files");
 
     const auto first_parquet = analysis_directory /
-        "pixelHits/DT_2p0V_000000-chip-0-part-00000.parquet";
+        "pixel_hits/DT_2p0V_000000-chip-0-part-00000.parquet";
     const auto second_parquet = analysis_directory /
-        "pixelHits/DT_2p0V_000001-chip-0-part-00000.parquet";
+        "pixel_hits/DT_2p0V_000001-chip-0-part-00000.parquet";
     const auto first_summary = analysis_directory /
         "logs/unpacker/DT_2p0V_000000-unpacker-summary.json";
     const auto second_summary = analysis_directory /
@@ -128,7 +128,7 @@ void testSharedDirectoriesForTwoInputs(TestContext& test) {
             first_json["parquet"]["pixel_data"]["files"][0]
                 .get<std::string>(),
             std::string(
-                "pixelHits/DT_2p0V_000000-chip-0-part-00000.parquet"),
+                "pixel_hits/DT_2p0V_000000-chip-0-part-00000.parquet"),
             "summary records input-prefixed Parquet filename");
     }
 
@@ -158,7 +158,7 @@ void testExistingFilesAreNotOverwritten(TestContext& test) {
     std::filesystem::remove(summary_path);
 
     const auto parquet_path = analysis_directory /
-        "pixelHits/repeated-chip-0-part-00000.parquet";
+        "pixel_hits/repeated-chip-0-part-00000.parquet";
     if (std::filesystem::exists(parquet_path)) {
         const auto parquet_size = std::filesystem::file_size(parquet_path);
         std::istringstream parquet_collision_input(bytes);
@@ -198,7 +198,7 @@ void testSummaryJsonGeneration(TestContext& test) {
     content.sorting_diagnostics.estimated_memory_bytes = 2048;
     content.writer_diagnostics.pixel_hits.row_count = 1;
     content.writer_diagnostics.pixel_hits.files.push_back(
-        "pixelHits/test-chip-0-part-00000.parquet");
+        "pixel_hits/test-chip-0-part-00000.parquet");
     content.timing_diagnostics.conversion_seconds = 0.25;
     content.timing_diagnostics.epoch_assignment_seconds = 0.5;
     content.timing_diagnostics.total_seconds = 2.0;
@@ -272,7 +272,7 @@ void testSummaryJsonGeneration(TestContext& test) {
         std::uint64_t{1}, "JSON contains pixel Parquet row count");
     test.expectEqual(
         parsed["parquet"]["pixel_data"]["files"][0].get<std::string>(),
-        std::string("pixelHits/test-chip-0-part-00000.parquet"),
+        std::string("pixel_hits/test-chip-0-part-00000.parquet"),
         "JSON contains relative pixel Parquet filename");
     test.expect(parsed["parquet"]["tdc_timestamps"]["files"].empty(),
                 "JSON contains empty TDC file list");

@@ -5,12 +5,12 @@ measurement_info:
   run: tantalum-ironpowder
 
 environment:
-  working_dir: data/harness/02-two-stage
-  run_dir: data/harness/02-two-stage
-  log_dir: data/harness/02-two-stage/analysis/logs
-  raw_data_dir: tests/data/tpx3
-  analysis_dir: data/harness/02-two-stage/analysis
-  config_file: data/harness/02-two-stage/HERMES_record.yaml
+  working_directory: data/02-two-stage
+  run_directory: data/02-two-stage/tantalum-ironpowder
+  log_directory: data/02-two-stage/tantalum-ironpowder/logs
+  raw_data_directory: tests/data/tpx3
+  analysis_directory: data/02-two-stage/tantalum-ironpowder/analysis
+  config_file: data/02-two-stage/tantalum-ironpowder/HERMES_record.yaml
 
 analysis:
   mode: hermes
@@ -21,16 +21,16 @@ analysis:
       executable_path: build/backends/tpx3-spidr/hermes-tpx3-spidr
     tpx3_files:
       - path: tests/data/tpx3/Tantalum_IronPowder.tpx3
-    unpacked_output_dir: data/harness/02-two-stage/analysis
+    unpacked_output_directory: data/02-two-stage/tantalum-ironpowder/analysis
 
   photon_reconstruction:
     program:
       name: photon-clusterer-cpp
       executable_path: build/backends/photon-clusterer/hermes-photon-clusterer
       version: null
-    pixel_data_directory: data/harness/02-two-stage/analysis/pixel_hits
+    pixel_data_directory: data/02-two-stage/tantalum-ironpowder/analysis/pixel_hits
     pixel_files: auto
-    photon_output_directory: data/harness/02-two-stage/analysis/photons
+    photon_output_directory: data/02-two-stage/tantalum-ironpowder/analysis/photons
     clustering_algorithm:
       name: connected_components
       save_photon_pixels: true

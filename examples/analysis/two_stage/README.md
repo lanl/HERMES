@@ -76,7 +76,7 @@ The checked-in configuration writes ignored development output under:
 data/examples/analysis/two_stage/
 ├── hermes-record_final.yaml
 └── analysis/
-    ├── pixelHits/
+    ├── pixel_hits/
     │   └── Example_1kHz_5frames-chip-0-part-00000.parquet
     ├── photons/
     │   ├── Example_1kHz_5frames-chip-0-photon-events-part-00000.parquet

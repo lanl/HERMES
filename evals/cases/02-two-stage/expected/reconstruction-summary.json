@@ -1,4 +1,8 @@
 {
+  "measurement_info": {
+    "measurement_id": "harness-02-two-stage",
+    "run": "tantalum-ironpowder"
+  },
   "reconstruction": {
     "pixels_read": 505721,
     "clusters_formed": 100969,
@@ -49,19 +53,19 @@
   },
   "parquet_files": {
     "input_pixel_data_file": [
-      "data/harness/02-two-stage/analysis/pixel_hits/Tantalum_IronPowder_chip_0_pixels_00000.parquet"
+      "data/02-two-stage/tantalum-ironpowder/analysis/pixel_hits/Tantalum_IronPowder_chip_0_pixels_00000.parquet"
     ],
     "photons": {
       "row_count": 92703,
       "files": [
-        "data/harness/02-two-stage/analysis/photons/Tantalum_IronPowder_photon_00000.parquet"
+        "data/02-two-stage/tantalum-ironpowder/analysis/photons/Tantalum_IronPowder_photon_00000.parquet"
       ]
     },
     "pixel_clusters": {
       "requested": true,
       "row_count": 482699,
       "files": [
-        "data/harness/02-two-stage/analysis/pixel_clusters/Tantalum_IronPowder_pixel_clusters_00000.parquet"
+        "data/02-two-stage/tantalum-ironpowder/analysis/pixel_clusters/Tantalum_IronPowder_pixel_clusters_00000.parquet"
       ]
     }
   },

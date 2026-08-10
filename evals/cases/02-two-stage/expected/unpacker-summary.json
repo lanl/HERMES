@@ -1,4 +1,8 @@
 {
+  "measurement_info": {
+    "measurement_id": "harness-02-two-stage",
+    "run": "tantalum-ironpowder"
+  },
   "inputfile": "tests/data/tpx3/Tantalum_IronPowder.tpx3",
   "unpacking": {
     "bytes_read": 4059152,
@@ -39,25 +43,25 @@
     "pixel_data": {
       "row_count": 505721,
       "files": [
-        "data/harness/02-two-stage/analysis/pixel_hits/Tantalum_IronPowder_chip_0_pixels_00000.parquet"
+        "data/02-two-stage/tantalum-ironpowder/analysis/pixel_hits/Tantalum_IronPowder_chip_0_pixels_00000.parquet"
       ]
     },
     "tdc_timestamps": {
       "row_count": 100,
       "files": [
-        "data/harness/02-two-stage/analysis/tdc_triggers/Tantalum_IronPowder_tdc_triggers_00000.parquet"
+        "data/02-two-stage/tantalum-ironpowder/analysis/tdc_triggers/Tantalum_IronPowder_tdc_triggers_00000.parquet"
       ]
     },
     "heartbeat_packets": {
       "row_count": 1,
       "files": [
-        "data/harness/02-two-stage/analysis/global_timestamps/Tantalum_IronPowder_global_timestamps_00000.parquet"
+        "data/02-two-stage/tantalum-ironpowder/analysis/global_timestamps/Tantalum_IronPowder_global_timestamps_00000.parquet"
       ]
     },
     "control_packets": {
       "row_count": 3,
       "files": [
-        "data/harness/02-two-stage/analysis/control_packets/Tantalum_IronPowder_control_packets_00000.parquet"
+        "data/02-two-stage/tantalum-ironpowder/analysis/control_packets/Tantalum_IronPowder_control_packets_00000.parquet"
       ]
     },
     "unrecognized_packets": {

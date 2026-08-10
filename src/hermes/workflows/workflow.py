@@ -16,7 +16,7 @@ class Workflow:
     """Run HERMES operations against one measurement record."""
 
     def __init__(self, record: HermesRecord) -> None:
-        log_dir = record.environment.log_dir.resolved_path
+        log_dir = record.environment.log_directory.resolved_path
         configure_logging(log_dir, level=record.environment.log_level)
         self._state_manager = StateManager(
             record,

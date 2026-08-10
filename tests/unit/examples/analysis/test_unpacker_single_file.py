@@ -33,7 +33,7 @@ def test_checked_in_partial_yaml_loads_with_expected_defaults(
         initial_record.measurement_info.measurement_id
         == "example-tpx3-unpacking-single-file"
     )
-    assert initial_record.environment.working_dir.path == Path(
+    assert initial_record.environment.working_directory.path == Path(
         "data/examples/analysis/unpacking/single_file"
     )
     assert initial_record.acquisition is None
@@ -41,9 +41,7 @@ def test_checked_in_partial_yaml_loads_with_expected_defaults(
     assert initial_record.analysis.unpacking.program.executable_path == Path(
         "build/backends/tpx3-spidr/hermes-tpx3-spidr"
     )
-    assert initial_record.analysis.analysis_directory == Path(
-        "data/examples/analysis/unpacking/single_file/analysis"
-    )
+    assert initial_record.environment.analysis_directory.path == Path("analysis")
     assert initial_record.analysis.unpacking.tpx3_files[0].path == Path(
         "tests/data/Example_1kHz_5frames.tpx3"
     )
@@ -97,10 +95,10 @@ measurement_info:
   measurement_id: yaml-example
   run_number: 1
 environment:
-  working_dir: {working_directory}
+  working_directory: {working_directory}
+  analysis_directory: {analysis_directory}
 analysis:
   mode: hermes
-  analysis_directory: {analysis_directory}
   unpacking:
     program:
       name: tpx3-spidr-cpp

@@ -60,7 +60,7 @@ def _record(tmp_path: Path, *, acquisition: bool = True) -> HermesRecord:
             measurement_id="LC-20260505",
             run_number=1,
         ),
-        environment=RuntimeEnvironment(working_dir=tmp_path / "run-001"),
+        environment=RuntimeEnvironment(working_directory=tmp_path / "run-001"),
         acquisition=(
             ServalAcquisitionState(
                 serval_environment=ServalEnvironment(

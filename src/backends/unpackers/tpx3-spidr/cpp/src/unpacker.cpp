@@ -280,19 +280,19 @@ void unpackUnknown(const PacketPosition& position, UnpackResult& result) {
 }
 
 constexpr std::array<const char*, 6> analysis_directories = {
-    "pixelHits",
-    "tdcTriggers",
-    "globalTimestamps",
-    "controlPackets",
+    "pixel_hits",
+    "tdc_triggers",
+    "global_timestamps",
+    "control_packets",
     "unknownPackets",
     "logs/unpacker",
 };
 
 constexpr std::array<const char*, 5> parquet_directories = {
-    "pixelHits",
-    "tdcTriggers",
-    "globalTimestamps",
-    "controlPackets",
+    "pixel_hits",
+    "tdc_triggers",
+    "global_timestamps",
+    "control_packets",
     "unknownPackets",
 };
 

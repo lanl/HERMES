@@ -70,7 +70,7 @@ This will:
 data/examples/analysis/timewalk_calibration/
 ├── hermes-record_final.yaml
 └── analysis/
-    ├── pixelHits/
+    ├── pixel_hits/
     │   └── Example_1kHz_5frames-chip-0-part-00000.parquet
     └── logs/
         ├── timewalk-calibration.json              # detailed fit diagnostics
