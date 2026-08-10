@@ -63,13 +63,13 @@ def check_previous_unpacked_file(
     analysis_root: Path,
     raw_file: FileReference,
 ) -> bool:
-    """Return True when this raw file was already unpacked in a previous run.
-
-    The unpacker writes a per-file summary JSON to ``logs/unpacker`` on every
-    successful run, so its presence means the file is already done.
-    """
-    return derive_summary_path(analysis_root, raw_file).is_file()
-
+    """Return True when this raw file was already unpacked with valid outputs."""
+    summary_path = derive_summary_path(analysis_root, raw_file)
+    if not summary_path.is_file():
+        return False
+    summary = _load_summary(summary_path)
+    _validate_completed_files(summary, summary_path, analysis_root, raw_file.path.stem)
+    return True
 
 def derive_unpacker_command(
     analysis: HermesTpx3AnalysisState,
