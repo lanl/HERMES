@@ -17,11 +17,11 @@ from hermes.runner.analysis.hermes.timewalk_calibration import (
     fit_timewalk_models,
 )
 from hermes.state.models.analysis.hermes_tpx3_spidr import (
-    Tpx3PhotonClusteringSettings,
+    HermesTpx3PhotonClusteringSettings,
 )
 
 
-def _settings(**updates: object) -> Tpx3PhotonClusteringSettings:
+def _settings(**updates: object) -> HermesTpx3PhotonClusteringSettings:
     values: dict[str, object] = {
         "max_time_spread_ticks": 2_000,
         "min_cluster_size": 2,
@@ -33,7 +33,7 @@ def _settings(**updates: object) -> Tpx3PhotonClusteringSettings:
         "min_filled_fraction": 0.5,
     }
     values.update(updates)
-    return Tpx3PhotonClusteringSettings.model_validate(values)
+    return HermesTpx3PhotonClusteringSettings.model_validate(values)
 
 
 def test_eight_connected_clustering_grows_transitively_without_jumping() -> None:
