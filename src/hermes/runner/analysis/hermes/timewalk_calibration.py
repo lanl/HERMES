@@ -16,7 +16,7 @@ from loguru import logger
 from pydantic import Field, model_validator
 
 from hermes.state.models.analysis.hermes_tpx3_spidr import (
-    Tpx3PhotonClusteringSettings,
+    HermesTpx3PhotonClusteringSettings,
 )
 from hermes.state.models.shared_models import StrictBaseModel
 
@@ -182,7 +182,7 @@ class Tpx3TimewalkCalibration(StrictBaseModel):
     schema_version: Literal[1] = 1
     canonical_time_seconds: float = Field(gt=0)
     input_pixel_data_files: list[Path] = Field(min_length=1)
-    clustering_settings: Tpx3PhotonClusteringSettings
+    clustering_settings: HermesTpx3PhotonClusteringSettings
     components_considered: int = Field(ge=0)
     components_used: int = Field(gt=0)
     pixel_pairs: int = Field(gt=0)
@@ -221,7 +221,7 @@ class Tpx3TimewalkCalibration(StrictBaseModel):
 
 def iter_connected_components(
     hits: Iterable[PixelHit],
-    settings: Tpx3PhotonClusteringSettings,
+    settings: HermesTpx3PhotonClusteringSettings,
 ) -> Iterator[PixelCluster]:
     open_clusters: dict[int, _OpenCluster] = {}
     coordinate_index: dict[tuple[int, int], set[int]] = defaultdict(set)
@@ -323,7 +323,7 @@ def iter_connected_components(
 
 def cluster_pixel_hits(
     hits: Iterable[PixelHit],
-    settings: Tpx3PhotonClusteringSettings,
+    settings: HermesTpx3PhotonClusteringSettings,
 ) -> list[PixelCluster]:
     filtered_hits = (
         hit for hit in hits if hit.tot_raw >= settings.min_pixel_tot_raw
@@ -333,7 +333,7 @@ def cluster_pixel_hits(
 
 def cluster_passes_calibration_filters(
     cluster: PixelCluster,
-    settings: Tpx3PhotonClusteringSettings,
+    settings: HermesTpx3PhotonClusteringSettings,
 ) -> bool:
     pixel_count = len(cluster.hits)
     if not settings.min_cluster_size <= pixel_count <= settings.max_cluster_size:
@@ -410,7 +410,7 @@ def fit_timewalk_models(
 
 def calibrate_timewalk(
     pixel_data_files: list[Path],
-    settings: Tpx3PhotonClusteringSettings,
+    settings: HermesTpx3PhotonClusteringSettings,
     output_file: Path,
     correction_file: Path | None = None,
 ) -> Tpx3TimewalkCalibration:
