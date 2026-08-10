@@ -29,8 +29,7 @@ def main(input_yaml_path: Path = DEFAULT_INPUT_YAML_PATH) -> None:
     workflow = Workflow(initial_record)
 
     # Step 3: Run the workflow, which executes the EMPIR stages in order
-    workflow.run()
-    
+    workflow.run_analysis()
 if __name__ == "__main__":
     input_yaml_path = (
         Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_INPUT_YAML_PATH
