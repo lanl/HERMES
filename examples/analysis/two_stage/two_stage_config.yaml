@@ -18,19 +18,20 @@ analysis:
     program:
       name: photon-clusterer-cpp
       executable_path: build/backends/photon-clusterer/hermes-photon-clusterer
-    pixel_parquet_files: auto
-    clustering_algorithm: connected_components
-    settings:
-      max_time_spread_ticks: 491520
-      min_cluster_size: 2
-      max_cluster_size: 64
-      min_pixel_tot_raw: 1
-      min_cluster_tot_raw: 2
-      max_cluster_tot_raw: 65472
-      max_aspect_ratio: 3.0
-      min_filled_fraction: 0.5
-      adjacency: 8
-      position_averaging: arithmetic
-      photon_time_estimator: leading_edge
-      timewalk_calibration_file: calibrations/tpx3/time-walk_example.json
+    pixel_files: auto
+    clustering_algorithm:
+      name: connected_components
       save_photon_pixels: true
+      settings:
+        max_time_spread_ticks: 491520
+        min_cluster_size: 2
+        max_cluster_size: 64
+        min_pixel_tot_raw: 1
+        min_cluster_tot_raw: 2
+        max_cluster_tot_raw: 65472
+        max_aspect_ratio: 3.0
+        min_filled_fraction: 0.5
+        adjacency: 8
+        position_averaging: arithmetic
+        photon_time_estimator: leading_edge
+        timewalk_calibration_file: calibrations/tpx3/time-walk_example.json
