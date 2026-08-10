@@ -8,7 +8,7 @@ They are meant to be starting points for various examples and test cases.
 ## Contents
 
 - `tpx3/` — contains TPX3-related test data files.
-- `pixelHits/` — contains pixel hits-related test data files.
+- `pixel_hits/` — contains pixel hits-related test data files.
 - `photons/` — contains photon reconstruction-related test data files.
 
 ## TPX3 data
@@ -46,7 +46,7 @@ for each cluster.
 
 ### `Tantalum_IronPowder.parquet`
 
-Photons reconstructed from `pixelHits/Tantalum_IronPowder.parquet` (99,909 rows),
+Photons reconstructed from `pixel_hits/Tantalum_IronPowder.parquet` (99,909 rows),
 which in turn comes from `tpx3/Tantalum_IronPowder.tpx3`. Columns:
 
 - `photon_id` — unique identifier for the photon.
