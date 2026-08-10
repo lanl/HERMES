@@ -32,10 +32,10 @@ measurement_info:
   measurement_id: example-tpx3-unpacking
   run_number: 1
 environment:
-  working_dir: data/examples/analysis/unpacker
+  working_directory: data/examples/analysis/unpacker
+  analysis_directory: analysis
 analysis:
   mode: hermes
-  analysis_directory: data/examples/analysis/unpacker/analysis
   unpacking:
     program:
       name: tpx3-spidr-cpp
@@ -58,9 +58,9 @@ def _example_record(tmp_path: Path) -> HermesRecord:
             beamline="DCS",
         ),
         environment=RuntimeEnvironment(
-            working_dir=tmp_path / "run-001",
-            raw_data_dir="data",
-            log_dir="logs",
+            working_directory=tmp_path / "run-001",
+            raw_data_directory="data",
+            log_directory="logs",
         ),
         acquisition=ServalAcquisitionState(
             serval_environment=ServalEnvironment(serval_url="http://localhost:8080"),
@@ -102,9 +102,9 @@ def test_save_hermes_record_yaml_is_readable_and_uses_pythonic_names(
     content = record_path.read_text(encoding="utf-8")
     loaded_yaml = yaml.safe_load(content)
     assert loaded_yaml["measurement_info"]["measurement_id"] == "LC-20260505"
-    assert loaded_yaml["environment"]["working_dir"]["resolved_path"].endswith(
-        "run-001"
-    )
+    assert loaded_yaml["environment"]["working_directory"][
+        "resolved_path"
+    ].endswith("run-001")
     assert loaded_yaml["acquisition"]["mode"] == "serval"
     assert loaded_yaml["analysis"] is None
     assert "measurement_info:" in content
@@ -132,12 +132,14 @@ environment: {}
     assert isinstance(loaded, HermesRecord)
     assert loaded.acquisition is None
     assert loaded.analysis is None
-    assert loaded.environment.working_dir.path == Path.cwd()
-    assert loaded.environment.working_dir.required is True
-    assert loaded.environment.working_dir.resolved_path == Path.cwd().resolve()
-    assert loaded.environment.data_dir.path is None
-    assert loaded.environment.data_dir.required is False
-    assert loaded.environment.data_dir.resolved_path is None
+    assert loaded.environment.working_directory.path == Path.cwd()
+    assert loaded.environment.working_directory.required is True
+    assert (
+        loaded.environment.working_directory.resolved_path == Path.cwd().resolve()
+    )
+    assert loaded.environment.run_directory.path is None
+    assert loaded.environment.run_directory.required is False
+    assert loaded.environment.run_directory.resolved_path is None
     assert loaded.environment.allow_overlapping_output_dirs is False
 
 
@@ -201,10 +203,11 @@ def test_load_file_list_and_save_expanded_raw_tpx3_files(
 measurement_info:
   measurement_id: file-list-run
   run_number: 1
-environment: {{}}
+environment:
+  working_directory: {tmp_path}
+  analysis_directory: analysis
 analysis:
   mode: hermes
-  analysis_directory: analysis
   unpacking:
     program:
       name: tpx3-spidr-cpp
@@ -265,7 +268,7 @@ def test_load_hermes_record_from_yaml_wraps_validation_errors(
 measurement_info:
   measurement_id: LC-20260505
 environment:
-  working_dir: run-001
+  working_directory: run-001
 """,
         encoding="utf-8",
     )

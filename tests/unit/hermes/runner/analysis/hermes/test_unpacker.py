@@ -76,7 +76,6 @@ def _analysis(tmp_path: Path, *raw_names: str) -> HermesTpx3AnalysisState:
         raw_files.append(FileReference(path=raw_path))
 
     return HermesTpx3AnalysisState(
-        analysis_directory=tmp_path / "analysis",
         unpacking=Tpx3Unpacking(
             program=BinaryProgram(
                 name="tpx3-spidr-cpp",
@@ -84,6 +83,7 @@ def _analysis(tmp_path: Path, *raw_names: str) -> HermesTpx3AnalysisState:
                 version="0.1.0",
             ),
             tpx3_files=raw_files,
+            output_directory=tmp_path / "analysis",
         ),
     )
 
@@ -97,7 +97,10 @@ def _record(
             measurement_id="stage-3",
             run_number=1,
         ),
-        environment=RuntimeEnvironment(working_dir=tmp_path),
+        environment=RuntimeEnvironment(
+            working_directory=tmp_path,
+            analysis_directory=tmp_path / "analysis",
+        ),
         acquisition=None,
         analysis=analysis,
     )
@@ -182,10 +185,10 @@ def _save_completed_files(
 ) -> None:
     summary = _summary(raw_file.path.stem, pixel_rows=pixel_rows)
     for relative_path in summary.parquet.pixel_data.files:
-        parquet_path = analysis.analysis_directory / relative_path
+        parquet_path = analysis.unpacking.output_directory / relative_path
         parquet_path.parent.mkdir(parents=True, exist_ok=True)
         pq.write_table(pa.table({"value": [1]}), parquet_path)
-    summary_path = derive_summary_path(analysis, raw_file)
+    summary_path = derive_summary_path(analysis.unpacking.output_directory, raw_file)
     summary_path.parent.mkdir(parents=True, exist_ok=True)
     summary_path.write_text(summary.model_dump_json(), encoding="utf-8")
 
@@ -337,8 +340,9 @@ def test_derives_command_and_input_specific_summary_path(tmp_path: Path) -> None
         "--output",
         str(analysis.unpacking.output_directory),
     ]
-    assert derive_summary_path(analysis, raw_file) == (
-        analysis.analysis_directory / "logs/unpacker/first-unpacker-summary.json"
+    assert derive_summary_path(analysis.unpacking.output_directory, raw_file) == (
+        analysis.unpacking.output_directory
+        / "logs/unpacker/first-unpacker-summary.json"
     )
 
 
@@ -363,7 +367,7 @@ def test_command_includes_time_sort_false_when_time_sort_disabled(
 def test_plan_preserves_multiple_raw_file_order(tmp_path: Path) -> None:
     analysis = _analysis(tmp_path, "first.tpx3", "second.tpx3")
 
-    plan = plan_unpacking(analysis)
+    plan = plan_unpacking(analysis, analysis.unpacking.output_directory)
 
     assert [(raw.path.name, action) for raw, action in plan] == [
         ("first.tpx3", "run"),
@@ -376,7 +380,9 @@ def test_plan_skips_valid_completed_files(tmp_path: Path) -> None:
     raw_file = analysis.unpacking.tpx3_files[0]
     _save_completed_files(analysis, raw_file, pixel_rows=1)
 
-    assert plan_unpacking(analysis) == [(raw_file, "skip")]
+    assert plan_unpacking(analysis, analysis.unpacking.output_directory) == [
+        (raw_file, "skip")
+    ]
 
 
 @pytest.mark.parametrize("missing_file", ["executable", "raw_tpx3"])
@@ -393,7 +399,7 @@ def test_plan_rejects_missing_required_files(
     path.unlink()
 
     with pytest.raises(HermesTpx3PreflightError, match="does not exist"):
-        plan_unpacking(analysis)
+        plan_unpacking(analysis, analysis.unpacking.output_directory)
 
 
 @pytest.mark.parametrize("invalid_existing_output", ["invalid_summary", "partial"])
@@ -403,25 +409,28 @@ def test_plan_rejects_invalid_or_partial_existing_output(
 ) -> None:
     analysis = _analysis(tmp_path, "broken.tpx3")
     if invalid_existing_output == "invalid_summary":
-        summary_path = derive_summary_path(analysis, analysis.unpacking.tpx3_files[0])
+        summary_path = derive_summary_path(
+            analysis.unpacking.output_directory,
+            analysis.unpacking.tpx3_files[0],
+        )
         summary_path.parent.mkdir(parents=True)
         summary_path.write_text("not JSON", encoding="utf-8")
     else:
         parquet_path = (
-            analysis.analysis_directory
+            analysis.unpacking.output_directory
             / "pixelHits/broken-chip-0-part-00000.parquet"
         )
         parquet_path.parent.mkdir(parents=True)
         parquet_path.touch()
 
     with pytest.raises(HermesTpx3PreflightError):
-        plan_unpacking(analysis)
+        plan_unpacking(analysis, analysis.unpacking.output_directory)
 
 
 def test_plan_rejects_summary_with_missing_parquet_file(tmp_path: Path) -> None:
     analysis = _analysis(tmp_path, "incomplete.tpx3")
     raw_file = analysis.unpacking.tpx3_files[0]
-    summary_path = derive_summary_path(analysis, raw_file)
+    summary_path = derive_summary_path(analysis.unpacking.output_directory, raw_file)
     summary_path.parent.mkdir(parents=True)
     summary_path.write_text(
         _summary(raw_file.path.stem, pixel_rows=1).model_dump_json(),
@@ -429,7 +438,7 @@ def test_plan_rejects_summary_with_missing_parquet_file(tmp_path: Path) -> None:
     )
 
     with pytest.raises(HermesTpx3PreflightError, match="missing Parquet file"):
-        plan_unpacking(analysis)
+        plan_unpacking(analysis, analysis.unpacking.output_directory)
 
 
 def test_plan_rejects_duplicate_raw_filename_stems(tmp_path: Path) -> None:
@@ -458,7 +467,9 @@ def test_run_marks_analysis_only_state_running_through_state_manager(
     )
     monkeypatch.setattr(
         "hermes.runner.analysis.hermes.run.execute_unpacker",
-        lambda analysis, raw_file, **kwargs: _summary(raw_file.path.stem),
+        lambda analysis, analysis_root, raw_file, **kwargs: _summary(
+            raw_file.path.stem
+        ),
     )
 
     files_to_run = run_hermes_analysis(manager)
@@ -640,7 +651,7 @@ def test_run_processes_multiple_inputs_and_then_skips_them(
     assert run_hermes_analysis(manager) == analysis.unpacking.tpx3_files
     for raw_file in analysis.unpacking.tpx3_files:
         assert (
-            analysis.analysis_directory
+            analysis.unpacking.output_directory
             / "pixelHits"
             / f"{raw_file.path.stem}-chip-0-part-00000.parquet"
         ).is_file()
@@ -736,7 +747,10 @@ def test_run_saves_failed_state_before_raising_for_output_failures(
 
 def test_run_saves_failed_state_for_preflight_failure(tmp_path: Path) -> None:
     analysis = _analysis(tmp_path, "invalid-existing.tpx3")
-    summary_path = derive_summary_path(analysis, analysis.unpacking.tpx3_files[0])
+    summary_path = derive_summary_path(
+        analysis.unpacking.output_directory,
+        analysis.unpacking.tpx3_files[0],
+    )
     summary_path.parent.mkdir(parents=True)
     summary_path.write_text("not JSON", encoding="utf-8")
     manager = StateManager(
@@ -767,7 +781,6 @@ def test_resource_limit_percent_accepts_integers_from_1_to_100(tmp_path: Path) -
 
     for percent in [1, 50, 90, 100]:
         analysis = HermesTpx3AnalysisState(
-            analysis_directory=tmp_path / "analysis",
             resource_limit_percent=percent,
             unpacking=Tpx3Unpacking(
                 program=BinaryProgram(
@@ -790,7 +803,6 @@ def test_resource_limit_percent_rejects_zero_and_above_100(tmp_path: Path) -> No
     for invalid_percent in [0, 101, 200, -1]:
         with pytest.raises(Exception):
             HermesTpx3AnalysisState(
-                analysis_directory=tmp_path / "analysis",
                 resource_limit_percent=invalid_percent,
                 unpacking=Tpx3Unpacking(
                     program=BinaryProgram(
@@ -885,7 +897,7 @@ def test_parallel_unpacking_one_failure_stops_remaining_work(tmp_path: Path) -> 
     assert all(result.status == "failed" for result in results)
 
     summary_files = list(
-        (analysis.analysis_directory / "logs" / "unpacker").glob("*.json")
+        (analysis.unpacking.output_directory / "logs" / "unpacker").glob("*.json")
     )
     completed_count = len(summary_files)
     assert completed_count < 4

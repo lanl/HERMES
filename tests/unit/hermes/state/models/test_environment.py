@@ -8,7 +8,7 @@ from pydantic import ValidationError
 from hermes.state.models.environment import DirectoryState, RuntimeEnvironment
 
 
-def test_runtime_environment_defaults_working_dir_to_current_directory(
+def test_runtime_environment_defaults_working_directory_to_current_directory(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -16,23 +16,23 @@ def test_runtime_environment_defaults_working_dir_to_current_directory(
 
     environment = RuntimeEnvironment()
 
-    assert environment.working_dir.required
-    assert environment.working_dir.path == tmp_path
-    assert environment.working_dir.resolved_path == tmp_path.resolve()
+    assert environment.working_directory.required
+    assert environment.working_directory.path == tmp_path
+    assert environment.working_directory.resolved_path == tmp_path.resolve()
 
 
-def test_runtime_environment_only_requires_working_dir_by_default(tmp_path: Path) -> None:
+def test_runtime_environment_only_requires_working_directory_by_default(tmp_path: Path) -> None:
     run_dir = tmp_path / "run-001"
 
-    environment = RuntimeEnvironment(working_dir=DirectoryState(path=run_dir))
+    environment = RuntimeEnvironment(working_directory=DirectoryState(path=run_dir))
 
-    assert environment.working_dir.required
-    assert environment.working_dir.path == run_dir
-    assert environment.working_dir.resolved_path == run_dir.resolve()
-    assert environment.raw_data_dir.required is False
-    assert environment.raw_data_dir.resolved_path is None
-    assert environment.preview_dir.required is False
-    assert environment.preview_dir.resolved_path is None
+    assert environment.working_directory.required
+    assert environment.working_directory.path == run_dir
+    assert environment.working_directory.resolved_path == run_dir.resolve()
+    assert environment.raw_data_directory.required is False
+    assert environment.raw_data_directory.resolved_path is None
+    assert environment.preview_directory.required is False
+    assert environment.preview_directory.resolved_path is None
     assert not (run_dir / "data").exists()
 
 
@@ -40,16 +40,16 @@ def test_runtime_environment_resolves_explicit_relative_paths(tmp_path: Path) ->
     run_dir = tmp_path / "run-001"
 
     environment = RuntimeEnvironment(
-        working_dir=run_dir,
-        preview_dir="fast-preview",
-        raw_data_dir={"path": "data/tpx3", "required": True},
+        working_directory=run_dir,
+        preview_directory="fast-preview",
+        raw_data_directory={"path": "data/tpx3", "required": True},
     )
 
-    assert environment.preview_dir.path == Path("fast-preview")
-    assert environment.preview_dir.resolved_path == (run_dir / "fast-preview").resolve()
-    assert environment.raw_data_dir.required
-    assert environment.raw_data_dir.path == Path("data/tpx3")
-    assert environment.raw_data_dir.resolved_path == (run_dir / "data" / "tpx3").resolve()
+    assert environment.preview_directory.path == Path("fast-preview")
+    assert environment.preview_directory.resolved_path == (run_dir / "fast-preview").resolve()
+    assert environment.raw_data_directory.required
+    assert environment.raw_data_directory.path == Path("data/tpx3")
+    assert environment.raw_data_directory.resolved_path == (run_dir / "data" / "tpx3").resolve()
 
 
 def test_runtime_environment_keeps_explicit_absolute_paths(tmp_path: Path) -> None:
@@ -57,52 +57,52 @@ def test_runtime_environment_keeps_explicit_absolute_paths(tmp_path: Path) -> No
     raw_dir = tmp_path / "external-fast-disk" / "tpx3"
 
     environment = RuntimeEnvironment(
-        working_dir=run_dir,
-        raw_data_dir=raw_dir,
+        working_directory=run_dir,
+        raw_data_directory=raw_dir,
     )
 
-    assert environment.raw_data_dir.path == raw_dir
-    assert environment.raw_data_dir.resolved_path == raw_dir.resolve()
+    assert environment.raw_data_directory.path == raw_dir
+    assert environment.raw_data_directory.resolved_path == raw_dir.resolve()
 
 
 def test_runtime_environment_required_directory_can_be_unresolved_until_checked(
     tmp_path: Path,
 ) -> None:
     environment = RuntimeEnvironment(
-        working_dir=tmp_path,
-        raw_data_dir=DirectoryState(required=True),
+        working_directory=tmp_path,
+        raw_data_directory=DirectoryState(required=True),
     )
 
-    assert environment.raw_data_dir.required
-    assert environment.raw_data_dir.resolved_path is None
-    with pytest.raises(ValueError, match="required directories are unresolved: raw_data_dir"):
+    assert environment.raw_data_directory.required
+    assert environment.raw_data_directory.resolved_path is None
+    with pytest.raises(ValueError, match="required directories are unresolved: raw_data_directory"):
         environment.require_required_directories_resolved()
 
 
 def test_runtime_environment_workflow_required_directory_must_be_resolved(
     tmp_path: Path,
 ) -> None:
-    environment = RuntimeEnvironment(working_dir=tmp_path)
+    environment = RuntimeEnvironment(working_directory=tmp_path)
 
-    with pytest.raises(ValueError, match="raw_data_dir must have a resolved_path"):
-        environment.require_directories_resolved(["raw_data_dir"])
+    with pytest.raises(ValueError, match="raw_data_directory must have a resolved_path"):
+        environment.require_directories_resolved(["raw_data_directory"])
 
 
 def test_runtime_environment_rejects_overlapping_output_dirs(tmp_path: Path) -> None:
-    with pytest.raises(ValidationError, match="preview_dir must not overlap"):
+    with pytest.raises(ValidationError, match="preview_directory must not overlap"):
         RuntimeEnvironment(
-            working_dir=tmp_path,
-            raw_data_dir="outputs",
-            preview_dir="outputs",
+            working_directory=tmp_path,
+            raw_data_directory="outputs",
+            preview_directory="outputs",
         )
 
 
 def test_runtime_environment_can_explicitly_allow_overlapping_dirs(tmp_path: Path) -> None:
     environment = RuntimeEnvironment(
-        working_dir=tmp_path,
-        raw_data_dir="outputs",
-        preview_dir="outputs",
+        working_directory=tmp_path,
+        raw_data_directory="outputs",
+        preview_directory="outputs",
         allow_overlapping_output_dirs=True,
     )
 
-    assert environment.raw_data_dir.resolved_path == environment.preview_dir.resolved_path
+    assert environment.raw_data_directory.resolved_path == environment.preview_directory.resolved_path

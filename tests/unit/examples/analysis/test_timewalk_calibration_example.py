@@ -36,13 +36,11 @@ def test_checked_in_yaml_configures_unpacking_and_clustering(
         initial_record.measurement_info.measurement_id
         == "example-tpx3-timewalk-calibration"
     )
-    assert initial_record.environment.working_dir.path == Path(
+    assert initial_record.environment.working_directory.path == Path(
         "data/examples/analysis/timewalk_calibration"
     )
     assert isinstance(initial_record.analysis, HermesTpx3AnalysisState)
-    assert initial_record.analysis.analysis_directory == Path(
-        "data/examples/analysis/timewalk_calibration/analysis"
-    )
+    assert initial_record.environment.analysis_directory.path == Path("analysis")
     assert initial_record.analysis.unpacking.tpx3_files == [
         FileReference(path=Path("tests/data/Example_1kHz_5frames.tpx3"))
     ]
@@ -86,10 +84,10 @@ measurement_info:
   measurement_id: timewalk-test
   run_number: 1
 environment:
-  working_dir: {working_directory}
+  working_directory: {working_directory}
+  analysis_directory: {analysis_directory}
 analysis:
   mode: hermes
-  analysis_directory: {analysis_directory}
   unpacking:
     program:
       name: tpx3-spidr-cpp

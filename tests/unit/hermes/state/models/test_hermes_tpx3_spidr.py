@@ -24,7 +24,6 @@ from hermes.state.models.shared_models import BinaryProgram, FileReference
 
 def _analysis_state(tmp_path: Path, *raw_names: str) -> HermesTpx3AnalysisState:
     return HermesTpx3AnalysisState(
-        analysis_directory=tmp_path / "analysis",
         unpacking=Tpx3Unpacking(
             program=BinaryProgram(
                 name="tpx3-spidr-cpp",
@@ -177,7 +176,6 @@ def test_hermes_analysis_state_serializes_batch_fields(
 
     assert dumped["mode"] == "hermes"
     assert dumped["unpacking"]["program"]["name"] == "tpx3-spidr-cpp"
-    assert dumped["analysis_directory"].endswith("analysis")
     assert [
         Path(file["path"]).name for file in dumped["unpacking"]["tpx3_files"]
     ] == list(raw_names)
@@ -195,7 +193,6 @@ def test_hermes_analysis_state_rejects_duplicate_raw_filename_stems(
 ) -> None:
     with pytest.raises(ValidationError, match="filename stems must be unique"):
         HermesTpx3AnalysisState(
-            analysis_directory=tmp_path / "analysis",
             unpacking=Tpx3Unpacking(
                 program=BinaryProgram(
                     name="tpx3-spidr-cpp",
@@ -227,7 +224,6 @@ def test_hermes_analysis_state_expands_raw_tpx3_file_list(
 
     analysis = HermesTpx3AnalysisState.model_validate(
         {
-            "analysis_directory": tmp_path / "analysis",
             "unpacking": {
                 "program": {
                     "name": "tpx3-spidr-cpp",
@@ -265,7 +261,6 @@ def test_hermes_analysis_state_rejects_invalid_raw_tpx3_file_list(
     with pytest.raises(ValidationError, match=error):
         HermesTpx3AnalysisState.model_validate(
             {
-                "analysis_directory": tmp_path / "analysis",
                 "unpacking": {
                     "program": {
                         "name": "tpx3-spidr-cpp",
@@ -289,7 +284,6 @@ def test_hermes_analysis_state_checks_duplicate_stems_from_file_list(
     with pytest.raises(ValidationError, match="filename stems must be unique"):
         HermesTpx3AnalysisState.model_validate(
             {
-                "analysis_directory": tmp_path / "analysis",
                 "unpacking": {
                     "program": {
                         "name": "tpx3-spidr-cpp",
@@ -393,9 +387,7 @@ def test_photon_clustering_settings_reject_reserved_time_estimators(
 def test_hermes_analysis_state_accepts_photon_reconstruction(
     tmp_path: Path,
 ) -> None:
-    analysis_directory = tmp_path / "analysis"
     state = HermesTpx3AnalysisState(
-        analysis_directory=analysis_directory,
         unpacking=Tpx3Unpacking(
             program=BinaryProgram(
                 name="tpx3-spidr-cpp",
@@ -420,37 +412,6 @@ def test_hermes_analysis_state_accepts_photon_reconstruction(
     )
     assert state.photon_reconstruction.settings.adjacency == 8
     assert state.photon_reconstruction.pixel_parquet_files == "auto"
-
-
-def test_hermes_analysis_state_derives_output_directories(
-    tmp_path: Path,
-) -> None:
-    analysis_directory = tmp_path / "analysis"
-    state = HermesTpx3AnalysisState(
-        analysis_directory=analysis_directory,
-        unpacking=Tpx3Unpacking(
-            program=BinaryProgram(
-                name="tpx3-spidr-cpp",
-                executable_path=tmp_path / "bin/hermes-tpx3-spidr",
-            ),
-            tpx3_files=[FileReference(path=tmp_path / "rawTpx3/raw.tpx3")],
-        ),
-        photon_reconstruction=Tpx3PhotonReconstruction(
-            program=BinaryProgram(
-                name="connected-components-cpp",
-                executable_path=tmp_path / "bin/hermes-photon-clusterer",
-            ),
-            settings=Tpx3PhotonClusteringSettings.model_validate(
-                _clustering_settings_data()
-            ),
-        ),
-    )
-
-    assert state.unpacking.output_directory == analysis_directory
-    assert (
-        state.photon_reconstruction.output_directory
-        == analysis_directory / "photons"
-    )
 
 
 def test_summary_validates_every_section() -> None:
@@ -800,9 +761,7 @@ def test_event_summary_category_requires_files_for_saved_rows() -> None:
 def test_hermes_analysis_state_accepts_event_reconstruction(
     tmp_path: Path,
 ) -> None:
-    analysis_directory = tmp_path / "analysis"
     state = HermesTpx3AnalysisState(
-        analysis_directory=analysis_directory,
         unpacking=Tpx3Unpacking(
             program=BinaryProgram(
                 name="tpx3-spidr-cpp",
@@ -827,18 +786,12 @@ def test_hermes_analysis_state_accepts_event_reconstruction(
     )
     assert state.event_reconstruction.photon_parquet_files == "auto"
     assert state.event_reconstruction.runtime_options.overwrite is False
-    assert (
-        state.event_reconstruction.output_directory
-        == analysis_directory / "events"
-    )
 
 
 def test_hermes_analysis_state_allows_no_unpacking(tmp_path: Path) -> None:
     # Reconstruction can run on its own when unpacking is already done, so the
-    # unpacking stage is optional and its output directory is not derived.
-    analysis_directory = tmp_path / "analysis"
+    # unpacking stage is optional.
     state = HermesTpx3AnalysisState(
-        analysis_directory=analysis_directory,
         event_reconstruction=Tpx3EventReconstruction(
             program=BinaryProgram(
                 name="connected-components-cpp",
@@ -852,7 +805,3 @@ def test_hermes_analysis_state_allows_no_unpacking(tmp_path: Path) -> None:
 
     assert state.unpacking is None
     assert state.event_reconstruction is not None
-    assert (
-        state.event_reconstruction.output_directory
-        == analysis_directory / "events"
-    )

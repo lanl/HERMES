@@ -89,10 +89,10 @@ def _analysis(
             ),
             settings=settings or _settings(),
             clustering_algorithm=clustering_algorithm,
+            output_directory=analysis_directory / "photons",
         )
 
     return HermesTpx3AnalysisState(
-        analysis_directory=analysis_directory,
         unpacking=Tpx3Unpacking(
             program=BinaryProgram(
                 name="tpx3-spidr-cpp",
@@ -100,6 +100,7 @@ def _analysis(
                 version="0.1.0",
             ),
             tpx3_files=[FileReference(path=raw_path)],
+            output_directory=analysis_directory,
         ),
         photon_reconstruction=reconstruction,
     )
@@ -202,7 +203,7 @@ def _write_fake_clusterer(
 
 def test_plan_runs_when_no_output_exists(tmp_path: Path) -> None:
     analysis = _analysis(tmp_path, "run_000000-chip-0-part-00000.parquet")
-    plan = plan_reconstruction(analysis)
+    plan = plan_reconstruction(analysis, tmp_path / "analysis")
     assert [action for _, action in plan] == ["run"]
 
 
@@ -210,7 +211,7 @@ def test_plan_skips_when_summary_exists(tmp_path: Path) -> None:
     analysis = _analysis(tmp_path, "run_000000-chip-0-part-00000.parquet")
     reconstruction = analysis.photon_reconstruction
     input_file = FileReference(
-        path=analysis.analysis_directory
+        path=tmp_path / "analysis"
         / "pixelHits"
         / "run_000000-chip-0-part-00000.parquet"
     )
@@ -220,7 +221,7 @@ def test_plan_skips_when_summary_exists(tmp_path: Path) -> None:
     summary_path.parent.mkdir(parents=True, exist_ok=True)
     summary_path.touch()
 
-    plan = plan_reconstruction(analysis)
+    plan = plan_reconstruction(analysis, tmp_path / "analysis")
     assert [action for _, action in plan] == ["skip"]
 
 
@@ -231,7 +232,7 @@ def test_plan_runs_when_only_photon_parquet_exists(tmp_path: Path) -> None:
     analysis = _analysis(tmp_path, "run_000000-chip-0-part-00000.parquet")
     reconstruction = analysis.photon_reconstruction
     input_file = FileReference(
-        path=analysis.analysis_directory
+        path=tmp_path / "analysis"
         / "pixelHits"
         / "run_000000-chip-0-part-00000.parquet"
     )
@@ -239,7 +240,7 @@ def test_plan_runs_when_only_photon_parquet_exists(tmp_path: Path) -> None:
     output_file.parent.mkdir(parents=True, exist_ok=True)
     output_file.touch()
 
-    plan = plan_reconstruction(analysis)
+    plan = plan_reconstruction(analysis, tmp_path / "analysis")
     assert [action for _, action in plan] == ["run"]
 
 
@@ -247,7 +248,7 @@ def test_plan_runs_all_when_overwrite(tmp_path: Path) -> None:
     analysis = _analysis(tmp_path, "run_000000-chip-0-part-00000.parquet")
     reconstruction = analysis.photon_reconstruction
     input_file = FileReference(
-        path=analysis.analysis_directory
+        path=tmp_path / "analysis"
         / "pixelHits"
         / "run_000000-chip-0-part-00000.parquet"
     )
@@ -255,7 +256,7 @@ def test_plan_runs_all_when_overwrite(tmp_path: Path) -> None:
     output_file.parent.mkdir(parents=True, exist_ok=True)
     output_file.touch()
 
-    plan = plan_reconstruction(analysis, overwrite=True)
+    plan = plan_reconstruction(analysis, tmp_path / "analysis", overwrite=True)
     assert [action for _, action in plan] == ["run"]
 
 
@@ -266,7 +267,7 @@ def test_plan_rejects_dbscan(tmp_path: Path) -> None:
         clustering_algorithm="dbscan",
     )
     with pytest.raises(HermesReconstructionPreflightError, match="not implemented"):
-        plan_reconstruction(analysis)
+        plan_reconstruction(analysis, tmp_path / "analysis")
 
 
 def test_plan_rejects_missing_executable(tmp_path: Path) -> None:
@@ -275,7 +276,7 @@ def test_plan_rejects_missing_executable(tmp_path: Path) -> None:
     with pytest.raises(
         HermesReconstructionPreflightError, match="executable does not exist"
     ):
-        plan_reconstruction(analysis)
+        plan_reconstruction(analysis, tmp_path / "analysis")
 
 
 def test_plan_requires_reconstruction_config(tmp_path: Path) -> None:
@@ -287,7 +288,7 @@ def test_plan_requires_reconstruction_config(tmp_path: Path) -> None:
     with pytest.raises(
         HermesReconstructionPreflightError, match="not configured"
     ):
-        plan_reconstruction(analysis)
+        plan_reconstruction(analysis, tmp_path / "analysis")
 
 
 # ---- derive_reconstruction_command --------------------------------------
@@ -297,7 +298,7 @@ def test_command_passes_named_flags_and_settings(tmp_path: Path) -> None:
     analysis = _analysis(tmp_path, "run_000000-chip-0-part-00000.parquet")
     reconstruction = analysis.photon_reconstruction
     input_file = FileReference(
-        path=analysis.analysis_directory
+        path=tmp_path / "analysis"
         / "pixelHits"
         / "run_000000-chip-0-part-00000.parquet"
     )
@@ -323,7 +324,7 @@ def test_command_appends_overwrite_when_requested(tmp_path: Path) -> None:
     analysis = _analysis(tmp_path, "run_000000-chip-0-part-00000.parquet")
     reconstruction = analysis.photon_reconstruction
     input_file = FileReference(
-        path=analysis.analysis_directory
+        path=tmp_path / "analysis"
         / "pixelHits"
         / "run_000000-chip-0-part-00000.parquet"
     )
@@ -347,7 +348,7 @@ def test_execute_success_returns_summary(tmp_path: Path) -> None:
         photon_count=5,
     )
     input_file = FileReference(
-        path=analysis.analysis_directory
+        path=tmp_path / "analysis"
         / "pixelHits"
         / "run_000000-chip-0-part-00000.parquet"
     )
@@ -361,7 +362,7 @@ def test_execute_removes_temp_settings_file(tmp_path: Path) -> None:
     analysis = _analysis(tmp_path, "run_000000-chip-0-part-00000.parquet")
     _write_fake_clusterer(analysis.photon_reconstruction.program.executable_path)
     input_file = FileReference(
-        path=analysis.analysis_directory
+        path=tmp_path / "analysis"
         / "pixelHits"
         / "run_000000-chip-0-part-00000.parquet"
     )
@@ -382,7 +383,7 @@ def test_execute_raises_on_nonzero_exit(tmp_path: Path) -> None:
         write_summary=False,
     )
     input_file = FileReference(
-        path=analysis.analysis_directory
+        path=tmp_path / "analysis"
         / "pixelHits"
         / "run_000000-chip-0-part-00000.parquet"
     )
@@ -399,7 +400,7 @@ def test_execute_raises_on_missing_summary(tmp_path: Path) -> None:
         write_summary=False,
     )
     input_file = FileReference(
-        path=analysis.analysis_directory
+        path=tmp_path / "analysis"
         / "pixelHits"
         / "run_000000-chip-0-part-00000.parquet"
     )
@@ -496,7 +497,10 @@ def _manager(analysis: HermesTpx3AnalysisState, tmp_path: Path) -> StateManager:
                 measurement_id="stage-5",
                 run_number=1,
             ),
-            environment=RuntimeEnvironment(working_dir=tmp_path),
+            environment=RuntimeEnvironment(
+                working_directory=tmp_path,
+                analysis_directory=tmp_path / "analysis",
+            ),
             acquisition=None,
             analysis=analysis,
         ),

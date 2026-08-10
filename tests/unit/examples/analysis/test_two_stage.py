@@ -38,7 +38,7 @@ def test_checked_in_yaml_configures_both_analysis_stages(
         initial_record.measurement_info.measurement_id
         == "example-tpx3-two-stage-analysis"
     )
-    assert initial_record.environment.working_dir.path == Path(
+    assert initial_record.environment.working_directory.path == Path(
         "data/examples/analysis/two_stage"
     )
     assert isinstance(initial_record.analysis, HermesTpx3AnalysisState)
@@ -48,9 +48,7 @@ def test_checked_in_yaml_configures_both_analysis_stages(
     assert analysis.unpacking.program.executable_path == Path(
         "build/backends/tpx3-spidr/hermes-tpx3-spidr"
     )
-    assert analysis.analysis_directory == Path(
-        "data/examples/analysis/two_stage/analysis"
-    )
+    assert initial_record.environment.analysis_directory.path == Path("analysis")
     assert analysis.unpacking.tpx3_files == [
         FileReference(path=Path("tests/data/Example_1kHz_5frames.tpx3"))
     ]
@@ -64,7 +62,7 @@ def test_checked_in_yaml_configures_both_analysis_stages(
     assert reconstruction.clustering_algorithm == "connected_components"
     assert reconstruction.pixel_parquet_files == "auto"
     assert reconstruction.output_directory == (
-        analysis.analysis_directory / "photons"
+        initial_record.environment.analysis_directory.resolved_path / "photons"
     )
     assert reconstruction.settings.timewalk_calibration_file == Path(
         "calibrations/tpx3/time-walk_example.json"
@@ -92,10 +90,10 @@ measurement_info:
   measurement_id: two-stage-test
   run_number: 1
 environment:
-  working_dir: {working_directory}
+  working_directory: {working_directory}
+  analysis_directory: {analysis_directory}
 analysis:
   mode: hermes
-  analysis_directory: {analysis_directory}
   unpacking:
     program:
       name: test-unpacker
@@ -228,7 +226,7 @@ analysis:
     assert "Raw TPX3 files: 2" in console_output
     assert "Unpacked this run: 2" in console_output
     assert "Skipped existing valid unpacking output: 0" in console_output
-    assert "Reconstructed photon files: 1" in console_output
+    assert "Reconstructed photon files this run: 1" in console_output
     assert "Photons: 3" in console_output
     assert "Rejected clusters: 2" in console_output
     assert str(analysis_directory) in console_output
