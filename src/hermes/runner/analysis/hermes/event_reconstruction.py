@@ -61,6 +61,7 @@ class HermesEventReconstructionOutputError(
 
 def resolve_photon_files(
     analysis: HermesTpx3AnalysisState,
+    analysis_root: Path,
 ) -> list[FileReference]:
     """Return the photon Parquet files event reconstruction should run over.
 
@@ -73,7 +74,7 @@ def resolve_photon_files(
     if event_reconstruction.photon_parquet_files != "auto":
         return list(event_reconstruction.photon_parquet_files)
 
-    photon_directory = analysis.analysis_directory / "photons"
+    photon_directory = analysis_root / "photons"
     if not photon_directory.is_dir():
         return []
     return [
@@ -130,6 +131,7 @@ def derive_event_reconstruction_command(
 
 def plan_event_reconstruction(
     analysis: HermesTpx3AnalysisState,
+    analysis_root: Path,
     *,
     overwrite: bool = False,
 ) -> EventReconstructionPlan:
@@ -143,7 +145,7 @@ def plan_event_reconstruction(
     _validate_program_and_algorithm(event_reconstruction)
 
     plan: EventReconstructionPlan = []
-    for input_file in resolve_photon_files(analysis):
+    for input_file in resolve_photon_files(analysis, analysis_root):
         summary_path = derive_summary_path(
             derive_output_path(event_reconstruction, input_file)
         )
