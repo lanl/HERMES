@@ -1,9 +1,8 @@
 """Runs the C++ event reconstruction binary over reconstructed photon data.
 
 Event reconstruction is 1:1: each photon Parquet file produces one event file at
-the matching path (input basename kept). plan_event_reconstruction decides which
-files still need work, execute_event_reconstruction runs the binary on one file
-and reads its summary JSON for the per-file counts.
+the matching path (input basename kept). execute_event_reconstruction runs the
+binary on one file and reads its summary JSON for the per-file counts.
 """
 
 from __future__ import annotations
@@ -13,7 +12,6 @@ import subprocess
 import tempfile
 from pathlib import Path
 from time import perf_counter
-from typing import Literal, TypeAlias
 
 from loguru import logger
 from pydantic import ValidationError
@@ -25,9 +23,6 @@ from hermes.state.models.analysis.hermes_tpx3_spidr import (
     Tpx3EventReconstructionSummary,
 )
 from hermes.state.models.shared_models import FileReference
-
-ContinuationAction: TypeAlias = Literal["run", "skip"]
-EventReconstructionPlan: TypeAlias = list[tuple[FileReference, ContinuationAction]]
 
 # The photon stage writes an optional diagnostic file beside each photon file;
 # it is not a photon_events input and must not be handed to event reconstruction.
@@ -85,14 +80,29 @@ def resolve_photon_files(
 
 
 def derive_output_path(
-    event_reconstruction: Tpx3EventReconstruction,
+    analysis_root: Path,
     input_file: FileReference,
 ) -> Path:
-    """Return the event file path for one photon file (input basename kept)."""
-    assert event_reconstruction.output_directory is not None  # derived on state
-    return (
-        event_reconstruction.output_directory / f"{input_file.path.stem}.parquet"
-    )
+    """Return the event file path for one photon file (input basename kept).
+
+    Event files go in an ``events`` directory the event reconstruction stage
+    makes under the analysis directory.
+    """
+    return analysis_root / "events" / f"{input_file.path.stem}.parquet"
+
+
+def check_previous_reconstructed_file(
+    analysis_root: Path,
+    input_file: FileReference,
+) -> bool:
+    """Return True when this photon file was already reconstructed before.
+
+    The binary writes a per-file reconstruction summary on every success
+    (including zero-event runs that produce no event parquet), so its presence
+    means the file is already done.
+    """
+    output_file = derive_output_path(analysis_root, input_file)
+    return derive_summary_path(output_file).is_file()
 
 
 def derive_summary_path(output_file: Path) -> Path:
@@ -129,35 +139,9 @@ def derive_event_reconstruction_command(
     return command
 
 
-def plan_event_reconstruction(
-    analysis: HermesTpx3AnalysisState,
-    analysis_root: Path,
-    *,
-    overwrite: bool = False,
-) -> EventReconstructionPlan:
-    """Decide, per photon file, whether to "run" event reconstruction or "skip".
-
-    With overwrite every file runs. Otherwise a file is skipped only when its
-    reconstruction summary already exists, which the binary writes on every
-    success (including zero-event runs that produce no event parquet).
-    """
-    event_reconstruction = _require_event_reconstruction(analysis)
-    _validate_program_and_algorithm(event_reconstruction)
-
-    plan: EventReconstructionPlan = []
-    for input_file in resolve_photon_files(analysis, analysis_root):
-        summary_path = derive_summary_path(
-            derive_output_path(event_reconstruction, input_file)
-        )
-        if not overwrite and summary_path.exists():
-            plan.append((input_file, "skip"))
-        else:
-            plan.append((input_file, "run"))
-    return plan
-
-
 def execute_event_reconstruction(
     analysis: HermesTpx3AnalysisState,
+    analysis_root: Path,
     input_file: FileReference,
     *,
     overwrite: bool = False,
@@ -168,7 +152,7 @@ def execute_event_reconstruction(
     with an error, or leaves no readable summary.
     """
     event_reconstruction = _require_event_reconstruction(analysis)
-    output_file = derive_output_path(event_reconstruction, input_file)
+    output_file = derive_output_path(analysis_root, input_file)
     summary_path = derive_summary_path(output_file)
     started = perf_counter()
 
@@ -324,7 +308,7 @@ def _require_event_reconstruction(
     return event_reconstruction
 
 
-def _validate_program_and_algorithm(
+def validate_program_and_algorithm(
     event_reconstruction: Tpx3EventReconstruction,
 ) -> None:
     """Check the algorithm is supported and the binary exists before running."""
