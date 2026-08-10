@@ -45,7 +45,7 @@ def main(input_yaml_path: Path = DEFAULT_INPUT_YAML_PATH) -> None:
     )
 
     # Step 5: Fit and save the time-walk calibration from the unpacked pixel data
-    pixel_files = sorted((analysis_directory / "pixelHits").glob("*.parquet"))
+    pixel_files = sorted((analysis_directory / "pixel_hits").glob("*.parquet"))
     calibration = calibrate_timewalk(
         pixel_files,
         clustering_settings,
