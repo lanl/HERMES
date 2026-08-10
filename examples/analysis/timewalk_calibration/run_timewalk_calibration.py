@@ -7,7 +7,7 @@ import yaml
 
 from hermes.runner.analysis.hermes.timewalk_calibration import calibrate_timewalk
 from hermes.state.models.analysis.hermes_tpx3_spidr import (
-    Tpx3PhotonClusteringSettings,
+    HermesTpx3PhotonClusteringSettings,
 )
 from hermes.state_service.state_io import (
     load_hermes_record_from_yaml,
@@ -38,7 +38,7 @@ def main(input_yaml_path: Path = DEFAULT_INPUT_YAML_PATH) -> None:
     save_hermes_record_to_yaml(workflow.record, final_record_path)
 
     # Step 4: Load the cluster-selection settings for the calibration fit
-    clustering_settings = Tpx3PhotonClusteringSettings.model_validate(
+    clustering_settings = HermesTpx3PhotonClusteringSettings.model_validate(
         yaml.safe_load(
             CLUSTERING_SETTINGS_YAML_PATH.read_text(encoding="utf-8")
         )
