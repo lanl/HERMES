@@ -17,10 +17,10 @@ from hermes.state.models.analysis.hermes_tpx3_spidr import (
 from hermes.state.models.shared_models import FileReference
 
 _PARQUET_DIRECTORIES = (
-    "pixelHits",
-    "tdcTriggers",
-    "globalTimestamps",
-    "controlPackets",
+    "pixel_hits",
+    "tdc_triggers",
+    "global_timestamps",
+    "control_packets",
     "unknownPackets",
 )
 _LOG_TEXT_LIMIT = 4_000
@@ -309,10 +309,10 @@ def _validate_completed_files(
 
     analysis_root = analysis_directory.resolve()
     categories = (
-        ("pixelHits", summary.parquet.pixel_data, True),  # includes chip ID
-        ("tdcTriggers", summary.parquet.tdc_timestamps, False),  # no chip ID
-        ("globalTimestamps", summary.parquet.heartbeat_packets, False),
-        ("controlPackets", summary.parquet.control_packets, False),
+        ("pixel_hits", summary.parquet.pixel_data, True),  # includes chip ID
+        ("tdc_triggers", summary.parquet.tdc_timestamps, False),  # no chip ID
+        ("global_timestamps", summary.parquet.heartbeat_packets, False),
+        ("control_packets", summary.parquet.control_packets, False),
         ("unknownPackets", summary.parquet.unrecognized_packets, False),
     )
     listed_files: set[Path] = set()
