@@ -88,10 +88,10 @@ def main():
 
     # Check all dataset types
     datasets = [
-        ("pixelHits", "Pixel Hits"),
-        ("tdcTriggers", "TDC Triggers"),
-        ("globalTimestamps", "Global Timestamps"),
-        ("controlPackets", "Control Packets"),
+        ("pixel_hits", "Pixel Hits"),
+        ("tdc_triggers", "TDC Triggers"),
+        ("global_timestamps", "Global Timestamps"),
+        ("control_packets", "Control Packets"),
         ("unknownPackets", "Unknown Packets"),
     ]
 
