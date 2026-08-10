@@ -188,9 +188,9 @@ def run_hermes_analysis(
         )
         raise HermesAnalysisError(error)
 
-    # The HermesRecord validator guarantees this is set when analysis is present.
-    analysis_root = state.environment.analysis_directory.resolved_path
-    assert analysis_root is not None
+analysis_root = state.environment.analysis_directory.resolved_path
+if analysis_root is None:
+    raise HermesAnalysisError("environment.analysis_directory must be set to run HERMES analysis")
 
     unpacked_files: list[FileReference] = []
     try:
