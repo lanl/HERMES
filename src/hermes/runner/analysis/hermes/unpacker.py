@@ -5,7 +5,6 @@ import re
 import subprocess
 from time import perf_counter
 from pathlib import Path
-from typing import Literal, TypeAlias
 
 import pyarrow.parquet as pq
 from loguru import logger
@@ -16,9 +15,6 @@ from hermes.state.models.analysis.hermes_tpx3_spidr import (
     Tpx3SpidrSummary,
 )
 from hermes.state.models.shared_models import FileReference
-
-ContinuationAction: TypeAlias = Literal["run", "skip"]
-UnpackingPlan: TypeAlias = list[tuple[FileReference, ContinuationAction]]
 
 _PARQUET_DIRECTORIES = (
     "pixelHits",
@@ -61,6 +57,18 @@ def derive_summary_path(
         / "unpacker"
         / f"{raw_file.path.stem}-unpacker-summary.json"
     )
+
+
+def check_previous_unpacked_file(
+    analysis_root: Path,
+    raw_file: FileReference,
+) -> bool:
+    """Return True when this raw file was already unpacked in a previous run.
+
+    The unpacker writes a per-file summary JSON to ``logs/unpacker`` on every
+    successful run, so its presence means the file is already done.
+    """
+    return derive_summary_path(analysis_root, raw_file).is_file()
 
 
 def derive_unpacker_command(
@@ -230,7 +238,7 @@ def log_overall_failure(error: Exception) -> None:
     )
 
 
-def _validate_program_and_inputs(
+def validate_program_and_inputs(
     analysis: HermesTpx3AnalysisState,
     analysis_root: Path,
 ) -> None:
@@ -246,12 +254,6 @@ def _validate_program_and_inputs(
             raise HermesTpx3PreflightError(
                 f"raw TPX3 file does not exist: {raw_file.path}"
             )
-
-    stems = [raw_file.path.stem for raw_file in analysis.unpacking.tpx3_files]
-    if len(stems) != len(set(stems)):
-        raise HermesTpx3PreflightError(
-            "raw TPX3 filename stems must be unique"
-        )
 
     analysis_directory = analysis_root
     if analysis_directory.exists():
