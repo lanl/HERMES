@@ -109,7 +109,7 @@ class Workflow:
         )
 
     def _write_workflow_log(self) -> None:
-        """Write the run's workflow log to logs/HERMES-workflow.jsonl.
+        """Write the run's workflow log to <log_directory>/HERMES-workflow.jsonl (or the run directory if unset).
 
         The log is one JSON object per line: the record file that started the
         run, the stages the run configured, one line per finished analysis step,
