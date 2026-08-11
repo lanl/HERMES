@@ -5,6 +5,9 @@ from pathlib import Path
 
 from loguru import logger
 
+from hermes.runner.analysis.hermes.event_reconstruction import (
+    derive_summary_path as derive_event_reconstruction_summary_path,
+)
 from hermes.runner.analysis.hermes.photon_reconstruction import (
     derive_summary_path as derive_reconstruction_summary_path,
 )
@@ -210,6 +213,17 @@ class Workflow:
                         result.status,
                         summary,
                         now,
+                    )
+                )
+        if analysis.event_reconstruction is not None:
+            for result in analysis.event_reconstruction.results:
+                summary = derive_event_reconstruction_summary_path(
+                    result.output_file
+                )
+                lines.append(
+                    self._stage_line(
+                        "event_reconstruction", result.input_file.path,
+                        result.status, summary, now,
                     )
                 )
         return lines
