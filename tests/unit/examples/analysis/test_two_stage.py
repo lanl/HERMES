@@ -50,7 +50,7 @@ def test_checked_in_yaml_configures_both_analysis_stages(
     )
     assert initial_record.environment.analysis_directory.path == Path("analysis")
     assert analysis.unpacking.tpx3_files == [
-        FileReference(path=Path("tests/data/Example_1kHz_5frames.tpx3"))
+        FileReference(path=Path("tests/data/tpx3/Example_1kHz_5frames.tpx3"))
     ]
 
     reconstruction = analysis.photon_reconstruction

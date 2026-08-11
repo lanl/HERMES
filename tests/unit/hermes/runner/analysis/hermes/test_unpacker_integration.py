@@ -21,7 +21,7 @@ from hermes.state_service.shared_types import StateServiceConfig
 from hermes.state_service.state_manager import StateManager
 
 _REPOSITORY_ROOT = Path(__file__).resolve().parents[5]
-_TPX3_FIXTURE = _REPOSITORY_ROOT / "tests/data/Example_1kHz_5frames.tpx3"
+_TPX3_FIXTURE = _REPOSITORY_ROOT / "tests/data/tpx3/Example_1kHz_5frames.tpx3"
 _UNPACKER_EXECUTABLE = (
     _REPOSITORY_ROOT
     / "build/backends/tpx3-spidr/hermes-tpx3-spidr"

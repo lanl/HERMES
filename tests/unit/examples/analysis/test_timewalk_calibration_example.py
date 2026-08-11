@@ -42,7 +42,7 @@ def test_checked_in_yaml_configures_unpacking_and_clustering(
     assert isinstance(initial_record.analysis, HermesTpx3AnalysisState)
     assert initial_record.environment.analysis_directory.path == Path("analysis")
     assert initial_record.analysis.unpacking.tpx3_files == [
-        FileReference(path=Path("tests/data/Example_1kHz_5frames.tpx3"))
+        FileReference(path=Path("tests/data/tpx3/Example_1kHz_5frames.tpx3"))
     ]
     assert initial_record.analysis.photon_reconstruction is None
 

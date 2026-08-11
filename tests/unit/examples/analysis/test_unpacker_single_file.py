@@ -43,7 +43,7 @@ def test_checked_in_partial_yaml_loads_with_expected_defaults(
     )
     assert initial_record.environment.analysis_directory.path == Path("analysis")
     assert initial_record.analysis.unpacking.tpx3_files[0].path == Path(
-        "tests/data/Example_1kHz_5frames.tpx3"
+        "tests/data/tpx3/Example_1kHz_5frames.tpx3"
     )
     assert initial_record.analysis.resource_limit_percent == 90
     assert initial_record.analysis.unpacking.program.version is None
