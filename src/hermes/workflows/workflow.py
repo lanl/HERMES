@@ -189,8 +189,27 @@ class Workflow:
                 )
                 lines.append(
                     self._stage_line(
-                        "reconstruction", result.input_file.path,
-                        result.status, summary, now,
+                        "reconstruction",
+                        result.input_file.path,
+                        result.status,
+                        summary,
+                        now,
+                    )
+                )
+        if analysis.event_reconstruction is not None:
+            from hermes.runner.analysis.hermes.event_reconstruction import (
+                derive_summary_path as derive_event_reconstruction_summary_path,
+            )
+
+            for result in analysis.event_reconstruction.results:
+                summary = derive_event_reconstruction_summary_path(result.output_file)
+                lines.append(
+                    self._stage_line(
+                        "event_reconstruction",
+                        result.input_file.path,
+                        result.status,
+                        summary,
+                        now,
                     )
                 )
         return lines
