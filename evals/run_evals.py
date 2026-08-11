@@ -13,8 +13,6 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-import yaml
-
 from hermes.state_service.state_io import load_hermes_record_from_yaml
 from hermes.workflows.workflow import Workflow
 
@@ -24,14 +22,21 @@ _CASES_DIR = Path(__file__).parent / "cases"
 
 
 def run_case(case_directory: Path) -> list[str]:
+    
+    # Set the config file
     config_file = case_directory / "input" / "config.yaml"
-    config = yaml.safe_load(config_file.read_text())
-    working_directory = Path(config["environment"]["working_directory"])
 
+    # Load the HERMES record from the config file
     record = load_hermes_record_from_yaml(str(config_file))
+    
+    # Run the workflow
     Workflow(record).run()
-
-    return compare.compare_case(case_directory / "expected", working_directory)
+    
+    # Determine the root directory for comparison based on the run directory of the record
+    compare_root = record.environment.run_directory.resolved_path
+    
+    # Return the comparison results
+    return compare.compare_case(case_directory / "expected", compare_root)
 
 
 def main() -> int:
