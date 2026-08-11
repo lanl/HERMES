@@ -19,7 +19,7 @@ _SUMMARY_GLOBS = {
     "reconstruction-summary.json": "analysis/logs/photon_reconstruction/*_photon_reconstruction_summary.json",
 }
 
-_LOG_RELATIVE_PATH = "analysis/HERMES-workflow.jsonl"
+_LOG_RELATIVE_PATH = "logs/HERMES-workflow.jsonl"
 
 
 def _is_wildcard(value) -> bool:

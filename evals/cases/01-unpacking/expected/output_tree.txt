@@ -8,9 +8,12 @@ data/01-unpacking/1kHz-testing/
 │   │   └── Example_1kHz_5frames_chip_0_pixels_00000.parquet
 │   ├── tdc_triggers/
 │   │   └── Example_1kHz_5frames_tdc_triggers_00000.parquet
-│   ├── logs/
-│   │   └── unpacking/
-│   │       └── Example_1kHz_5frames_unpacker_summary.json
-│   └── HERMES-workflow.jsonl
+│   └── logs/
+│       └── unpacking/
+│           └── Example_1kHz_5frames_unpacker_summary.json
 ├── logs/
+│   ├── acquisition.serval.jsonl
+│   ├── analysis.jsonl
+│   ├── state.jsonl
+│   └── HERMES-workflow.jsonl
 └── HERMES_record.yaml

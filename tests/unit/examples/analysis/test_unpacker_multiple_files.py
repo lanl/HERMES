@@ -19,6 +19,6 @@ def test_bundled_tpx3_file_uses_repository_root(
 
     assert run_unpacking_module.REPOSITORY_ROOT == repository_root
     assert run_unpacking_module.SOURCE_TPX3_FILE == (
-        repository_root / "tests/data/Example_1kHz_5frames.tpx3"
+        repository_root / "tests/data/tpx3/Example_1kHz_5frames.tpx3"
     )
     assert run_unpacking_module.SOURCE_TPX3_FILE.is_file()

@@ -143,11 +143,28 @@ class RuntimeEnvironment(StrictBaseModel):
         )
         resolved["working_directory"]["required"] = True
 
-        for key in DIRECTORY_FIELDS[1:]:
+        # The run directory resolves against the working directory. Every other
+        # sub-directory then resolves under the run directory when one is set,
+        # so a run lays out as
+        # <working_directory>/<run_directory>/<sub_directory>. With no run
+        # directory, the sub-directories resolve directly under the working
+        # directory.
+        sub_directory_base = working_dir_base
+        if resolved.get("run_directory") is not None:
+            resolved["run_directory"] = _normalize_directory_input(
+                resolved["run_directory"],
+                base=working_dir_base,
+                required_default=False,
+            )
+            sub_directory_base = (
+                resolved["run_directory"].get("resolved_path") or working_dir_base
+            )
+
+        for key in DIRECTORY_FIELDS[2:]:
             if resolved.get(key) is not None:
                 resolved[key] = _normalize_directory_input(
                     resolved[key],
-                    base=working_dir_base,
+                    base=sub_directory_base,
                     required_default=False,
                 )
 

@@ -11,7 +11,7 @@ from hermes.state_service.state_io import (
 from hermes.workflows.workflow import Workflow
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
-SOURCE_TPX3_FILE = REPOSITORY_ROOT / "tests/data/Example_1kHz_5frames.tpx3"
+SOURCE_TPX3_FILE = REPOSITORY_ROOT / "tests/data/tpx3/Example_1kHz_5frames.tpx3"
 MULTIPLE_FILES_INPUT_DIRECTORY = (
     REPOSITORY_ROOT / "data/examples/analysis/unpacking/multiple_files/input"
 )

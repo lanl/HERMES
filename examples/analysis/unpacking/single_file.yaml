@@ -15,4 +15,4 @@ analysis:
     runtime_options:
       overwrite: true
     tpx3_files:
-      - path: tests/data/Example_1kHz_5frames.tpx3
+      - path: tests/data/tpx3/Example_1kHz_5frames.tpx3

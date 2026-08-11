@@ -13,7 +13,7 @@ analysis:
       name: tpx3-spidr-cpp
       executable_path: build/backends/tpx3-spidr/hermes-tpx3-spidr
     tpx3_files:
-      - path: tests/data/Example_1kHz_5frames.tpx3
+      - path: tests/data/tpx3/Example_1kHz_5frames.tpx3
   photon_reconstruction:
     program:
       name: photon-clusterer-cpp

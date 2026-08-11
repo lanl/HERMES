@@ -30,14 +30,6 @@ def configure_logging(log_dir: Path | None = None, level: str = "INFO") -> None:
         filter=_domain_filter("state"),
     )
     logger.add(
-        log_dir / "workflow.jsonl",
-        serialize=True,
-        enqueue=True,
-        rotation="50 MB",
-        retention="90 days",
-        filter=_domain_filter("workflow"),
-    )
-    logger.add(
         log_dir / "acquisition.serval.jsonl",
         serialize=True,
         enqueue=True,
