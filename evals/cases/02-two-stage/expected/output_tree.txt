@@ -13,10 +13,13 @@ data/02-two-stage/tantalum-ironpowder/
 │   ├── pixel_clusters/
 │   │   └── Tantalum_IronPowder_pixel_clusters_00000.parquet
 │   ├── logs/
-│   │   ├── unpacking/
-│   │   │   └── Tantalum_IronPowder_unpacker_summary.json
-│   │   └── photon_reconstruction/
-│   │       └── Tantalum_IronPowder_photon_reconstruction_summary.json
-│   └── HERMES-workflow.jsonl
+│       ├── unpacking/
+│       │   └── Tantalum_IronPowder_unpacker_summary.json
+│       └── photon_reconstruction/
+│           └── Tantalum_IronPowder_photon_reconstruction_summary.json
 ├── logs/
+│   ├── acquisition.serval.jsonl
+│   ├── analysis.jsonl
+│   ├── state.jsonl
+│   └── HERMES-workflow.jsonl
 └── HERMES_record.yaml
