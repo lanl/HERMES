@@ -96,29 +96,25 @@ std::shared_ptr<arrow::Table> buildTdcTable(
 
     arrow::UInt64Builder chunk_builder;
     arrow::UInt64Builder packet_builder;
-    arrow::UInt8Builder type_builder;
     arrow::UInt64Builder time_builder;
 
     for (std::size_t i = start_idx; i < start_idx + count; ++i) {
         const auto& row = rows[i];
         (void)chunk_builder.Append(row.chunk_index);
         (void)packet_builder.Append(row.packet_index);
-        (void)type_builder.Append(row.trigger_type);
         (void)time_builder.Append(row.timestamp_canonical);
     }
 
     std::shared_ptr<arrow::Array> chunk_array;
     std::shared_ptr<arrow::Array> packet_array;
-    std::shared_ptr<arrow::Array> type_array;
     std::shared_ptr<arrow::Array> time_array;
 
     (void)chunk_builder.Finish(&chunk_array);
     (void)packet_builder.Finish(&packet_array);
-    (void)type_builder.Finish(&type_array);
     (void)time_builder.Finish(&time_array);
 
     auto schema = createTdcTriggersSchema();
-    return arrow::Table::Make(schema, {chunk_array, packet_array, type_array, time_array});
+    return arrow::Table::Make(schema, {chunk_array, packet_array, time_array});
 }
 
 std::shared_ptr<arrow::Table> buildGlobalTable(
@@ -323,7 +319,7 @@ void writeRowsToParquet(
     TableBuilder table_builder,
     FilenameGenerator filename_generator) {
 
-    category.row_count = rows.size();
+    category.row_count += rows.size();
     if (rows.empty()) {
         return;
     }
@@ -387,10 +383,12 @@ void writePixelHitsParquet(const std::vector<PixelOutputRow>& rows,
 }
 
 void writeTdcTriggersParquet(const std::vector<TdcOutputRow>& rows,
+                             const std::string& data_label,
                              const ParquetWriterConfig& config,
                              ParquetWriterDiagnostics& diagnostics) {
-    auto filename_gen = [](const ParquetWriterConfig& cfg, std::uint64_t part) {
-        return makeLabeledFileName(cfg.raw_file_stem, "tdc_triggers", part);
+    auto filename_gen = [&data_label](const ParquetWriterConfig& cfg,
+                                      std::uint64_t part) {
+        return makeLabeledFileName(cfg.raw_file_stem, data_label, part);
     };
     writeRowsToParquet(rows, config, diagnostics.tdc_triggers,
                       diagnostics.errors, buildTdcTable, filename_gen);
@@ -431,15 +429,17 @@ void writeUnknownPacketsParquet(const std::vector<UnknownOutputRow>& rows,
 void writePixelHitsParquet(const std::vector<PixelOutputRow>& rows,
                            const ParquetWriterConfig& config,
                            ParquetWriterDiagnostics& diagnostics) {
-    diagnostics.pixel_hits.row_count = rows.size();
+    diagnostics.pixel_hits.row_count += rows.size();
     (void)config;
     diagnostics.errors.push_back("Arrow/Parquet support not compiled in");
 }
 
 void writeTdcTriggersParquet(const std::vector<TdcOutputRow>& rows,
+                             const std::string& data_label,
                              const ParquetWriterConfig& config,
                              ParquetWriterDiagnostics& diagnostics) {
-    diagnostics.tdc_triggers.row_count = rows.size();
+    diagnostics.tdc_triggers.row_count += rows.size();
+    (void)data_label;
     (void)config;
     diagnostics.errors.push_back("Arrow/Parquet support not compiled in");
 }
@@ -447,7 +447,7 @@ void writeTdcTriggersParquet(const std::vector<TdcOutputRow>& rows,
 void writeGlobalTimestampsParquet(const std::vector<GlobalOutputRow>& rows,
                                    const ParquetWriterConfig& config,
                                    ParquetWriterDiagnostics& diagnostics) {
-    diagnostics.global_timestamps.row_count = rows.size();
+    diagnostics.global_timestamps.row_count += rows.size();
     (void)config;
     diagnostics.errors.push_back("Arrow/Parquet support not compiled in");
 }
@@ -455,7 +455,7 @@ void writeGlobalTimestampsParquet(const std::vector<GlobalOutputRow>& rows,
 void writeControlPacketsParquet(const std::vector<ControlOutputRow>& rows,
                                 const ParquetWriterConfig& config,
                                 ParquetWriterDiagnostics& diagnostics) {
-    diagnostics.control_packets.row_count = rows.size();
+    diagnostics.control_packets.row_count += rows.size();
     (void)config;
     diagnostics.errors.push_back("Arrow/Parquet support not compiled in");
 }
@@ -463,7 +463,7 @@ void writeControlPacketsParquet(const std::vector<ControlOutputRow>& rows,
 void writeUnknownPacketsParquet(const std::vector<UnknownOutputRow>& rows,
                                 const ParquetWriterConfig& config,
                                 ParquetWriterDiagnostics& diagnostics) {
-    diagnostics.unknown_packets.row_count = rows.size();
+    diagnostics.unknown_packets.row_count += rows.size();
     (void)config;
     diagnostics.errors.push_back("Arrow/Parquet support not compiled in");
 }

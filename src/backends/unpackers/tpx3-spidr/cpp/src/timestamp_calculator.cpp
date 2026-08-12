@@ -55,6 +55,7 @@ std::optional<PixelOutputRow> convertPixelToOutputRow(const PixelHit& pixel) {
         pixel.local_y,
         pixel.tot_raw,
         calculatePixelTimestamp(pixel),
+        pixel.position.chip_index,
     };
 }
 

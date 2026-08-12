@@ -11,6 +11,8 @@
 #include <sstream>
 #include <filesystem>
 #include <chrono>
+#include <map>
+#include <set>
 
 namespace hermes_tpx3_spidr {
 namespace {
@@ -341,6 +343,43 @@ bool createAnalysisDirectories(const std::filesystem::path& analysis_directory,
     }
 }
 
+std::set<std::uint8_t> collectTimestampedChipIndexes(
+    const UnpackResult& unpack_result) {
+    std::set<std::uint8_t> chip_indexes;
+
+    for (const auto& pixel : unpack_result.pixel_hits) {
+        chip_indexes.insert(pixel.position.chip_index);
+    }
+    for (const auto& tdc : unpack_result.tdc_hits) {
+        chip_indexes.insert(tdc.position.chip_index);
+    }
+    for (const auto& control : unpack_result.spidr_controls) {
+        if (control.type != SpidrControlType::packet_count) {
+            chip_indexes.insert(control.position.chip_index);
+        }
+    }
+    for (const auto& global : unpack_result.global_timestamps) {
+        chip_indexes.insert(global.high_packet.chip_index);
+    }
+
+    return chip_indexes;
+}
+
+// A TDC trigger is a board-level signal that SPIDR copies into every chip's data
+// stream, so each physical trigger is decoded once per chip. Keep one row per
+// distinct trigger, identified by its channel/edge and canonical time.
+void deduplicateTdcTriggers(std::vector<TdcOutputRow>& tdcs) {
+    std::set<std::pair<std::uint8_t, std::uint64_t>> seen;
+    std::vector<TdcOutputRow> unique_rows;
+    unique_rows.reserve(tdcs.size());
+    for (const auto& row : tdcs) {
+        if (seen.insert({row.trigger_type, row.timestamp_canonical}).second) {
+            unique_rows.push_back(row);
+        }
+    }
+    tdcs = std::move(unique_rows);
+}
+
 }  // namespace
 
 void unpackPacket(const std::uint64_t raw_word,
@@ -565,19 +604,22 @@ WorkflowResult runTwoPassWorkflow(std::istream& input,
     // Assign source packet order (needed for sorting)
     assignSourcePacketOrder(unpack_result);
 
-    // Build anchor indices per chip (from paired global timestamps)
-    // For now, assume single chip (chip 0)
+    // Build anchor indices and unwrap timestamp counters independently per chip.
     auto epoch_start = Clock::now();
     AnchorIndexDiagnostics anchor_diag;
-    ChipAnchorIndex chip0_anchors = buildChipAnchorIndex(
-        unpack_result.global_timestamps, 0, anchor_diag);
-    workflow_result.summary.anchor_diagnostics = anchor_diag;
-
-    // Assign epochs to unwrap timestamps for chip 0
     EpochAssignmentDiagnostics epoch_diag;
-    assignEpochsToPixels(unpack_result.pixel_hits, chip0_anchors, 0, epoch_diag);
-    assignEpochsToTdcs(unpack_result.tdc_hits, chip0_anchors, 0, epoch_diag);
-    assignEpochsToControls(unpack_result.spidr_controls, chip0_anchors, 0, epoch_diag);
+    const auto chip_indexes = collectTimestampedChipIndexes(unpack_result);
+    for (const auto chip_index : chip_indexes) {
+        const auto anchors = buildChipAnchorIndex(
+            unpack_result.global_timestamps, chip_index, anchor_diag);
+        assignEpochsToPixels(unpack_result.pixel_hits, anchors, chip_index,
+                             epoch_diag);
+        assignEpochsToTdcs(unpack_result.tdc_hits, anchors, chip_index,
+                           epoch_diag);
+        assignEpochsToControls(unpack_result.spidr_controls, anchors,
+                               chip_index, epoch_diag);
+    }
+    workflow_result.summary.anchor_diagnostics = anchor_diag;
     auto epoch_end = Clock::now();
     workflow_result.summary.timing_diagnostics.epoch_assignment_seconds =
         Duration(epoch_end - epoch_start).count();
@@ -598,6 +640,24 @@ WorkflowResult runTwoPassWorkflow(std::istream& input,
             output_rows.tdcs.push_back(*row);
         }
     }
+
+    // Collapse the per-chip copies of each trigger and report the unique counts.
+    deduplicateTdcTriggers(output_rows.tdcs);
+    auto& tdc_summary = workflow_result.summary.unpack_summary;
+    tdc_summary.tdc1_rising_count = 0;
+    tdc_summary.tdc1_falling_count = 0;
+    tdc_summary.tdc2_rising_count = 0;
+    tdc_summary.tdc2_falling_count = 0;
+    for (const auto& row : output_rows.tdcs) {
+        switch (row.trigger_type) {
+            case 0: ++tdc_summary.tdc1_rising_count; break;
+            case 1: ++tdc_summary.tdc1_falling_count; break;
+            case 2: ++tdc_summary.tdc2_rising_count; break;
+            case 3: ++tdc_summary.tdc2_falling_count; break;
+            default: break;
+        }
+    }
+    tdc_summary.tdc_timestamp_count = output_rows.tdcs.size();
 
     for (const auto& global : unpack_result.global_timestamps) {
         output_rows.globals.push_back(convertGlobalToOutputRow(global));
@@ -639,17 +699,42 @@ WorkflowResult runTwoPassWorkflow(std::istream& input,
         return workflow_result;
     }
 
-    // Write Parquet files per chip
+    // Write one pixel file set per chip and one file set for each other category.
     auto writing_start = Clock::now();
     ParquetWriterDiagnostics writer_diag;
     ParquetWriterConfig writer_config;
     writer_config.analysis_directory = analysis_directory;
     writer_config.raw_file_stem = raw_file_stem;
-    writer_config.chip_index = 0;  // Single chip for now
     writer_config.overwrite = overwrite;
 
-    writePixelHitsParquet(output_rows.pixels, writer_config, writer_diag);
-    writeTdcTriggersParquet(output_rows.tdcs, writer_config, writer_diag);
+    std::map<std::uint8_t, std::vector<PixelOutputRow>> pixels_by_chip;
+    for (const auto& pixel : output_rows.pixels) {
+        pixels_by_chip[pixel.chip_index].push_back(pixel);
+    }
+    for (const auto& [chip_index, rows] : pixels_by_chip) {
+        writer_config.chip_index = chip_index;
+        writePixelHitsParquet(rows, writer_config, writer_diag);
+    }
+    // Write one file per trigger type that occurs; skip types with no triggers.
+    static const std::array<std::pair<std::uint8_t, const char*>, 4>
+        tdc_file_labels = {{
+            {0, "tdc1_rising_triggers"},
+            {1, "tdc1_falling_triggers"},
+            {2, "tdc2_rising_triggers"},
+            {3, "tdc2_falling_triggers"},
+        }};
+    std::map<std::uint8_t, std::vector<TdcOutputRow>> tdcs_by_type;
+    for (const auto& row : output_rows.tdcs) {
+        tdcs_by_type[row.trigger_type].push_back(row);
+    }
+    for (const auto& [trigger_type, data_label] : tdc_file_labels) {
+        const auto found = tdcs_by_type.find(trigger_type);
+        if (found == tdcs_by_type.end() || found->second.empty()) {
+            continue;
+        }
+        writeTdcTriggersParquet(found->second, data_label, writer_config,
+                                writer_diag);
+    }
     writeGlobalTimestampsParquet(output_rows.globals, writer_config, writer_diag);
     writeControlPacketsParquet(output_rows.controls, writer_config, writer_diag);
     writeUnknownPacketsParquet(output_rows.unknowns, writer_config, writer_diag);

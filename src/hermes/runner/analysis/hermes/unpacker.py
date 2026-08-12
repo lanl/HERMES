@@ -28,6 +28,14 @@ _PARQUET_DIRECTORY_LABELS = {
     "unknownPackets": "unrecognized_packets",
 }
 _PARQUET_DIRECTORIES = tuple(_PARQUET_DIRECTORY_LABELS)
+# TDC triggers are written one file per channel+edge that occurs, so the
+# tdc_triggers directory holds up to four differently labeled filenames.
+_TDC_TRIGGER_LABELS = (
+    "tdc1_rising_triggers",
+    "tdc1_falling_triggers",
+    "tdc2_rising_triggers",
+    "tdc2_falling_triggers",
+)
 _LOG_TEXT_LIMIT = 4_000
 _ANALYSIS_LOGGER = logger.bind(
     domain="analysis",
@@ -328,15 +336,26 @@ def _validate_completed_files(
     )
     listed_files: set[Path] = set()
     # The binary names pixel files "<stem>_chip_<chip>_pixels_<part>.parquet"
-    # and every other category "<stem>_<label>_<part>.parquet".
+    # and every other category "<stem>_<label>_<part>.parquet". TDC triggers
+    # use one of several per-channel/edge labels within the tdc_triggers
+    # directory, so they match any of _TDC_TRIGGER_LABELS.
     filename_pattern_with_chip = re.compile(
         rf"^{re.escape(raw_file_stem)}_chip_(\d+)_pixels_(\d{{5}})\.parquet$"
     )
+    tdc_label_alternatives = "|".join(
+        re.escape(label) for label in _TDC_TRIGGER_LABELS
+    )
+    filename_pattern_tdc = re.compile(
+        rf"^{re.escape(raw_file_stem)}_({tdc_label_alternatives})_"
+        rf"(\d{{5}})\.parquet$"
+    )
     for expected_directory, category, has_chip_id in categories:
         observed_rows = 0
-        parts_by_chip: dict[int, list[int]] = {}
+        parts_by_group: dict[int | str, list[int]] = {}
         if has_chip_id:
             filename_pattern = filename_pattern_with_chip
+        elif expected_directory == "tdc_triggers":
+            filename_pattern = filename_pattern_tdc
         else:
             label = _PARQUET_DIRECTORY_LABELS[expected_directory]
             filename_pattern = re.compile(
@@ -361,13 +380,17 @@ def _validate_completed_files(
                 )
 
             if has_chip_id:
-                chip_index = int(filename_match.group(1))
+                group_key: object = int(filename_match.group(1))
+                part_index = int(filename_match.group(2))
+            elif expected_directory == "tdc_triggers":
+                # Each channel+edge label has its own part sequence.
+                group_key = filename_match.group(1)
                 part_index = int(filename_match.group(2))
             else:
-                chip_index = 0  # No chip ID in filename, use default
+                group_key = 0  # Single label; one part sequence.
                 part_index = int(filename_match.group(1))
 
-            parts_by_chip.setdefault(chip_index, []).append(part_index)
+            parts_by_group.setdefault(group_key, []).append(part_index)
             resolved_path = parquet_path.resolve()
             if not resolved_path.is_relative_to(analysis_root):
                 raise HermesTpx3OutputError(
@@ -386,12 +409,17 @@ def _validate_completed_files(
                 ) from exc
             listed_files.add(parquet_path)
 
-        for chip_index, part_indexes in parts_by_chip.items():
+        for group_key, part_indexes in parts_by_group.items():
             if sorted(part_indexes) != list(range(len(part_indexes))):
-                chip_info = f" chip {chip_index}" if has_chip_id else ""
+                if has_chip_id:
+                    group_info = f" chip {group_key}"
+                elif expected_directory == "tdc_triggers":
+                    group_info = f" {group_key}"
+                else:
+                    group_info = ""
                 raise HermesTpx3OutputError(
                     f"unexpected Parquet part numbers for {expected_directory}"
-                    f"{chip_info}: {sorted(part_indexes)}"
+                    f"{group_info}: {sorted(part_indexes)}"
                 )
 
         if observed_rows != category.row_count:

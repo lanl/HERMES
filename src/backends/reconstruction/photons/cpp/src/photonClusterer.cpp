@@ -122,6 +122,7 @@ std::vector<std::pair<std::string, double>> correctionParameters(
 // files so every output for one raw file shares a stem.
 struct PixelFileName {
     std::string raw_file_stem;
+    std::string chip_label;
     std::string part_index;
     bool matched = false;
 };
@@ -138,10 +139,14 @@ PixelFileName parsePixelFileName(const std::string& input_stem) {
         return parsed;
     }
     parsed.raw_file_stem = input_stem.substr(0, chip_position);
+    parsed.chip_label =
+        input_stem.substr(chip_position + chip_marker.size(),
+                          pixels_position - (chip_position + chip_marker.size()));
     parsed.part_index =
         input_stem.substr(pixels_position + pixels_marker.size());
     parsed.matched =
-        !parsed.raw_file_stem.empty() && !parsed.part_index.empty();
+        !parsed.raw_file_stem.empty() && !parsed.chip_label.empty() &&
+        !parsed.part_index.empty();
     return parsed;
 }
 
@@ -298,15 +303,18 @@ int main(const int argc, char* argv[]) {
             }
         }
         photon_output_file =
-            (photons_dir / (pixel_name.raw_file_stem + "_photon_" +
+            (photons_dir / (pixel_name.raw_file_stem + "_chip_" +
+                            pixel_name.chip_label + "_photon_" +
                             pixel_name.part_index + ".parquet"))
                 .string();
         pixels_output_file =
-            (clusters_dir / (pixel_name.raw_file_stem + "_pixel_clusters_" +
+            (clusters_dir / (pixel_name.raw_file_stem + "_chip_" +
+                             pixel_name.chip_label + "_pixel_clusters_" +
                              pixel_name.part_index + ".parquet"))
                 .string();
         summary_path =
-            (logs_dir / (pixel_name.raw_file_stem +
+            (logs_dir / (pixel_name.raw_file_stem + "_chip_" +
+                         pixel_name.chip_label +
                          "_photon_reconstruction_summary.json"))
                 .string();
     }
@@ -317,6 +325,15 @@ int main(const int argc, char* argv[]) {
     hermes_photon_clusterer::PhotonFileMetadata metadata;
     metadata.raw_file_stem =
         pixel_name.matched ? pixel_name.raw_file_stem : input_stem;
+    if (pixel_name.matched) {
+        try {
+            metadata.chip_index = std::stoi(pixel_name.chip_label);
+        } catch (...) {
+            std::cerr << "Error: chip label is not a valid integer: "
+                      << pixel_name.chip_label << "\n";
+            return 2;
+        }
+    }
     metadata.canonical_tick_seconds = kCanonicalTickSeconds;
     metadata.clustering_algorithm = "connected_components";
     metadata.clustering_settings_json = settingsToJson(settings).dump();

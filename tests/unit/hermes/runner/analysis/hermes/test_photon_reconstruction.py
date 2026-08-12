@@ -137,6 +137,35 @@ def test_photon_parquet_without_summary_is_not_complete(tmp_path: Path) -> None:
     assert not check_previous_reconstructed_file(analysis_root, input_file)
 
 
+def test_output_paths_keep_pixel_file_chip_number(tmp_path: Path) -> None:
+    analysis_root = tmp_path / "analysis"
+    chip0 = FileReference(
+        path=analysis_root / "pixel_hits" / "run_000000_chip_0_pixels_00000.parquet"
+    )
+    chip1 = FileReference(
+        path=analysis_root / "pixel_hits" / "run_000000_chip_1_pixels_00000.parquet"
+    )
+
+    assert derive_output_path(analysis_root, chip0) == (
+        analysis_root / "photons" / "run_000000_chip_0_photon_00000.parquet"
+    )
+    assert derive_output_path(analysis_root, chip1) == (
+        analysis_root / "photons" / "run_000000_chip_1_photon_00000.parquet"
+    )
+    assert derive_summary_path(analysis_root, chip0) == (
+        analysis_root
+        / "logs"
+        / "photon_reconstruction"
+        / "run_000000_chip_0_photon_reconstruction_summary.json"
+    )
+    assert derive_summary_path(analysis_root, chip1) == (
+        analysis_root
+        / "logs"
+        / "photon_reconstruction"
+        / "run_000000_chip_1_photon_reconstruction_summary.json"
+    )
+
+
 # ---- validate_program_and_algorithm -------------------------------------
 
 

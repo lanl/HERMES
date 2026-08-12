@@ -71,14 +71,14 @@ def resolve_pixel_files(
     ]
 
 
-def _parse_pixel_file_name(input_file: FileReference) -> tuple[str, str]:
-    """Return the raw filename stem and part index of a pixel Parquet file.
+def _parse_pixel_file_name(input_file: FileReference) -> tuple[str, str, str]:
+    """Return the raw filename stem, chip label, and part index.
 
     The unpacker names pixel files
     ``<raw-file-stem>_chip_<chip>_pixels_<part>.parquet``. Reconstruction reuses
-    the raw stem and part index when naming its own photon, pixel-cluster, and
-    summary files, so every output for one raw file shares a stem. This mirrors
-    the binary's own filename parsing.
+    the raw stem, chip label, and part index when naming its own photon,
+    pixel-cluster, and summary files, so quad-chip runs keep separate outputs.
+    This mirrors the binary's own filename parsing.
     """
     stem = input_file.path.stem
     chip_position = stem.find("_chip_")
@@ -93,13 +93,14 @@ def _parse_pixel_file_name(input_file: FileReference) -> tuple[str, str]:
             f"<stem>_chip_<chip>_pixels_<part>.parquet: {input_file.path}"
         )
     raw_file_stem = stem[:chip_position]
+    chip_label = stem[chip_position + len("_chip_") : pixels_position]
     part_index = stem[pixels_position + len("_pixels_") :]
-    if not raw_file_stem or not part_index:
+    if not raw_file_stem or not chip_label or not part_index:
         raise HermesPhotonReconstructionPreflightError(
             f"pixel filename does not match "
             f"<stem>_chip_<chip>_pixels_<part>.parquet: {input_file.path}"
         )
-    return raw_file_stem, part_index
+    return raw_file_stem, chip_label, part_index
 
 
 def derive_output_path(
@@ -109,10 +110,14 @@ def derive_output_path(
     """Return the photon file path the binary writes for one pixel file.
 
     Photon files go in a ``photons`` directory under the analysis directory,
-    named ``<raw-file-stem>_photon_<part>.parquet``.
+    named ``<raw-file-stem>_chip_<chip>_photon_<part>.parquet``.
     """
-    raw_file_stem, part_index = _parse_pixel_file_name(input_file)
-    return analysis_root / "photons" / f"{raw_file_stem}_photon_{part_index}.parquet"
+    raw_file_stem, chip_label, part_index = _parse_pixel_file_name(input_file)
+    return (
+        analysis_root
+        / "photons"
+        / f"{raw_file_stem}_chip_{chip_label}_photon_{part_index}.parquet"
+    )
 
 
 def check_previous_reconstructed_file(
@@ -137,14 +142,14 @@ def derive_summary_path(
     The binary writes one summary per raw filename stem to a
     ``logs/photon_reconstruction`` directory under the analysis directory (the
     unpacker writes to ``logs/unpacking``), named
-    ``<raw-file-stem>_photon_reconstruction_summary.json``.
+    ``<raw-file-stem>_chip_<chip>_photon_reconstruction_summary.json``.
     """
-    raw_file_stem, _ = _parse_pixel_file_name(input_file)
+    raw_file_stem, chip_label, _ = _parse_pixel_file_name(input_file)
     return (
         analysis_root
         / "logs"
         / "photon_reconstruction"
-        / f"{raw_file_stem}_photon_reconstruction_summary.json"
+        / f"{raw_file_stem}_chip_{chip_label}_photon_reconstruction_summary.json"
     )
 
 
