@@ -307,6 +307,34 @@ void testAssignEpochsToPixels(TestContext& test) {
                      "chip 1 pixel unchanged");
 }
 
+void testAssignEpochsToPixelsUsesChipSpecificAnchors(TestContext& test) {
+    std::vector<PixelHit> pixels;
+
+    PixelHit chip1_pixel;
+    chip1_pixel.position.chip_index = 1;
+    chip1_pixel.coarse_time_25ns = 0;
+    pixels.push_back(chip1_pixel);
+
+    ChipAnchorIndex chip0_index;
+    GlobalAnchor chip0_anchor;
+    chip0_anchor.global_time_48bit = 0;
+    chip0_index.anchors.push_back(chip0_anchor);
+
+    ChipAnchorIndex chip1_index;
+    GlobalAnchor chip1_anchor;
+    chip1_anchor.global_time_48bit = PIXEL_COUNTER_MODULUS / 16U;
+    chip1_index.anchors.push_back(chip1_anchor);
+
+    EpochAssignmentDiagnostics diagnostics;
+    assignEpochsToPixels(pixels, chip0_index, 0, diagnostics);
+    test.expectEqual(pixels[0].coarse_time_25ns, std::uint64_t{0},
+                     "chip 0 pass leaves chip 1 pixel unchanged");
+
+    assignEpochsToPixels(pixels, chip1_index, 1, diagnostics);
+    test.expectEqual(pixels[0].coarse_time_25ns, PIXEL_COUNTER_MODULUS,
+                     "chip 1 pixel uses chip 1 anchor");
+}
+
 void testAssignEpochsToTdcs(TestContext& test) {
     std::vector<TdcHit> tdcs;
 
@@ -495,6 +523,7 @@ int main() {
     testFindBestEpochSingleAnchor(test);
     testFindBestEpochMultipleEpochs(test);
     testAssignEpochsToPixels(test);
+    testAssignEpochsToPixelsUsesChipSpecificAnchors(test);
     testAssignEpochsToTdcs(test);
     testAssignEpochsToControls(test);
     testMemoryEstimation(test);
