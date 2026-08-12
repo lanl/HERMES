@@ -131,6 +131,7 @@ void testControlTimestampCalculation(TestContext& test) {
 
 void testPixelOutputRowConversion(TestContext& test) {
     PixelHit pixel;
+    pixel.position.chip_index = 2;
     pixel.position.chunk_index = 10;
     pixel.position.packet_index = 20;
     pixel.local_x = 100;
@@ -147,6 +148,7 @@ void testPixelOutputRowConversion(TestContext& test) {
     test.expectEqual(row->tot_raw, std::uint16_t{50}, "pixel tot_raw");
     test.expectEqual(row->timestamp_canonical, 1000ULL * 768U,
                      "pixel timestamp_canonical");
+    test.expectEqual(row->chip_index, std::uint8_t{2}, "pixel chip_index");
 }
 
 void testTdcOutputRowConversion(TestContext& test) {
