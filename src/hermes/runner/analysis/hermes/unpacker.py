@@ -351,7 +351,7 @@ def _validate_completed_files(
     )
     for expected_directory, category, has_chip_id in categories:
         observed_rows = 0
-        parts_by_group: dict[object, list[int]] = {}
+        parts_by_group: dict[int | str, list[int]] = {}
         if has_chip_id:
             filename_pattern = filename_pattern_with_chip
         elif expected_directory == "tdc_triggers":
