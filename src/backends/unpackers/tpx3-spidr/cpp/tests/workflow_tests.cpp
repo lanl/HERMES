@@ -37,6 +37,39 @@ std::string makePixelInput() {
     return bytes;
 }
 
+std::uint64_t makePixelPacket(const std::uint16_t pixel_address,
+                              const std::uint16_t toa,
+                              const std::uint16_t tot,
+                              const std::uint8_t ftoa,
+                              const std::uint16_t spidr_time) {
+    return 0xB000000000000000ULL |
+           (static_cast<std::uint64_t>(pixel_address) << 44U) |
+           (static_cast<std::uint64_t>(toa) << 30U) |
+           (static_cast<std::uint64_t>(tot) << 20U) |
+           (static_cast<std::uint64_t>(ftoa) << 16U) |
+           spidr_time;
+}
+
+std::string makeTwoChipPixelInput() {
+    std::string bytes;
+    appendLittleEndianWord(bytes, makeChunkHeader(0, 0, 8));
+    appendLittleEndianWord(bytes, makePixelPacket(0x0100, 0x0020, 0x0005, 0, 0));
+    appendLittleEndianWord(bytes, makeChunkHeader(1, 0, 8));
+    appendLittleEndianWord(bytes, makePixelPacket(0x0200, 0x0030, 0x0006, 0, 0));
+    return bytes;
+}
+
+// Edge codes: 0x0F TDC1 rising, 0x0A TDC1 falling, 0x0E TDC2 rising,
+// 0x0B TDC2 falling. Fine values are valid in the range 1..12.
+std::uint64_t makeTdcPacket(const std::uint8_t edge_code,
+                            const std::uint64_t timestamp_raw,
+                            const std::uint8_t fine_raw) {
+    return (0x6ULL << 60U) |
+           (static_cast<std::uint64_t>(edge_code) << 56U) |
+           ((timestamp_raw & 0x7FFFFFFFFULL) << 9U) |
+           ((static_cast<std::uint64_t>(fine_raw) & 0x0FULL) << 5U);
+}
+
 nlohmann::json readJson(const std::filesystem::path& path) {
     std::ifstream input(path);
     nlohmann::json content;
@@ -132,6 +165,54 @@ void testSharedDirectoriesForTwoInputs(TestContext& test) {
              "pixel_hits/DT_2p0V_000000_chip_0_pixels_00000.parquet")
                 .string(),
             "summary records input-prefixed Parquet filename");
+    }
+
+    std::filesystem::remove_all(analysis_directory);
+}
+
+void testMultiChipPixelsWriteSeparateFiles(TestContext& test) {
+    const auto analysis_directory = makeTestDirectory("multi-chip");
+    const auto bytes = makeTwoChipPixelInput();
+
+    std::istringstream input(bytes);
+    const auto result = runTwoPassWorkflow(
+        input, "/tmp/multi_chip.tpx3", analysis_directory.string(),
+        "test-measurement", "test-run");
+
+    printWorkflowErrors(result, "multi-chip run");
+
+    const auto chip0_parquet = analysis_directory /
+        "pixel_hits/multi_chip_chip_0_pixels_00000.parquet";
+    const auto chip1_parquet = analysis_directory /
+        "pixel_hits/multi_chip_chip_1_pixels_00000.parquet";
+    const auto chip0_name = chip0_parquet.string();
+    const auto chip1_name = chip1_parquet.string();
+    const auto summary_path = analysis_directory /
+        "logs/unpacking/multi_chip_unpacker_summary.json";
+
+    test.expect(result.success, "multi-chip input wrote analysis files");
+    test.expect(std::filesystem::exists(chip0_parquet),
+                "chip 0 pixel Parquet file exists");
+    test.expect(std::filesystem::exists(chip1_parquet),
+                "chip 1 pixel Parquet file exists");
+    test.expectEqual(result.summary.writer_diagnostics.pixel_hits.row_count,
+                     std::uint64_t{2}, "summary records both pixel rows");
+    test.expectEqual(result.summary.writer_diagnostics.pixel_hits.files.size(),
+                     std::size_t{2}, "summary records both pixel files");
+
+    if (std::filesystem::exists(summary_path)) {
+        const auto parsed = readJson(summary_path);
+        const auto& files = parsed["output_parquet"]["pixel_data"]["files"];
+        test.expectEqual(
+            parsed["output_parquet"]["pixel_data"]["row_count"]
+                .get<std::uint64_t>(),
+            std::uint64_t{2}, "summary JSON records both pixel rows");
+        test.expect(files[0].get<std::string>() == chip0_name ||
+                    files[1].get<std::string>() == chip0_name,
+                    "summary JSON records chip 0 pixel file");
+        test.expect(files[0].get<std::string>() == chip1_name ||
+                    files[1].get<std::string>() == chip1_name,
+                    "summary JSON records chip 1 pixel file");
     }
 
     std::filesystem::remove_all(analysis_directory);
@@ -396,16 +477,99 @@ void testTimeSortDisabledStillWritesRows(TestContext& test) {
     std::filesystem::remove_all(analysis_directory);
 }
 
+void testDuplicateTdcTriggersAreCollapsed(TestContext& test) {
+    const auto analysis_directory = makeTestDirectory("tdc-dedup");
+    std::string bytes;
+    // The same TDC1-rising trigger appears in the chip 0 and chip 1 streams.
+    appendLittleEndianWord(bytes, makeChunkHeader(0, 0, 8));
+    appendLittleEndianWord(bytes, makeTdcPacket(0x0F, 0x1000, 1));
+    appendLittleEndianWord(bytes, makeChunkHeader(1, 0, 8));
+    appendLittleEndianWord(bytes, makeTdcPacket(0x0F, 0x1000, 1));
+
+    std::istringstream input(bytes);
+    const auto result = runTwoPassWorkflow(
+        input, "/tmp/tdc_dedup.tpx3", analysis_directory.string(),
+        "test-measurement", "test-run");
+
+    printWorkflowErrors(result, "tdc-dedup run");
+    test.expect(result.success, "duplicate-TDC input wrote analysis files");
+    test.expectEqual(result.summary.writer_diagnostics.tdc_triggers.row_count,
+                     std::uint64_t{1},
+                     "per-chip TDC copies collapse to one row");
+    test.expectEqual(result.summary.unpack_summary.tdc1_rising_count,
+                     std::uint64_t{1},
+                     "summary reports one unique TDC1 rising trigger");
+    test.expectEqual(result.summary.unpack_summary.tdc_timestamp_count,
+                     std::uint64_t{1},
+                     "summary reports one unique TDC trigger total");
+    test.expect(std::filesystem::exists(
+                    analysis_directory /
+                    "tdc_triggers/tdc_dedup_tdc1_rising_triggers_00000.parquet"),
+                "TDC1 rising file written");
+
+    std::filesystem::remove_all(analysis_directory);
+}
+
+void testTdcTriggersSplitByType(TestContext& test) {
+    const auto analysis_directory = makeTestDirectory("tdc-split");
+    std::string bytes;
+    // One TDC1-rising and one TDC2-rising trigger, no falling edges.
+    appendLittleEndianWord(bytes, makeChunkHeader(0, 0, 16));
+    appendLittleEndianWord(bytes, makeTdcPacket(0x0F, 0x1000, 1));
+    appendLittleEndianWord(bytes, makeTdcPacket(0x0E, 0x2000, 1));
+
+    std::istringstream input(bytes);
+    const auto result = runTwoPassWorkflow(
+        input, "/tmp/tdc_split.tpx3", analysis_directory.string(),
+        "test-measurement", "test-run");
+
+    printWorkflowErrors(result, "tdc-split run");
+    test.expect(result.success, "split-TDC input wrote analysis files");
+
+    const auto tdc1_rising = analysis_directory /
+        "tdc_triggers/tdc_split_tdc1_rising_triggers_00000.parquet";
+    const auto tdc2_rising = analysis_directory /
+        "tdc_triggers/tdc_split_tdc2_rising_triggers_00000.parquet";
+    const auto tdc1_falling = analysis_directory /
+        "tdc_triggers/tdc_split_tdc1_falling_triggers_00000.parquet";
+    const auto tdc2_falling = analysis_directory /
+        "tdc_triggers/tdc_split_tdc2_falling_triggers_00000.parquet";
+
+    test.expect(std::filesystem::exists(tdc1_rising),
+                "TDC1 rising file written");
+    test.expect(std::filesystem::exists(tdc2_rising),
+                "TDC2 rising file written");
+    test.expect(!std::filesystem::exists(tdc1_falling),
+                "no TDC1 falling file for an absent edge");
+    test.expect(!std::filesystem::exists(tdc2_falling),
+                "no TDC2 falling file for an absent edge");
+    test.expectEqual(result.summary.writer_diagnostics.tdc_triggers.files.size(),
+                     std::size_t{2}, "two TDC files recorded");
+    test.expectEqual(result.summary.writer_diagnostics.tdc_triggers.row_count,
+                     std::uint64_t{2}, "two TDC rows recorded");
+    test.expectEqual(result.summary.unpack_summary.tdc1_rising_count,
+                     std::uint64_t{1}, "one TDC1 rising counted");
+    test.expectEqual(result.summary.unpack_summary.tdc2_rising_count,
+                     std::uint64_t{1}, "one TDC2 rising counted");
+    test.expectEqual(result.summary.unpack_summary.tdc1_falling_count,
+                     std::uint64_t{0}, "no TDC1 falling counted");
+
+    std::filesystem::remove_all(analysis_directory);
+}
+
 }  // namespace
 
 int main() {
     TestContext test;
     testWorkflowWithEmptyInput(test);
     testSharedDirectoriesForTwoInputs(test);
+    testMultiChipPixelsWriteSeparateFiles(test);
     testExistingFilesAreNotOverwritten(test);
     testSummaryJsonGeneration(test);
     testSummaryJsonStructure(test);
     testWorkflowErrorHandling(test);
     testTimeSortDisabledStillWritesRows(test);
+    testDuplicateTdcTriggersAreCollapsed(test);
+    testTdcTriggersSplitByType(test);
     return test.finish();
 }
