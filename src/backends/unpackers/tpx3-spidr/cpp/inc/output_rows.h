@@ -15,6 +15,7 @@ struct PixelOutputRow {
     std::uint16_t local_y = 0;
     std::uint16_t tot_raw = 0;
     std::uint64_t timestamp_canonical = 0;
+    std::uint8_t chip_index = 0;
 };
 
 struct TdcOutputRow {
