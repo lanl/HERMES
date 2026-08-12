@@ -326,7 +326,13 @@ int main(const int argc, char* argv[]) {
     metadata.raw_file_stem =
         pixel_name.matched ? pixel_name.raw_file_stem : input_stem;
     if (pixel_name.matched) {
-        metadata.chip_index = std::stoi(pixel_name.chip_label);
+        try {
+            metadata.chip_index = std::stoi(pixel_name.chip_label);
+        } catch (...) {
+            std::cerr << "Error: chip label is not a valid integer: "
+                      << pixel_name.chip_label << "\n";
+            return 2;
+        }
     }
     metadata.canonical_tick_seconds = kCanonicalTickSeconds;
     metadata.clustering_algorithm = "connected_components";
