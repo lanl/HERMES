@@ -19,7 +19,6 @@ std::shared_ptr<arrow::Schema> createTdcTriggersSchema() {
     return arrow::schema({
         arrow::field("chunk_index", arrow::uint64()),
         arrow::field("packet_index", arrow::uint64()),
-        arrow::field("trigger_type", arrow::uint8()),
         arrow::field("timestamp_canonical", arrow::uint64())
     });
 }
