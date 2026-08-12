@@ -127,26 +127,38 @@ For example, the first pixel-data part for chip 0 from `DT_2p0V_000000.tpx3` is:
 analysis/pixel_hits/DT_2p0V_000000_chip_0_pixels_00000.parquet
 ```
 
-The other categories are not associated with a chip, so their label is just the
-category name:
+The other categories are not associated with a chip. Global timestamps, control
+packets, and unrecognized packets use the category name as their label:
 
 | Directory | Data label |
 | --- | --- |
-| `tdc_triggers/` | `tdc_triggers` |
 | `global_timestamps/` | `global_timestamps` |
 | `control_packets/` | `control_packets` |
 | `unknownPackets/` | `unrecognized_packets` |
 
-For example, the first TDC-timestamps part from `DT_2p0V_000000.tpx3` is:
+TDC triggers are split by channel and edge (see below), so the `tdc_triggers/`
+directory uses one of four labels instead of a single category name:
+
+| Directory | Data label | Written when |
+| --- | --- | --- |
+| `tdc_triggers/` | `tdc1_rising_triggers` | any TDC1 rising trigger occurs |
+| `tdc_triggers/` | `tdc1_falling_triggers` | any TDC1 falling trigger occurs |
+| `tdc_triggers/` | `tdc2_rising_triggers` | any TDC2 rising trigger occurs |
+| `tdc_triggers/` | `tdc2_falling_triggers` | any TDC2 falling trigger occurs |
+
+Each label produces a file only when at least one trigger of that channel and
+edge occurs; a channel or edge that never fires produces no file. For example, a
+raw file with only TDC1 rising triggers writes just one TDC file:
 
 ```text
-analysis/tdc_triggers/DT_2p0V_000000_tdc_triggers_00000.parquet
+analysis/tdc_triggers/DT_2p0V_000000_tdc1_rising_triggers_00000.parquet
 ```
 
-Part numbers start at zero independently for each raw file, data category, and
-(for pixel data) chip. The descriptive label makes each file readable on its
-own; when a chip index is present it should not be repeated in the rows. When a
-schema includes `packet_index`, it is the packet index within its chunk.
+Part numbers start at zero independently for each raw file, data category,
+(for pixel data) chip, and (for TDC triggers) channel and edge. The descriptive
+label makes each file readable on its own; when a chip index is present it should
+not be repeated in the rows. When a schema includes `packet_index`, it is the
+packet index within its chunk.
 
 Raw TPX3 filename stems must be unique within one measurement. The HERMES
 runner must reject duplicate stems before launching any unpacker so one input
@@ -165,11 +177,18 @@ known timestamped dataset should contain only `timestamp_canonical` for time.
 The Parquet metadata and summary JSON file should define the canonical unit.
 
 Pixel ToT should remain in the pixel table because it is a detector measurement,
-not an arrival-timestamp component. The TDC table should contain only
-`trigger_type` and `timestamp_canonical`. `trigger_type` uses `0` for TDC1
-rising, `1` for TDC1 falling, `2` for TDC2 rising, and `3` for TDC2 falling.
-Invalid-time TDC packets should be counted as unpacking errors and omitted from
-Parquet.
+not an arrival-timestamp component. TDC triggers are written to separate files
+by channel and edge, so the channel (TDC1 or TDC2) and edge (rising or falling)
+are carried by the filename rather than a column; each TDC table contains only
+`chunk_index`, `packet_index`, and `timestamp_canonical`. Invalid-time TDC
+packets should be counted as unpacking errors and omitted from Parquet.
+
+On a multi-chip sensor the SPIDR board copies each external TDC trigger into
+every chip's data stream, so one physical trigger is decoded once per chip. The
+unpacker removes these duplicates before writing Parquet, keeping one row per
+physical trigger (identified by its channel, edge, and canonical timestamp). The
+raw per-packet decode counts still include every copy, but the TDC trigger
+counts and Parquet rows report the de-duplicated triggers.
 
 ## Parquet Schemas
 
@@ -196,13 +215,15 @@ unpacked pixel location.
 
 | Column | Arrow type | Nullable | Description |
 | --- | --- | --- | --- |
-| `trigger_type` | `uint8` | no | `0` TDC1 rising, `1` TDC1 falling, `2` TDC2 rising, `3` TDC2 falling |
+| `chunk_index` | `uint64` | no | Chunk index in the input file |
+| `packet_index` | `uint64` | no | Packet index within the chunk |
 | `timestamp_canonical` | `uint64` | no | Unwrapped final timestamp |
 
-The normalized trigger type replaces separate channel and edge columns. Raw
-edge code, trigger counter, reserved bits, fine-time validity, and packet
-provenance remain unpacker diagnostics and are not written. A TDC packet with an
-invalid fine-time value does not produce a Parquet row.
+The channel and edge are encoded in the filename (see Parquet Filenames), so
+they are not written as a column. Raw edge code, trigger counter, reserved bits,
+fine-time validity, and packet provenance remain unpacker diagnostics and are
+not written. A TDC packet with an invalid fine-time value does not produce a
+Parquet row.
 
 ### `heartbeat_packets`
 
@@ -403,11 +424,13 @@ them. `canonical_time_seconds` records the duration of one canonical tick:
 `25 ns / 12288`, or about `2.0345 ps`. Throughput uses the total processing
 time, with megabytes calculated as `1,000,000` bytes.
 
-The TDC edge counts show how the unpacked timestamps divide between TDC1 and
-TDC2 rising and falling edges. `heartbeat_pairs.number_of_beats` reports the
-paired heartbeat timestamps used for time adjustment. The `time_adjustments`
-counts show how many pixel, TDC, and control packets received adjusted times
-and how many adjustments failed. `sorting.strategy` is either `in_memory` or
-`external_merge`.
+The TDC edge counts show how the de-duplicated triggers divide between TDC1 and
+TDC2 rising and falling edges; they sum to `tdc_timestamps` and match the TDC
+Parquet row counts. `heartbeat_pairs.number_of_beats` reports the paired
+heartbeat timestamps used for time adjustment. The `time_adjustments` counts
+show how many pixel, TDC, and control packets received adjusted times and how
+many adjustments failed; the TDC count includes every decoded packet, including
+the per-chip duplicates removed before writing. `sorting.strategy` is either
+`in_memory` or `external_merge`.
 
 Write the summary only after every final Parquet file closes successfully.
