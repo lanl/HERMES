@@ -37,6 +37,7 @@ void writePixelHitsParquet(const std::vector<PixelOutputRow>& rows,
                            ParquetWriterDiagnostics& diagnostics);
 
 void writeTdcTriggersParquet(const std::vector<TdcOutputRow>& rows,
+                             const std::string& data_label,
                              const ParquetWriterConfig& config,
                              ParquetWriterDiagnostics& diagnostics);
 
