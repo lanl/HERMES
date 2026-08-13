@@ -5,9 +5,12 @@ data/01-unpacking/1kHz-testing/
 │   ├── global_timestamps/
 │   │   └── Example_1kHz_5frames_global_timestamps_00000.parquet
 │   ├── pixel_hits/
-│   │   └── Example_1kHz_5frames_chip_0_pixels_00000.parquet
+│   │   ├── Example_1kHz_5frames_chip_0_pixels_00000.parquet
+│   │   ├── Example_1kHz_5frames_chip_1_pixels_00000.parquet
+│   │   └── Example_1kHz_5frames_chip_2_pixels_00000.parquet
 │   ├── tdc_triggers/
-│   │   └── Example_1kHz_5frames_tdc_triggers_00000.parquet
+│   │   ├── Example_1kHz_5frames_tdc1_rising_triggers_00000.parquet
+│   │   └── Example_1kHz_5frames_tdc1_falling_triggers_00000.parquet
 │   └── logs/
 │       └── unpacking/
 │           └── Example_1kHz_5frames_unpacker_summary.json
