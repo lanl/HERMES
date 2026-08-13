@@ -279,12 +279,11 @@ Parquet columns:
 | Pixel `FToA` | 4-bit | `-1.5625 ns` correction | Fine ToA correction. SERVAL treats this as negative fine time. |
 | Pixel coarse timestamp | `(spidr_time << 14) | ToA` | `25 ns` ticks | 30-bit coarse pixel time, maximum about `26.84 s`. |
 | Pixel fine timestamp | derived from `spidr_time`, `ToA`, and `FToA` | `1.5625 ns` derived ticks | A common ASI formula is `(((spidr_time << 14) + ToA) << 4) - FToA`. |
-| TDC coarse time | packet timestamp field | `25 ns` ticks | Used with finer TDC fields to derive edge time. |
-| TDC sub-coarse time | packet timestamp field | `3.125 ns` ticks | Part of the TDC timestamp. |
-| TDC fine time | 4-bit, values `1..12` | `260.416666 ps` steps | Value `0` is an error state per ASI documentation. |
+| TDC timestamp | 35-bit (bits 43-9) | `3.125 ns` ticks | Single edge-time counter, where `3.125 ns = 25 ns / 8`. Wraps after `2^35 * 3.125 ns`, about `107.37 s`. |
+| TDC fine time | 4-bit, values `1..12` | `25 ns / 96` steps, about `260.417 ps` | Twelve steps fill one `3.125 ns` counter tick. Value `0` is an error state per ASI documentation. |
 | Heartbeat timestamp low | 32-bit | `25 ns` ticks | Low part of the 48-bit global timer. |
-| Heartbeat timestamp high | 16-bit | high bits of same `25 ns` timer | Combined global timer lasts about `81 days`. |
-| SPIDR control timestamp | packet type `0x5` | `25 ns` ticks | Used for shutter and heartbeat-style control packets. |
+| Heartbeat timestamp high | 16-bit | high bits of same `25 ns` timer | Combined 48-bit global timer wraps after about `81 days`. |
+| SPIDR control timestamp | 34-bit (bits 45-12) | `25 ns` ticks | Used for shutter and heartbeat-style control packets. Wraps after `2^34 * 25 ns`, about `429.5 s`. This low-rate control heartbeat is separate from the 48-bit master timer above. |
 
 The unpacker should produce a final integer `timestamp_canonical` column when
 enough information is available to place a row on its category's time axis.
@@ -298,6 +297,41 @@ This unit can exactly represent `25 ns`, `3.125 ns`, `1.5625 ns`, `25 ns / 4096`
 and the TDC fine step of `25 ns / 96`. The unpacker should not write derived
 floating-point time columns. Later analysis code may calculate floating-point
 seconds or nanoseconds when needed.
+
+## How the clocks synchronize
+
+The four counters above do not each restart at the top of a file, and they are
+not all the same width. They are all driven from one `25 ns` time base inside
+the SPIDR board:
+
+- The 48-bit heartbeat timer is the master clock. It starts when the run begins
+  and runs continuously until the run ends; the board does not reset it between
+  files. Because it is 48 bits wide it does not wrap within a realistic run
+  (about `81 days`). Every other time is placed against it.
+- The pixel coarse counter (30-bit, about `26.84 s`), the TDC counter (35-bit,
+  about `107.37 s`), and the SPIDR control counter (34-bit, about `429.5 s`)
+  share the same `25 ns` base but are far narrower than a run, so each one wraps
+  back to zero many times. Their low bits already match the master clock; only
+  the number of wraps is missing.
+
+The unpacker recovers the missing wrap count by comparing each short counter to
+the heartbeat clock on the same chip. It adds whole counter periods until the
+counter's time in canonical ticks sits as close as possible to the heartbeat's
+time in canonical ticks; the number of periods added is the wrap count for that
+row. Wraps are counted separately for each chip and each packet category,
+because the counters differ in width and each chip carries its own heartbeat.
+
+Once every row carries its wrap count, all four streams share one absolute time
+axis measured in canonical ticks from the start of the run. Times from
+different streams can then be subtracted directly. A neutron time of flight, for
+example, is a pixel or event time minus the most recent TDC time, both already
+on this shared axis.
+
+Because the axis is measured from the start of the run and not the start of a
+file, absolute timestamps grow with elapsed run time. A file holding the Nth
+fixed-length frame of a run begins near N times the frame length; for a run with
+`2 s` frames the hundredth file begins near `200 s`. This is expected and does
+not indicate a clock error.
 
 Pixel-data, TDC-timestamp, heartbeat, and timestamped control rows should be
 calculated in canonical time units. Heartbeat low and high packets should be
