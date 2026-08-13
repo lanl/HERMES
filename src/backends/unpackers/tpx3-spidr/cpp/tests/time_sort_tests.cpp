@@ -218,7 +218,8 @@ void testFindBestEpochNoAnchors(TestContext& test) {
     EpochAssignmentDiagnostics diagnostics;
 
     const auto epoch = findBestEpoch(0x10000000, PIXEL_COUNTER_MODULUS,
-                                     empty_index, 0, diagnostics);
+                                     CANONICAL_TICKS_PER_25NS, empty_index, 0,
+                                     diagnostics);
 
     test.expectEqual(epoch, std::uint64_t{0}, "no anchors returns epoch 0");
     test.expect(diagnostics.used_fallback, "fallback flag set");
@@ -226,49 +227,46 @@ void testFindBestEpochNoAnchors(TestContext& test) {
                      "unresolved count incremented");
 }
 
-void testFindBestEpochSingleAnchor(TestContext& test) {
+void testFindBestEpochPixelScale(TestContext& test) {
+    // Pixel coarse time and the global anchor both count 25 ns units, so they
+    // scale to canonical ticks by the same factor. An anchor three pixel
+    // rollovers past zero must pull a raw pixel time of 0 up to epoch 3.
     ChipAnchorIndex index;
     GlobalAnchor anchor;
-    anchor.global_time_48bit = 0x100000000000;
-    anchor.source_packet_order = 100;
+    anchor.global_time_48bit = 3ULL * PIXEL_COUNTER_MODULUS;
     index.anchors.push_back(anchor);
 
     EpochAssignmentDiagnostics diagnostics;
 
-    const auto raw = 0x10000000;
-    const auto epoch = findBestEpoch(raw, PIXEL_COUNTER_MODULUS,
-                                     index, 50, diagnostics);
+    const auto epoch = findBestEpoch(0, PIXEL_COUNTER_MODULUS,
+                                     CANONICAL_TICKS_PER_25NS, index, 0,
+                                     diagnostics);
 
-    test.expect(epoch >= 0, "returns valid epoch");
+    test.expectEqual(epoch, std::uint64_t{3},
+                     "pixel raw 0 unwraps to the 3rd rollover");
     test.expect(!diagnostics.used_fallback, "no fallback with anchors");
 }
 
-void testFindBestEpochMultipleEpochs(TestContext& test) {
+void testFindBestEpochTdcScale(TestContext& test) {
+    // TDC raw counts 3.125 ns units while the global anchor counts 25 ns units,
+    // so one TDC rollover (2^35 raw) equals 2^32 global units. An anchor three
+    // TDC rollovers past zero (global time 3 * 2^32) must pull a raw TDC time of
+    // 0 up to epoch 3. With the wrong scale factor the search lands elsewhere,
+    // so this pins the TDC-to-canonical conversion.
     ChipAnchorIndex index;
-
     GlobalAnchor anchor;
-    anchor.global_time_48bit = 0x100000000;
-    anchor.source_packet_order = 500;
+    anchor.global_time_48bit = 3ULL * (1ULL << 32U);
     index.anchors.push_back(anchor);
 
     EpochAssignmentDiagnostics diagnostics;
 
-    const auto raw_small = 0x01000000;
-    const auto epoch_small = findBestEpoch(raw_small, PIXEL_COUNTER_MODULUS,
-                                           index, 100, diagnostics);
+    const auto epoch = findBestEpoch(0, TDC_COUNTER_MODULUS,
+                                     CANONICAL_TICKS_PER_TDC_RAW, index, 0,
+                                     diagnostics);
 
-    const auto raw_large = 0x3F000000;
-    const auto epoch_large = findBestEpoch(raw_large, PIXEL_COUNTER_MODULUS,
-                                           index, 200, diagnostics);
-
-    test.expect(epoch_small >= 0 && epoch_large >= 0,
-                "both epochs are valid");
-
-    const auto unwrapped_small = raw_small + epoch_small * PIXEL_COUNTER_MODULUS;
-    const auto unwrapped_large = raw_large + epoch_large * PIXEL_COUNTER_MODULUS;
-
-    test.expect(unwrapped_small > 0 && unwrapped_large > 0,
-                "unwrapped values are positive");
+    test.expectEqual(epoch, std::uint64_t{3},
+                     "TDC raw 0 unwraps to the 3rd TDC rollover");
+    test.expect(!diagnostics.used_fallback, "no fallback with anchors");
 }
 
 void testAssignEpochsToPixels(TestContext& test) {
@@ -322,7 +320,7 @@ void testAssignEpochsToPixelsUsesChipSpecificAnchors(TestContext& test) {
 
     ChipAnchorIndex chip1_index;
     GlobalAnchor chip1_anchor;
-    chip1_anchor.global_time_48bit = PIXEL_COUNTER_MODULUS / 16U;
+    chip1_anchor.global_time_48bit = PIXEL_COUNTER_MODULUS;
     chip1_index.anchors.push_back(chip1_anchor);
 
     EpochAssignmentDiagnostics diagnostics;
@@ -358,10 +356,10 @@ void testAssignEpochsToTdcs(TestContext& test) {
 
     test.expectEqual(diagnostics.tdcs_assigned, std::uint64_t{2},
                      "assigned 2 TDCs");
-    test.expect(tdcs[0].tdc_timestamp_raw >= 0x100000000,
-                "TDC 1 timestamp unwrapped");
-    test.expect(tdcs[1].tdc_timestamp_raw >= 0x200000000,
-                "TDC 2 timestamp unwrapped");
+    test.expectEqual(tdcs[0].tdc_timestamp_raw, std::uint64_t{0x900000000},
+                     "TDC 1 unwrapped to nearest rollover");
+    test.expectEqual(tdcs[1].tdc_timestamp_raw, std::uint64_t{0xA00000000},
+                     "TDC 2 unwrapped to nearest rollover");
 }
 
 void testAssignEpochsToControls(TestContext& test) {
@@ -389,8 +387,8 @@ void testAssignEpochsToControls(TestContext& test) {
 
     test.expectEqual(diagnostics.controls_assigned, std::uint64_t{1},
                      "assigned 1 control (packet_count skipped)");
-    test.expect(controls[0].timestamp_raw >= 0x100000000,
-                "control 1 timestamp unwrapped");
+    test.expectEqual(controls[0].timestamp_raw, std::uint64_t{0x100000000},
+                     "control 1 already aligned with anchor (epoch 0)");
     test.expectEqual(controls[1].timestamp_raw, std::uint64_t{0x200000000},
                      "packet_count control unchanged");
 }
@@ -520,8 +518,8 @@ int main() {
     testSortByTimestampAndOrder(test);
     testCounterModuli(test);
     testFindBestEpochNoAnchors(test);
-    testFindBestEpochSingleAnchor(test);
-    testFindBestEpochMultipleEpochs(test);
+    testFindBestEpochPixelScale(test);
+    testFindBestEpochTdcScale(test);
     testAssignEpochsToPixels(test);
     testAssignEpochsToPixelsUsesChipSpecificAnchors(test);
     testAssignEpochsToTdcs(test);
