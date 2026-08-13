@@ -16,6 +16,12 @@ constexpr std::uint64_t TDC_COUNTER_MODULUS = 1ULL << 35U;
 constexpr std::uint64_t GLOBAL_COUNTER_MODULUS = 1ULL << 48U;
 constexpr std::uint64_t CONTROL_COUNTER_MODULUS = 1ULL << 34U;
 
+// Canonical ticks per native counter unit. One canonical tick is 25 ns / 12288.
+// A 25 ns coarse counter (pixel coarse, global/heartbeat, control) is 12288
+// canonical ticks; a 3.125 ns TDC raw counter is 1536 canonical ticks.
+constexpr std::uint64_t CANONICAL_TICKS_PER_25NS = 12288U;
+constexpr std::uint64_t CANONICAL_TICKS_PER_TDC_RAW = 1536U;
+
 struct GlobalAnchor {
     std::uint64_t global_time_48bit = 0;
     std::uint64_t source_packet_order = 0;
@@ -74,6 +80,7 @@ void assignSourcePacketOrder(UnpackResult& result);
 
 std::uint64_t findBestEpoch(std::uint64_t raw_counter,
                             std::uint64_t modulus,
+                            std::uint64_t canonical_factor,
                             const ChipAnchorIndex& anchors,
                             std::uint64_t source_packet_order,
                             EpochAssignmentDiagnostics& diagnostics);
