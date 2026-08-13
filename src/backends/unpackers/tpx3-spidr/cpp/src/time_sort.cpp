@@ -44,6 +44,7 @@ void assignSourcePacketOrder(UnpackResult& result) {
 
 std::uint64_t findBestEpoch(const std::uint64_t raw_counter,
                             const std::uint64_t modulus,
+                            const std::uint64_t canonical_factor,
                             const ChipAnchorIndex& anchors,
                             const std::uint64_t source_packet_order,
                             EpochAssignmentDiagnostics& diagnostics) {
@@ -54,14 +55,15 @@ std::uint64_t findBestEpoch(const std::uint64_t raw_counter,
     }
 
     const auto& anchor = anchors.anchors[0];
-    const auto anchor_canonical = anchor.global_time_48bit * 12288U;
+    const auto anchor_canonical =
+        anchor.global_time_48bit * CANONICAL_TICKS_PER_25NS;
 
     std::uint64_t best_epoch = 0;
     std::uint64_t min_distance = std::numeric_limits<std::uint64_t>::max();
 
     for (std::uint64_t epoch = 0; epoch < 100; ++epoch) {
         const auto candidate_raw = raw_counter + epoch * modulus;
-        const auto candidate_canonical = candidate_raw * 768U;
+        const auto candidate_canonical = candidate_raw * canonical_factor;
 
         std::uint64_t distance;
         if (candidate_canonical > anchor_canonical) {
@@ -90,8 +92,8 @@ void assignEpochsToPixels(std::vector<PixelHit>& pixels,
         }
 
         const auto epoch = findBestEpoch(
-            pixel.coarse_time_25ns, PIXEL_COUNTER_MODULUS, anchors,
-            0, diagnostics);
+            pixel.coarse_time_25ns, PIXEL_COUNTER_MODULUS,
+            CANONICAL_TICKS_PER_25NS, anchors, 0, diagnostics);
 
         const auto unwrapped_coarse =
             pixel.coarse_time_25ns + epoch * PIXEL_COUNTER_MODULUS;
@@ -112,8 +114,8 @@ void assignEpochsToTdcs(std::vector<TdcHit>& tdcs,
         }
 
         const auto epoch = findBestEpoch(
-            tdc.tdc_timestamp_raw, TDC_COUNTER_MODULUS, anchors,
-            0, diagnostics);
+            tdc.tdc_timestamp_raw, TDC_COUNTER_MODULUS,
+            CANONICAL_TICKS_PER_TDC_RAW, anchors, 0, diagnostics);
 
         const auto unwrapped_timestamp =
             tdc.tdc_timestamp_raw + epoch * TDC_COUNTER_MODULUS;
@@ -136,8 +138,8 @@ void assignEpochsToControls(std::vector<SpidrControl>& controls,
         }
 
         const auto epoch = findBestEpoch(
-            control.timestamp_raw, CONTROL_COUNTER_MODULUS, anchors,
-            0, diagnostics);
+            control.timestamp_raw, CONTROL_COUNTER_MODULUS,
+            CANONICAL_TICKS_PER_25NS, anchors, 0, diagnostics);
 
         const auto unwrapped_timestamp =
             control.timestamp_raw + epoch * CONTROL_COUNTER_MODULUS;
