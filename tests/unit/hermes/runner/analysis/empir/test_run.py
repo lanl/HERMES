@@ -299,6 +299,21 @@ def test_run_empir_analysis_wraps_missing_executable_as_preflight_error(
     assert current.pixel_to_photon.runs[0].result is None
 
 
+def test_run_empir_analysis_warns_and_exits_when_empir_not_installed(
+    tmp_path: Path,
+) -> None:
+    """A bare EMPIR program name that is not on PATH warns and exits cleanly."""
+    executables = _install_fake_programs(tmp_path)
+    executables["pixel"] = Path("empir-not-installed-on-path")
+    manager, state_logger = _manager(tmp_path, _analysis(tmp_path, executables))
+
+    with pytest.raises(SystemExit) as exit_info:
+        run_empir_analysis(manager)
+
+    assert exit_info.value.code == 1
+    assert [change.status for change in state_logger.changes] == []
+
+
 def test_run_empir_analysis_retains_photon_after_downstream_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

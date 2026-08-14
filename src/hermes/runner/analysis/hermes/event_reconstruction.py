@@ -23,6 +23,7 @@ from hermes.state.models.analysis.hermes_tpx3_spidr import (
     HermesTpx3EventReconstructionSummary,
 )
 from hermes.state.models.shared_models import FileReference
+from hermes.runner.analysis.executables import resolve_executable
 
 # The photon stage writes an optional diagnostic file beside each photon file;
 # it is not a photon_events input and must not be handed to event reconstruction.
@@ -318,10 +319,12 @@ def validate_program_and_algorithm(
             "is not implemented; only 'connected_components' is available"
         )
     executable = event_reconstruction.program.executable_path
-    if not executable.is_file():
+    try:
+        resolve_executable(executable)
+    except (FileNotFoundError, PermissionError) as exc:
         raise HermesEventReconstructionPreflightError(
             f"event reconstructor executable does not exist: {executable}"
-        )
+        ) from exc
 
 
 def _load_summary(summary_path: Path) -> HermesTpx3EventReconstructionSummary:

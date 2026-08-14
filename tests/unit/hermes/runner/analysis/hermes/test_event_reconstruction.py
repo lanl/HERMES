@@ -49,12 +49,15 @@ def _analysis(
     unpacker_exe = tmp_path / "bin/hermes-tpx3-spidr"
     unpacker_exe.parent.mkdir(parents=True, exist_ok=True)
     unpacker_exe.touch()
+    unpacker_exe.chmod(0o755)
 
     clusterer_exe = tmp_path / "bin/hermes-photon-clusterer"
     clusterer_exe.touch()
+    clusterer_exe.chmod(0o755)
 
     event_exe = tmp_path / "bin/hermes-event-reconstructor"
     event_exe.touch()
+    event_exe.chmod(0o755)
 
     analysis_directory = tmp_path / "analysis"
 

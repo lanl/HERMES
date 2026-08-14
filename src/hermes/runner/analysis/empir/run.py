@@ -9,6 +9,7 @@ from loguru import logger
 from hermes.runner.analysis.empir._errors import (
     EmpirError,
     EmpirExecutionError,
+    EmpirNotInstalledError,
     EmpirPreflightError,
 )
 from hermes.runner.analysis.empir._executable import resolve_executable
@@ -159,6 +160,13 @@ def run_empir_analysis(state_manager: StateManager) -> list[FileReference]:
                 step_name="event_to_image",
             )
 
+    except EmpirNotInstalledError as exc:
+        _ANALYSIS_LOGGER.warning(
+            "EMPIR is not installed: {error}",
+            event_type="analysis.empir.not_installed",
+            error=str(exc),
+        )
+        raise SystemExit(1) from exc
     except EmpirError as exc:
         _ANALYSIS_LOGGER.error(
             "EMPIR analysis failed: {error}",
@@ -222,6 +230,17 @@ def _resolve_step_executable(configured_path: Path) -> Path:
     try:
         return resolve_executable(configured_path)
     except (FileNotFoundError, PermissionError) as exc:
+        expanded = configured_path.expanduser()
+        names_a_program = not expanded.is_absolute() and expanded.parent == Path(".")
+        if names_a_program and isinstance(exc, FileNotFoundError):
+            # A bare program name that is not on PATH means EMPIR is not
+            # installed. An explicit path that is broken is a misconfiguration,
+            # so that keeps the ordinary preflight error.
+            raise EmpirNotInstalledError(
+                f"EMPIR is not installed or not on PATH: {configured_path}. "
+                "HERMES can control EMPIR but does not install it. Install "
+                "EMPIR and make its programs available on PATH, then re-run."
+            ) from exc
         raise EmpirPreflightError(str(exc)) from exc
 
 

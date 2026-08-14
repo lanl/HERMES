@@ -1,20 +1,41 @@
 [project]
 authors = [{name = "Alexander M. Long", email = "alexlong@lanl.gov"}]
-dependencies = []
-name = "HERMES"
+name = "hermes"
 requires-python = ">= 3.11"
-version = "0.1.0"
+version = "3.0.0"
+dependencies = [
+  "pydantic>=2.13,<3",
+  "loguru",
+  "pyyaml",
+  "pyarrow>=18",
+  "numpy>=2.5,<3",
+  "pandas>=2.2,<3",
+  "matplotlib>=3.9,<4",
+  "psutil>=6",
+]
 
 [build-system]
-build-backend = "hatchling.build"
-requires = ["hatchling"]
+build-backend = "scikit_build_core.build"
+requires = ["scikit-build-core>=0.10"]
+
+# The C++ backends compile from source at install time. cmake finds the
+# compiler on PATH and the C++ libraries (nlohmann_json, Arrow) through the
+# active environment, so a consumer's pixi project must provide those build
+# tools and libraries as conda dependencies (see README).
+[tool.scikit-build]
+wheel.packages = ["src/hermes"]
+cmake.build-type = "Release"
+cmake.version = ">=3.20"
+
+[tool.scikit-build.cmake.define]
+BUILD_TESTING = "OFF"
+
+[tool.scikit-build.env]
+CMAKE_PREFIX_PATH = { env = "CMAKE_PREFIX_PATH", default = "" }
 
 [tool.pixi.workspace]
 channels = ["conda-forge"]
 platforms = ["osx-arm64","linux-64"]
-
-[tool.pixi.activation.env]
-PATH = "${PIXI_PROJECT_ROOT}/.pixi/bin:${PATH}"
 
 [tool.pixi.pypi-options]
 index-url = "https://nexus.lanl.gov/repository/python/simple"
@@ -30,7 +51,6 @@ build-cpp-photon-clusterer = "cmake -S src/backends/reconstruction/photons/cpp -
 test-cpp-photon-clusterer = { cmd = "ctest --test-dir build/backends/photon-clusterer --output-on-failure", depends-on = ["build-cpp-photon-clusterer"] }
 build-cpp-event-reconstructor = "cmake -S src/backends/reconstruction/events/connected-components/cpp -B build/backends/event-reconstructor -DCMAKE_BUILD_TYPE=Release && cmake --build build/backends/event-reconstructor"
 test-cpp-event-reconstructor = { cmd = "ctest --test-dir build/backends/event-reconstructor --output-on-failure", depends-on = ["build-cpp-event-reconstructor"] }
-install-backends = { cmd = "bash -c 'mkdir -p .pixi/bin && cp build/backends/tpx3-spidr/hermes-tpx3-spidr .pixi/bin/ && cp build/backends/photon-clusterer/hermes-photon-clusterer .pixi/bin/ && cp build/backends/event-reconstructor/hermes-event-reconstructor .pixi/bin/ && echo \"Installed to .pixi/bin/hermes-tpx3-spidr, .pixi/bin/hermes-photon-clusterer and .pixi/bin/hermes-event-reconstructor\"'", depends-on = ["build-cpp-unpacker", "build-cpp-photon-clusterer", "build-cpp-event-reconstructor"] }
 
 [tool.pixi.dependencies]
 python = ">=3.14.4,<3.15"
@@ -45,3 +65,7 @@ matplotlib = ">=3.11.1,<4"
 numpy = ">=2.5.1,<3"
 pandas = ">=2.2,<3"
 ffmpeg = ">=6.0"
+# C++ build tools for compiling the backends from source on any platform.
+cxx-compiler = "*"
+cmake = ">=3.20"
+ninja = "*"

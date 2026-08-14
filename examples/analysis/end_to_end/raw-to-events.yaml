@@ -11,13 +11,13 @@ analysis:
   unpacking:
     program:
       name: tpx3-spidr-cpp
-      executable_path: build/backends/tpx3-spidr/hermes-tpx3-spidr
+      executable_path: hermes-tpx3-spidr
     tpx3_files:
       - path: data/examples/analysis/end_to_end/rawTpx3/Tantalum_IronPowder.tpx3
   photon_reconstruction:
     program:
       name: photon-clusterer-cpp
-      executable_path: build/backends/photon-clusterer/hermes-photon-clusterer
+      executable_path: hermes-photon-clusterer
     pixel_files: auto
     clustering_algorithm:
       name: connected_components
@@ -38,7 +38,7 @@ analysis:
   event_reconstruction:
     program:
       name: event-reconstructor-cpp
-      executable_path: build/backends/event-reconstructor/hermes-event-reconstructor
+      executable_path: hermes-event-reconstructor
     photon_parquet_files: auto
     clustering_algorithm: connected_components
     settings:

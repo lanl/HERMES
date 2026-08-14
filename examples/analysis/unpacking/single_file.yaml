@@ -11,7 +11,7 @@ analysis:
   unpacking:
     program:
       name: tpx3-spidr-cpp
-      executable_path: build/backends/tpx3-spidr/hermes-tpx3-spidr
+      executable_path: hermes-tpx3-spidr
     runtime_options:
       overwrite: true
     tpx3_files:

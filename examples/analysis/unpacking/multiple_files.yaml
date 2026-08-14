@@ -12,7 +12,7 @@ analysis:
   unpacking:
     program:
       name: tpx3-spidr-cpp
-      executable_path: build/backends/tpx3-spidr/hermes-tpx3-spidr
+      executable_path: hermes-tpx3-spidr
     tpx3_files:
       - path: data/examples/analysis/unpacking/multiple_files/input/Example_1kHz_5frames_0000.tpx3
       - path: data/examples/analysis/unpacking/multiple_files/input/Example_1kHz_5frames_0001.tpx3

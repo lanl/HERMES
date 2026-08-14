@@ -18,14 +18,14 @@ analysis:
   unpacking:
     program:
       name: tpx3-spidr-cpp
-      executable_path: build/backends/tpx3-spidr/hermes-tpx3-spidr
+      executable_path: hermes-tpx3-spidr
     tpx3_files:
       - path: tests/data/tpx3/Tantalum_IronPowder.tpx3
 
   photon_reconstruction:
     program:
       name: photon-clusterer-cpp
-      executable_path: build/backends/photon-clusterer/hermes-photon-clusterer
+      executable_path: hermes-photon-clusterer
       version: null
     pixel_files: auto
     clustering_algorithm:
