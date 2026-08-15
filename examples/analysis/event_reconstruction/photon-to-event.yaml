@@ -11,7 +11,7 @@ analysis:
   event_reconstruction:
     program:
       name: event-reconstructor-cpp
-      executable_path: build/backends/event-reconstructor/hermes-event-reconstructor
+      executable_path: hermes-event-reconstructor
     photon_parquet_files: auto
     clustering_algorithm: connected_components
     settings:

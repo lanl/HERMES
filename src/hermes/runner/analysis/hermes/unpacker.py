@@ -16,6 +16,7 @@ from hermes.state.models.analysis.hermes_tpx3_spidr import (
 )
 from hermes.state.models.measurement import MeasurementInfo
 from hermes.state.models.shared_models import FileReference
+from hermes.runner.analysis.executables import resolve_executable
 
 # Each Parquet category directory and the filename label the unpacker uses in it.
 # Pixel files are named "<stem>_chip_<chip>_pixels_<part>.parquet"; every other
@@ -121,8 +122,8 @@ def execute_unpacker(
         analysis, analysis_root, raw_file, measurement_info, overwrite=overwrite
     )
     summary_path = derive_summary_path(analysis_root, raw_file)
-    resolved_executable_path = (
-        analysis.unpacking.program.executable_path.resolve()
+    resolved_executable_path = resolve_executable(
+        analysis.unpacking.program.executable_path
     )
     started = perf_counter()
     _ANALYSIS_LOGGER.info(
@@ -262,11 +263,13 @@ def validate_program_and_inputs(
     analysis_root: Path,
 ) -> None:
     executable = analysis.unpacking.program.executable_path
-    if not executable.is_file():
+    try:
+        resolve_executable(executable)
+    except (FileNotFoundError, PermissionError) as exc:
         raise HermesTpx3PreflightError(
             f"unpacker executable does not exist: {executable}; build the "
             "binary (e.g. via pixi) and set unpacking.program.executable_path"
-        )
+        ) from exc
 
     for raw_file in analysis.unpacking.tpx3_files:
         if not raw_file.path.is_file():

@@ -3,10 +3,11 @@
 ## Building and Installing
 
 ### Option 1: Build and Install (Recommended)
-Build and install the unpacker to `.pixi/bin/` (automatically added to PATH in pixi environment):
+`pixi install` compiles the three C++ backends from source and places them on
+the environment's PATH, so `hermes-tpx3-spidr` is available without a path:
 
 ```bash
-pixi run install-backends
+pixi install
 ```
 
 Then run directly:
@@ -171,8 +172,8 @@ All 6 test suites should pass.
 ## Example with Test Data
 
 ```bash
-# Install backends first
-pixi run install-backends
+# Build and install backends onto PATH first
+pixi install
 
 # Process example file
 pixi run hermes-tpx3-spidr \

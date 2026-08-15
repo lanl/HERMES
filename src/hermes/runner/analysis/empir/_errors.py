@@ -16,6 +16,15 @@ class EmpirPreflightError(EmpirError):
     """Raised when an EMPIR process cannot safely start."""
 
 
+class EmpirNotInstalledError(EmpirPreflightError):
+    """Raised when EMPIR itself is not installed or not on PATH.
+
+    HERMES can control EMPIR but does not ship or install it. When a config
+    names an EMPIR program that is not on PATH, HERMES warns the user and exits
+    rather than failing with a traceback.
+    """
+
+
 class EmpirExecutionError(EmpirError):
     """Raised when an EMPIR process cannot launch or exits with an error."""
 

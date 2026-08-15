@@ -4,6 +4,7 @@ import shutil
 import sys
 from pathlib import Path
 
+from hermes.runner.analysis.empir._errors import EmpirNotInstalledError
 from hermes.state_service.state_io import (
     load_hermes_record_from_yaml,
     save_hermes_record_to_yaml,
@@ -29,7 +30,13 @@ def main(input_yaml_path: Path = DEFAULT_INPUT_YAML_PATH) -> None:
     workflow = Workflow(initial_record)
 
     # Step 3: Run the workflow, which executes the EMPIR stages in order
-    workflow.run_analysis()
+    try:
+        workflow.run_analysis()
+    except EmpirNotInstalledError as error:
+        print(f"EMPIR is not installed: {error}", file=sys.stderr)
+        raise SystemExit(1) from error
+
+
 if __name__ == "__main__":
     input_yaml_path = (
         Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_INPUT_YAML_PATH

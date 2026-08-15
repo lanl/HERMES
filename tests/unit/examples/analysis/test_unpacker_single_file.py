@@ -39,7 +39,7 @@ def test_checked_in_partial_yaml_loads_with_expected_defaults(
     assert initial_record.acquisition is None
     assert isinstance(initial_record.analysis, HermesTpx3AnalysisState)
     assert initial_record.analysis.unpacking.program.executable_path == Path(
-        "build/backends/tpx3-spidr/hermes-tpx3-spidr"
+        "hermes-tpx3-spidr"
     )
     assert initial_record.environment.analysis_directory.path == Path("analysis")
     assert initial_record.analysis.unpacking.tpx3_files[0].path == Path(

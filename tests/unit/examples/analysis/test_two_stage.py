@@ -46,7 +46,7 @@ def test_checked_in_yaml_configures_both_analysis_stages(
     analysis = initial_record.analysis
     assert analysis.unpacking.program.name == "tpx3-spidr-cpp"
     assert analysis.unpacking.program.executable_path == Path(
-        "build/backends/tpx3-spidr/hermes-tpx3-spidr"
+        "hermes-tpx3-spidr"
     )
     assert initial_record.environment.analysis_directory.path == Path("analysis")
     assert analysis.unpacking.tpx3_files == [
@@ -57,7 +57,7 @@ def test_checked_in_yaml_configures_both_analysis_stages(
     assert reconstruction is not None
     assert reconstruction.program.name == "photon-clusterer-cpp"
     assert reconstruction.program.executable_path == Path(
-        "build/backends/photon-clusterer/hermes-photon-clusterer"
+        "hermes-photon-clusterer"
     )
     assert reconstruction.clustering_algorithm.name == "connected_components"
     assert reconstruction.pixel_files == "auto"

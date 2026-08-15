@@ -65,6 +65,7 @@ def _analysis(tmp_path: Path, *raw_names: str) -> HermesTpx3AnalysisState:
     executable = tmp_path / "bin/hermes-tpx3-spidr"
     executable.parent.mkdir(parents=True, exist_ok=True)
     executable.touch()
+    executable.chmod(0o755)
 
     raw_files: list[FileReference] = []
     for raw_name in raw_names:
