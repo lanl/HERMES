@@ -166,7 +166,7 @@ def run_empir_analysis(state_manager: StateManager) -> list[FileReference]:
             event_type="analysis.empir.not_installed",
             error=str(exc),
         )
-        raise SystemExit(1) from exc
+        raise
     except EmpirError as exc:
         _ANALYSIS_LOGGER.error(
             "EMPIR analysis failed: {error}",
