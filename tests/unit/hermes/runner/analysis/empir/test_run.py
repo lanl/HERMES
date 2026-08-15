@@ -10,6 +10,7 @@ from loguru import logger
 
 from hermes.runner.analysis.empir._errors import (
     EmpirExecutionError,
+    EmpirNotInstalledError,
     EmpirPreflightError,
 )
 from hermes.runner.analysis.empir.run import run_empir_analysis
@@ -299,18 +300,17 @@ def test_run_empir_analysis_wraps_missing_executable_as_preflight_error(
     assert current.pixel_to_photon.runs[0].result is None
 
 
-def test_run_empir_analysis_warns_and_exits_when_empir_not_installed(
+def test_run_empir_analysis_raises_when_empir_not_installed(
     tmp_path: Path,
 ) -> None:
-    """A bare EMPIR program name that is not on PATH warns and exits cleanly."""
+    """A bare EMPIR program name that is not on PATH raises for the caller."""
     executables = _install_fake_programs(tmp_path)
     executables["pixel"] = Path("empir-not-installed-on-path")
     manager, state_logger = _manager(tmp_path, _analysis(tmp_path, executables))
 
-    with pytest.raises(SystemExit) as exit_info:
+    with pytest.raises(EmpirNotInstalledError):
         run_empir_analysis(manager)
 
-    assert exit_info.value.code == 1
     assert [change.status for change in state_logger.changes] == []
 
 
