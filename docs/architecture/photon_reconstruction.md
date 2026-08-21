@@ -19,10 +19,9 @@ errors, and exit codes.
 
 ## Connected Components with a Time Gate
 
-The connected-components program processes one raw filename stem at a time and
-each chip independently. It reads the chip's numbered `pixel_data` parts in
-order. The rows are already sorted by `timestamp_canonical`, with source order
-as the stable tie breaker.
+The connected-components program processes one pixel file at a time: a single
+chip and a single part, clustered on its own. The rows are already sorted by
+`timestamp_canonical`, with source order as the stable tie breaker.
 
 The program keeps only open components whose earliest timestamp remains within
 the configured maximum time spread of the current row:
@@ -73,9 +72,10 @@ not add a radius-of-gyration setting.
 
 A closed component is rejected when it fails any cluster limit. Rejection
 counts name every failed limit and are therefore not mutually exclusive; their
-sum may exceed the number of rejected components. The separately reported
-low-ToT count is a count of dropped pixel rows, not rejected components.
-Rejected components are not written to `photon_events`.
+sum may exceed the number of rejected components. Pixel rows dropped for low
+`tot_raw` happen before clustering, so they are not rejected components and are
+not part of these rejection counts. Rejected components are not written to
+`photon_events`.
 
 Each accepted photon has a `quality_flags` bit mask:
 
