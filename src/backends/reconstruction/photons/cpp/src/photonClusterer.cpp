@@ -12,6 +12,7 @@
 #include "photon_writer.h"
 #include "pixel_reader.h"
 #include "reconstruction.h"
+#include "sensor_layout.h"
 #include "settings.h"
 #include "summary_writer.h"
 #include "timewalk.h"
@@ -94,6 +95,7 @@ json settingsToJson(const hermes_photon_clusterer::ClusteringSettings& s) {
             ? json(nullptr)
             : json(s.timewalk_calibration_file);
     j["save_photon_pixels"] = s.save_photon_pixels;
+    j["detector_layout"] = s.detector_layout;
     return j;
 }
 
@@ -315,7 +317,8 @@ int main(const int argc, char* argv[]) {
         summary_path =
             (logs_dir / (pixel_name.raw_file_stem + "_chip_" +
                          pixel_name.chip_label +
-                         "_photon_reconstruction_summary.json"))
+                         "_photon_reconstruction_summary_" +
+                         pixel_name.part_index + ".json"))
                 .string();
     }
 
@@ -350,6 +353,7 @@ int main(const int argc, char* argv[]) {
         metadata.high_tot_anchor = correction.high_tot_anchor;
     }
     metadata.save_photon_pixels = settings.save_photon_pixels;
+    metadata.detector_layout = settings.detector_layout;
 
     hermes_photon_clusterer::ReconstructionSummaryContent summary;
     summary.measurement_id = measurement_id;
@@ -406,6 +410,24 @@ int main(const int argc, char* argv[]) {
     summary.rejection_reasons = result.counts.rejection_counts;
     summary.saturated_pixel_count = result.counts.saturated_pixel_count;
     summary.bridged_components_count = result.counts.bridged_components_count;
+
+    // Move each photon's chip-local centroid into the shared sensor frame. The
+    // map is affine, so transforming the centroid equals transforming the source
+    // pixels then averaging; clustering above stayed chip-local. The
+    // pixel-to-cluster table keeps the raw local source-pixel coordinates.
+    try {
+        for (auto& photon : result.photons) {
+            const hermes_photon_clusterer::SensorPoint mapped =
+                hermes_photon_clusterer::sensorTransform(
+                    settings.detector_layout, metadata.chip_index, photon.x,
+                    photon.y);
+            photon.x = mapped.x;
+            photon.y = mapped.y;
+        }
+    } catch (const std::exception& error) {
+        std::cerr << "Error: " << error.what() << "\n";
+        return 2;
+    }
 
     std::cout << "Reconstructed " << summary.total_photons << " photons from "
               << summary.pixels_read << " pixel rows.\n";

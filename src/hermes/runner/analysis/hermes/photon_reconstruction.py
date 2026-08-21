@@ -140,17 +140,23 @@ def derive_summary_path(
 ) -> Path:
     """Return the reconstruction-summary JSON file path written by the binary.
 
-    The binary writes one summary per raw filename stem to a
+    The binary writes one summary per pixel file to a
     ``logs/photon_reconstruction`` directory under the analysis directory (the
     unpacker writes to ``logs/unpacking``), named
-    ``<raw-file-stem>_chip_<chip>_photon_reconstruction_summary.json``.
+    ``<raw-file-stem>_chip_<chip>_photon_reconstruction_summary_<part>.json``.
+    The part index is kept so a chip's later parts do not overwrite part
+    ``00000``'s summary and get skipped on rerun by
+    ``check_previous_reconstructed_file``.
     """
-    raw_file_stem, chip_label, _ = _parse_pixel_file_name(input_file)
+    raw_file_stem, chip_label, part_index = _parse_pixel_file_name(input_file)
     return (
         analysis_root
         / "logs"
         / "photon_reconstruction"
-        / f"{raw_file_stem}_chip_{chip_label}_photon_reconstruction_summary.json"
+        / (
+            f"{raw_file_stem}_chip_{chip_label}"
+            f"_photon_reconstruction_summary_{part_index}.json"
+        )
     )
 
 
@@ -207,11 +213,13 @@ def execute_reconstruction(
 
     # The complete clustering settings go to the binary in a temporary JSON
     # file; the field names match the binary's settings keys. save_photon_pixels
-    # lives beside the settings in the model, so add it back into the JSON the
-    # binary reads.
+    # and the detector layout live beside the settings in the model, so add them
+    # back into the JSON the binary reads. detector_layout tells the binary which
+    # sensor coordinate frame to map each chip's photon x/y into.
     clustering = reconstruction.clustering_algorithm
     settings_json = clustering.settings.model_dump(mode="json")
     settings_json["save_photon_pixels"] = clustering.save_photon_pixels
+    settings_json["detector_layout"] = analysis.detector_layout.kind
     with tempfile.NamedTemporaryFile(
         mode="w",
         suffix=".json",

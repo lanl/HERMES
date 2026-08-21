@@ -108,6 +108,11 @@ void validateClusteringSettings(const ClusteringSettings& s) {
             "photon_time_estimator='" + s.photon_time_estimator +
             "' is reserved and not implemented");
     }
+    if (s.detector_layout != "single_chip" && s.detector_layout != "quad") {
+        throw std::runtime_error(
+            "detector_layout='" + s.detector_layout +
+            "' is not recognized; use 'single_chip' or 'quad'");
+    }
 }
 
 ClusteringSettings loadClusteringSettings(const std::string& path) {
@@ -135,7 +140,7 @@ ClusteringSettings loadClusteringSettings(const std::string& path) {
         "max_aspect_ratio",      "min_filled_fraction",
         "adjacency",             "position_averaging",
         "photon_time_estimator", "timewalk_calibration_file",
-        "save_photon_pixels",
+        "save_photon_pixels",    "detector_layout",
     };
     for (const auto& item : document.items()) {
         if (known_keys.find(item.key()) == known_keys.end()) {
@@ -163,6 +168,7 @@ ClusteringSettings loadClusteringSettings(const std::string& path) {
     overrideString(document, "timewalk_calibration_file",
                    settings.timewalk_calibration_file);
     overrideBool(document, "save_photon_pixels", settings.save_photon_pixels);
+    overrideString(document, "detector_layout", settings.detector_layout);
 
     validateClusteringSettings(settings);
     return settings;

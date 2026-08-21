@@ -32,6 +32,9 @@ struct PhotonFileMetadata {
     std::string correction_parameters_json;
     double high_tot_anchor = 0.0;
     bool save_photon_pixels = false;
+    // Sensor coordinate frame the photon x/y are written in ("single_chip" or
+    // "quad"). Records that photon x/y are sensor-frame, not chip-local.
+    std::string detector_layout = "single_chip";
 };
 
 // One row of the photon_pixels output: a source pixel tied to its photon.

@@ -72,6 +72,16 @@ int main() {
         auto settings = loadClusteringSettings(writeTemp("empty.json", "{}"));
         test.expectEqual(settings.max_time_spread_ticks,
                          std::uint64_t{491520}, "empty object keeps defaults");
+        test.expect(settings.detector_layout == "single_chip",
+                    "default detector_layout is single_chip");
+    }
+
+    // detector_layout accepts the two known frames.
+    {
+        auto settings = loadClusteringSettings(
+            writeTemp("quad.json", R"({"detector_layout": "quad"})"));
+        test.expect(settings.detector_layout == "quad",
+                    "detector_layout quad accepted");
     }
 
     // Rejections.
@@ -99,6 +109,9 @@ int main() {
                 "negative integer rejected");
     test.expect(loadThrows("garbage.json", "not json"),
                 "malformed JSON rejected");
+    test.expect(loadThrows("bad_layout.json",
+                           R"({"detector_layout": "double"})"),
+                "unknown detector_layout rejected");
 
     return test.finish();
 }
