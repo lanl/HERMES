@@ -52,15 +52,19 @@ When an output directory is specified, the unpacker creates:
 
 ```
 output_directory/
-├── summary.json                          # Complete run summary with diagnostics
 ├── pixel_hits/
-│   └── chip_0-00000.parquet             # Sorted pixel hits
+│   └── input_chip_0_pixels_00000.parquet         # Sorted pixel hits (one label per chip)
 ├── tdc_triggers/
-│   └── tdcs_0-00000.parquet             # Sorted TDC trigger events
+│   └── input_tdc1_rising_triggers_00000.parquet  # Sorted TDC triggers, one file per channel+edge seen
 ├── global_timestamps/
-│   └── gs_0-00000.parquet               # Global timestamp anchor points
-└── control_packets/
-    └── controls_0-00000.parquet         # Control packets (SPIDR and TPX3)
+│   └── input_global_timestamps_00000.parquet     # Global timestamp anchor points
+├── control_packets/
+│   └── input_control_packets_00000.parquet       # Control packets (SPIDR and TPX3)
+├── unrecognized_packets/
+│   └── input_unrecognized_packets_00000.parquet  # Packets that matched no known type
+└── logs/
+    └── unpacking/
+        └── input_unpacker_summary.json           # Complete run summary with diagnostics
 ```
 
 ## Verifying Time Sorting
@@ -76,7 +80,7 @@ Example output:
 Checking sorting in: output_directory
 ======================================================================
 
-Pixel Hits (chip_0-00000.parquet):
+Pixel Hits (input_chip_0_pixels_00000.parquet):
   Total rows: 34
   Timestamped rows: 34
   Sorted: ✓ YES
@@ -84,7 +88,7 @@ Pixel Hits (chip_0-00000.parquet):
   Max timestamp: 1,402,708,055,808
   Time range: 1,267,838,883,840 canonical ticks
 
-TDC Triggers (tdcs_0-00000.parquet):
+TDC Triggers (input_tdc1_rising_triggers_00000.parquet):
   Total rows: 21,632
   Timestamped rows: 21,632
   Sorted: ✓ YES
@@ -102,7 +106,7 @@ Using Python with pyarrow:
 import pyarrow.parquet as pq
 
 # Read a dataset
-table = pq.read_table("output_directory/pixel_hits/chip_0-00000.parquet")
+table = pq.read_table("output_directory/pixel_hits/input_chip_0_pixels_00000.parquet")
 
 # Access columns
 chunk_indices = table.column("chunk_index").to_pylist()
@@ -123,9 +127,11 @@ df = table.to_pandas()
 - `timestamp_canonical` (uint64): Canonical timestamp in units of 25ns/12288
 
 ### tdc_triggers
+Triggers are split into a separate file per channel and edge, so the channel and
+edge are named in the filename (`tdc1_rising`, `tdc1_falling`, `tdc2_rising`,
+`tdc2_falling`) rather than stored as a column.
 - `chunk_index` (uint64): Chunk number in file
 - `packet_index` (uint64): Packet number within chunk
-- `trigger_type` (uint8): 0=TDC1_rising, 1=TDC1_falling, 2=TDC2_rising, 3=TDC2_falling
 - `timestamp_canonical` (uint64): Canonical timestamp
 
 ### global_timestamps
@@ -184,12 +190,12 @@ pixi run hermes-tpx3-spidr \
 pixi run python src/backends/unpackers/tpx3-spidr/cpp/tests/check_sorting.py .scratch/test_output
 
 # View summary
-cat .scratch/test_output/summary.json | python3 -m json.tool
+cat .scratch/test_output/logs/unpacking/Example_1kHz_5frames_unpacker_summary.json | python3 -m json.tool
 ```
 
 ## Notes
 
 - All timestamps are in **canonical units**: 25 ns / 12288 ≈ 2.03 picoseconds per tick
-- Data is sorted by `timestamp_canonical` (with `source_packet_order` as tiebreaker)
-- Multi-chip support exists in the code but currently processes chip 0 only
+- Data is sorted by `timestamp_canonical` (with `chunk_index`, then `packet_index` as tiebreakers)
+- All chips present in the file are processed; timestamps are unwrapped independently per chip
 - Files are split into parts when row count exceeds 1,000,000 (configurable)

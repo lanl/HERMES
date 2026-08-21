@@ -26,7 +26,7 @@ The Python runner should call the unpacker with the raw TPX3 file and the
 shared analysis directory:
 
 ```text
-<executable> --input <input.tpx3> --output <analysis_directory> --measurement-id <measurement-id> --run <run> [--overwrite] [--time-sort]
+<executable> --input <input.tpx3> --output <analysis_directory> --measurement-id <measurement-id> --run <run> [--overwrite] [--time-sort <true|false>]
 ```
 
 The unpacker accepts exactly these options and no others:
@@ -46,8 +46,12 @@ The unpacker accepts exactly these options and no others:
 - `--overwrite` — redo the unpacking or reconstruction and replace existing
   output files instead of stopping. Optional, defaults to false. Without it the
   unpacker preserves existing files (see below). Implemented.
-- `--time-sort` — sort output by canonical timestamp. Optional, defaults to
-  false. Not implemented yet.
+- `--time-sort <true|false>` — sort output by canonical timestamp. Takes an
+  explicit value and defaults to `true`. The Python runner passes
+  `--time-sort false` to turn sorting off. Implemented.
+
+The unpacker also accepts `-h`/`--help` to print usage and `-v`/`--version` to
+print version information; both print and exit without unpacking.
 
 Do not add any option outside this list. The measurement identifier and run
 label are the only run-identity inputs; in particular, do not add separate
@@ -83,7 +87,7 @@ data/
     ├── tdc_triggers/
     ├── global_timestamps/
     ├── control_packets/
-    ├── unknownPackets/
+    ├── unrecognized_packets/
     ├── logs/
     ├── photons/
     └── events/
@@ -103,7 +107,7 @@ The directory names and the corresponding Parquet data category names are:
 | TDC timestamps | `tdc_triggers/` | `tdc_timestamps` |
 | Heartbeat packets | `global_timestamps/` | `heartbeat_packets` |
 | Control packets | `control_packets/` | `control_packets` |
-| Unrecognized packets | `unknownPackets/` | `unrecognized_packets` |
+| Unrecognized packets | `unrecognized_packets/` | `unrecognized_packets` |
 
 ## Parquet Filenames
 
@@ -134,7 +138,7 @@ packets, and unrecognized packets use the category name as their label:
 | --- | --- |
 | `global_timestamps/` | `global_timestamps` |
 | `control_packets/` | `control_packets` |
-| `unknownPackets/` | `unrecognized_packets` |
+| `unrecognized_packets/` | `unrecognized_packets` |
 
 TDC triggers are split by channel and edge (see below), so the `tdc_triggers/`
 directory uses one of four labels instead of a single category name:

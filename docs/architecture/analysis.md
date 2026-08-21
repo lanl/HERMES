@@ -160,7 +160,7 @@ TPX3 file listed in `HermesTpx3AnalysisState.tpx3_files`. The state contains one
 unpacker program, one shared analysis directory, one resource limit percentage,
 and one overall unpacking result for the complete list. All inputs use the
 shared analysis directory with `pixel_hits/`, `tdc_triggers/`,
-`global_timestamps/`, `control_packets/`, `unknownPackets/`, and `logs/`
+`global_timestamps/`, `control_packets/`, `unrecognized_packets/`, and `logs/`
 directories. The unpacker carries the raw TPX3 filename stem into every
 Parquet filename and its summary JSON filename. The runner rejects duplicate
 raw filename stems before launching any unpacker.
