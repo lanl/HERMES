@@ -161,9 +161,9 @@ rejected. Saving the HERMES record always writes the expanded explicit
   the current directory and is marked required and resolved.
 - `HermesTpx3AnalysisState.unpacker_program`, `analysis_directory`, and
   `tpx3_files` are required. `tpx3_files` must contain at least one entry.
-- `HermesTpx3AnalysisState.resource_limit_percent`, `photon_reconstruction`,
-  and `results` have defaults. A raw file with no recorded result has not run
-  yet.
+- `HermesTpx3AnalysisState.resource_limit_percent`, `detector_layout`,
+  `photon_reconstruction`, and `results` have defaults. `detector_layout`
+  defaults to `quad`. A raw file with no recorded result has not run yet.
 - `Tpx3SpidrUnpackerProgram.name` and `executable_path` are required; `version`
   defaults to `None`.
 - `FileReference.path` is required; its file information fields default to
@@ -626,8 +626,12 @@ HermesTpx3AnalysisState
   analysis_directory: Path
   tpx3_files: list[FileReference]
   resource_limit_percent: int = 90  # integer from 1 through 100
+  detector_layout: DetectorLayout = DetectorLayout(kind="quad")
   photon_reconstruction: HermesTpx3PhotonReconstructionConfiguration | None
   results: HermesTpx3AnalysisResults
+
+DetectorLayout
+  kind: single_chip | quad = quad
 
 Tpx3SpidrUnpackerProgram
   name: str
@@ -693,6 +697,13 @@ Photon reconstruction is omitted when only unpacking is requested. When it is
 present, the reconstruction stage reads pixel-hit Parquet from
 `<analysis_directory>/pixel_hits` and writes photon Parquet to
 `<analysis_directory>/photons`, both derived from `analysis_directory`.
+
+`detector_layout.kind` selects how the detector's chips assemble into one sensor
+coordinate frame and defaults to `quad`. A `single_chip` camera keeps each
+chip's 256x256 pixel space unchanged; a `quad` tiles four chips 2x2 with a
+four-pixel dead gap into a 516x516 sensor. Photon reconstruction maps each chip's
+photon `x`/`y` into this shared frame so the event stage can group light that
+lands on more than one chip. See `photon_reconstruction.md` for the per-chip map.
 
 The first implementation accepts only
 `clustering_algorithm="connected_components"`. The `"dbscan"` value is

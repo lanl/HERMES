@@ -90,9 +90,13 @@ setup, subject to the one correctness constraint below.
 
 ## Connected Components over Space and Time
 
-Each raw filename stem is processed one at a time, and each chip independently,
-in the chip's local 256 x 256 pixel space. The program reads the chip's
-`photon_events` parts in order.
+Each raw filename stem is processed one at a time as a whole sensor. The program
+reads every chip's `photon_events` parts for that raw file together. Photon
+reconstruction has already placed each photon's `x`/`y` in the shared sensor
+frame (see `photon_reconstruction.md`), so photons from different chips are
+clustered in one coordinate space and an event whose light lands on more than one
+chip becomes a single event. A `single_chip` layout is the one-chip case of the
+same frame.
 
 Two photons are **connected** when they satisfy both criteria:
 
@@ -109,8 +113,8 @@ photon contributes equally and there is no dependence on processing order.
 
 `photon_events` rows are written in reconstruction order, which is close to but
 not guaranteed to be strictly increasing in `timestamp_canonical`. After reading
-a chip's photons the program sorts them by `timestamp_canonical`, breaking ties
-by `photon_id`, and then streams them in that order. Photon counts are far
+the sensor's photons the program sorts them by `timestamp_canonical`, breaking
+ties by `photon_id`, and then streams them in that order. Photon counts are far
 smaller than pixel counts, so this sort is inexpensive. The photon time is a
 float64 canonical-tick value carried through unchanged.
 
@@ -145,8 +149,10 @@ time window are updated continuously and are never rebuilt as time advances.
 
 ### Spatial Grid
 
-The 256 x 256 chip is divided once into a fixed square grid for the whole
-acquisition. Each photon maps to a cell:
+The sensor is divided once into a fixed square grid for the whole acquisition.
+The sensor width comes from the detector layout the photons were written in: 516
+pixels for a `quad`, 256 for a `single_chip`, recorded in the photon file
+metadata. Each photon maps to a cell:
 
 ```cpp
 cell_x = static_cast<int>(x) / cell_width;
@@ -154,17 +160,18 @@ cell_y = static_cast<int>(y) / cell_width;
 ```
 
 The cell width in pixels is **derived** from `spatial_cells_per_axis` and the
-fixed 256-pixel chip width, so the user sets a cell count rather than a raw width:
+sensor width, so the user sets a cell count rather than a raw width:
 
 ```text
-cell_width = ceil(256 / spatial_cells_per_axis)
+cell_width = ceil(sensor_width / spatial_cells_per_axis)
 ```
 
-Rounding up guarantees exactly `spatial_cells_per_axis` cells span the chip along
-each axis; the last cell on each axis may be a little narrower than the rest,
-which does not affect correctness. Worked examples:
-`spatial_cells_per_axis = 5` (the default) gives cell width 52; `= 4` gives 64;
-`= 3` gives 86; `= 2` gives 128; `= 1` gives 256.
+Rounding up guarantees exactly `spatial_cells_per_axis` cells span the sensor
+along each axis; the last cell on each axis may be a little narrower than the
+rest, which does not affect correctness. For a 516-pixel quad sensor,
+`spatial_cells_per_axis = 5` (the default) gives cell width 104; `= 4` gives 129;
+`= 2` gives 258; `= 1` gives 516. A 256-pixel single-chip sensor gives 52, 64,
+128, and 256 for the same counts.
 
 The one correctness constraint is that the derived cell width must be **at least
 the linking radius**. When it is, a photon within the radius can only fall in the
@@ -260,13 +267,14 @@ directory, mirroring the photon stage's `photons/` and `pixel_clusters/`:
   when `save_event_photons` is true.
 
 ```text
-events/<raw-file-stem>-chip-<chip-index>-event-candidates-part-<five-digit-part-index>.parquet
-event_photons/<raw-file-stem>-chip-<chip-index>-event-photons-part-<five-digit-part-index>.parquet
+events/<raw-file-stem>_event_candidates.parquet
+event_photons/<raw-file-stem>_event_photons.parquet
 ```
 
-Part numbers start at zero independently for each raw input and chip.
-`event_candidates` is written whenever events exist. An empty group has zero
-files and a zero row count in the summary.
+Because the whole sensor is reconstructed together, there is one
+`event_candidates` file per raw input, covering every chip in the shared sensor
+frame, not one file per chip or per part. `event_candidates` is written whenever
+events exist. An empty result has zero files and a zero row count in the summary.
 
 `event_photons` is a diagnostic file written only when `save_event_photons`
 is true. It records one row per member photon, tying each photon to the event it
@@ -281,9 +289,9 @@ larger than `event_candidates` and not needed for routine analysis.
 
 | Column | Arrow type | Nullable | Description |
 | --- | --- | --- | --- |
-| `event_id` | `uint64` | no | Zero-based event number within the raw input and chip |
-| `x` | `float64` | no | Arithmetic mean member-photon x |
-| `y` | `float64` | no | Arithmetic mean member-photon y |
+| `event_id` | `uint64` | no | Zero-based event number within the raw input, across every chip in the sensor frame |
+| `x` | `float64` | no | Arithmetic mean member-photon x, in the sensor frame |
+| `y` | `float64` | no | Arithmetic mean member-photon y, in the sensor frame |
 | `timestamp_canonical` | `float64` | no | Earliest member-photon time in canonical ticks |
 | `photon_count` | `uint64` | no | Number of member photons |
 | `quality_flags` | `uint16` | no | Event flag bit mask |
@@ -293,7 +301,7 @@ recover how the events were produced without the summary JSON:
 
 - schema name and schema version
 - canonical tick duration in seconds
-- raw filename stem and chip index
+- raw filename stem and detector layout (`single_chip` or `quad`)
 - event algorithm name and complete event settings as JSON
 - position rule (`arithmetic`)
 - event time estimator (`earliest_photon`)
@@ -316,12 +324,12 @@ The `event_photons` file carries the same string metadata as `event_candidates`.
 
 ## Reconstruction Summary JSON File
 
-Each raw TPX3 filename stem has one event-reconstruction summary, written only
-after every final event Parquet file closes successfully. Paths are relative to
-the analysis directory:
+Each raw TPX3 filename stem has one event-reconstruction summary covering the
+whole sensor, written only after the event Parquet file closes successfully.
+Paths are relative to the analysis directory:
 
 ```text
-analysis/logs/<raw-file-stem>-event-reconstruction-summary.json
+analysis/logs/event_reconstruction/<raw-file-stem>_event_reconstruction_summary.json
 ```
 
 ```yaml
@@ -347,7 +355,7 @@ clustering:
     max_event_duration_ticks: 14745600.0
     min_photon_count: 1
     save_event_photons: false
-    derived_cell_width: 52
+    derived_cell_width: 104   # ceil(sensor_width / spatial_cells_per_axis); 516-pixel quad here
 
 event_timing:
   estimator: earliest_photon
@@ -382,22 +390,32 @@ and are not copied into the HERMES YAML file.
 ## Program Interface and Build
 
 The C++ program mirrors the photon clusterer so the two are operated the same
-way. It reads one `photon_events` Parquet file and writes one event file:
+way. It reads all of one raw file's `photon_events` files (every chip's parts)
+from the analysis directory and writes the whole-sensor event output under it:
 
 ```text
-hermes-event-reconstructor --input <photon_events_file> [--output <event_file>]
+hermes-event-reconstructor --input <analysis_directory> --raw-file-stem <stem>
                            [--settings <file>] [--overwrite]
 ```
 
-- `--input` is required; without `--output` the program prints summary counts
-  and writes no files.
-- With `--output` it writes the `event_candidates` file at the given path, the
-  `event_photons` file (when `save_event_photons` is set) to an `event_photons/`
-  directory beside the output directory, and the event-reconstruction summary
-  JSON to a `logs/` directory beside the output directory.
+- `--input` and `--raw-file-stem` are required. The program gathers every
+  `photons/<stem>_chip_<chip>_photon_<part>.parquet` file for that stem and
+  clusters them together in the shared sensor frame.
+- It writes the `event_candidates` file to `events/`, the `event_photons` file
+  (when `save_event_photons` is set) to `event_photons/`, and the
+  event-reconstruction summary JSON to `logs/event_reconstruction/`, all under
+  the analysis directory, one of each per raw file.
 - `--overwrite` replaces existing event and summary files; without it, an
   existing file is refused.
 - Exit code 0 on success, 2 on argument or settings errors.
+
+This whole-sensor interface is not yet built. The current `event_reconstruction.py`
+runner and its file naming are written one photon file at a time (per chip, per
+part, with dash-style `event-candidates`/`event-photons` names and a `logs/events`
+summary directory). When the event binary is implemented, the runner must move to
+this model: read every chip's photon files for a raw stem together, produce one
+event file and one summary per raw stem, and use the underscore filenames above
+that match the photon stage.
 
 The build mirrors `src/backends/reconstruction/photons/cpp/`: CMake with
 `cxx_std_17`, `-Wall -Wextra -Wpedantic`, Arrow and Parquet for Parquet I/O, and

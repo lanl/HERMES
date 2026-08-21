@@ -1,5 +1,5 @@
 {"event":"HERMES_record_initialized","record":"data/02-two-stage/tantalum-ironpowder/HERMES_record.yaml","time":"<TIMESTAMP>"}
 {"event":"workflow_initialized","stages":["unpacking","reconstruction"],"time":"<TIMESTAMP>"}
 {"event":"stage_completed","stage":"unpacking","file":"tests/data/tpx3/Tantalum_IronPowder.tpx3","status":"success","start":"<TIMESTAMP>","stop":"<TIMESTAMP>","summary":"data/02-two-stage/tantalum-ironpowder/analysis/logs/unpacking/Tantalum_IronPowder_unpacker_summary.json"}
-{"event":"stage_completed","stage":"reconstruction","file":"data/02-two-stage/tantalum-ironpowder/analysis/pixel_hits/Tantalum_IronPowder_chip_0_pixels_00000.parquet","status":"success","start":"<TIMESTAMP>","stop":"<TIMESTAMP>","summary":"data/02-two-stage/tantalum-ironpowder/analysis/logs/photon_reconstruction/Tantalum_IronPowder_photon_reconstruction_summary.json"}
+{"event":"stage_completed","stage":"reconstruction","file":"data/02-two-stage/tantalum-ironpowder/analysis/pixel_hits/Tantalum_IronPowder_chip_0_pixels_00000.parquet","status":"success","start":"<TIMESTAMP>","stop":"<TIMESTAMP>","summary":"data/02-two-stage/tantalum-ironpowder/analysis/logs/photon_reconstruction/Tantalum_IronPowder_chip_0_photon_reconstruction_summary_00000.json"}
 {"event":"workflow_completed","stages":["unpacking","reconstruction"],"time":"<TIMESTAMP>"}

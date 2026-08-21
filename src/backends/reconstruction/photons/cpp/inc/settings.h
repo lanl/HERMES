@@ -24,6 +24,11 @@ struct ClusteringSettings {
     // Empty means no time-walk calibration file (uncorrected leading edge).
     std::string timewalk_calibration_file;
     bool save_photon_pixels = false;
+    // How this chip's photon x/y map into the shared sensor coordinate frame:
+    // "single_chip" leaves the 256x256 chip space unchanged; "quad" tiles the
+    // four chips 2x2 with a four-pixel dead gap into a 516x516 sensor. Clustering
+    // is unaffected; only the written photon coordinates move.
+    std::string detector_layout = "single_chip";
 };
 
 // Loads settings starting from the defaults and overriding any field present in

@@ -16,7 +16,7 @@ _WILDCARD = re.compile(r"^<.*>$")
 # Expected summary file -> glob (relative to the working dir) for the produced file.
 _SUMMARY_GLOBS = {
     "unpacker-summary.json": "analysis/logs/unpacking/*_unpacker_summary.json",
-    "reconstruction-summary.json": "analysis/logs/photon_reconstruction/*_photon_reconstruction_summary.json",
+    "reconstruction-summary.json": "analysis/logs/photon_reconstruction/*_photon_reconstruction_summary_*.json",
 }
 
 _LOG_RELATIVE_PATH = "logs/HERMES-workflow.jsonl"

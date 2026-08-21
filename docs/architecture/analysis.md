@@ -183,6 +183,12 @@ independently, then writes `photon_events` and optional `photon_pixels` files
 under `analysis/photons/`. It does not read TDC files or perform
 photon-to-event reconstruction.
 
+Clustering stays chip-local, but the photon `x`/`y` are written in a single
+shared sensor coordinate frame selected by `detector_layout` (`single_chip` or
+`quad`, defaulting to `quad`). The runner passes the layout in the settings JSON.
+This shared frame lets the later event stage group light that lands on more than
+one chip. See `photon_reconstruction.md` for the per-chip map.
+
 The first photon reconstruction program uses connected components with a time
 gate. `clustering_algorithm="connected_components"` selects it. The reserved
 `"dbscan"` value must be rejected until the separate DBSCAN program is

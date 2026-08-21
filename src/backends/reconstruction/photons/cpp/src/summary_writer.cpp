@@ -32,6 +32,7 @@ json settingsJson(const ClusteringSettings& s) {
             ? json(nullptr)
             : json(s.timewalk_calibration_file);
     j["save_photon_pixels"] = s.save_photon_pixels;
+    j["detector_layout"] = s.detector_layout;
     return j;
 }
 

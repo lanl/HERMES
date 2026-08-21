@@ -61,6 +61,8 @@ std::shared_ptr<arrow::KeyValueMetadata> buildFileMetadata(
     }
     keys.emplace_back("save_photon_pixels");
     values.emplace_back(metadata.save_photon_pixels ? "true" : "false");
+    keys.emplace_back("detector_layout");
+    values.push_back(metadata.detector_layout);
     return std::make_shared<arrow::KeyValueMetadata>(keys, values);
 }
 

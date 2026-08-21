@@ -35,6 +35,7 @@ add_library(hermes_photon_clusterer
     src/photon_writer.cpp
     src/pixel_reader.cpp
     src/reconstruction.cpp
+    src/sensor_layout.cpp
     src/settings.cpp
     src/summary_writer.cpp
     src/timewalk.cpp
@@ -102,6 +103,10 @@ if(BUILD_TESTING)
     add_executable(settings_tests tests/settings_tests.cpp)
     target_link_libraries(settings_tests PRIVATE hermes_photon_clusterer)
     add_test(NAME settings_tests COMMAND settings_tests)
+
+    add_executable(sensor_layout_tests tests/sensor_layout_tests.cpp)
+    target_link_libraries(sensor_layout_tests PRIVATE hermes_photon_clusterer)
+    add_test(NAME sensor_layout_tests COMMAND sensor_layout_tests)
 
     add_executable(reconstruction_tests tests/reconstruction_tests.cpp)
     target_link_libraries(reconstruction_tests PRIVATE hermes_photon_clusterer)
