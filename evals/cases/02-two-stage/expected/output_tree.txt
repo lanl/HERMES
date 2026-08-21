@@ -7,7 +7,7 @@ data/02-two-stage/tantalum-ironpowder/
 │   ├── pixel_hits/
 │   │   └── Tantalum_IronPowder_chip_0_pixels_00000.parquet
 │   ├── tdc_triggers/
-│   │   └── Tantalum_IronPowder_tdc_triggers_00000.parquet
+│   │   └── Tantalum_IronPowder_tdc1_rising_triggers_00000.parquet
 │   ├── photons/
 │   │   └── Tantalum_IronPowder_photon_00000.parquet
 │   ├── pixel_clusters/

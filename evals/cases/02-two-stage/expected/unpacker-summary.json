@@ -36,7 +36,7 @@
   "sorting": {
     "strategy": "in_memory",
     "memory_budget_bytes": 1073741824,
-    "estimated_memory_bytes": 20233136,
+    "estimated_memory_bytes": 24278904,
     "sorting_time_seconds": "<IGNORE: non-deterministic timing>"
   },
   "output_parquet": {
@@ -49,7 +49,7 @@
     "tdc_timestamps": {
       "row_count": 100,
       "files": [
-        "data/02-two-stage/tantalum-ironpowder/analysis/tdc_triggers/Tantalum_IronPowder_tdc_triggers_00000.parquet"
+        "data/02-two-stage/tantalum-ironpowder/analysis/tdc_triggers/Tantalum_IronPowder_tdc1_rising_triggers_00000.parquet"
       ]
     },
     "heartbeat_packets": {
