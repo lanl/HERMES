@@ -48,9 +48,11 @@ void printHelp(const char* program_name) {
     std::cout << "  Without --output:\n";
     std::cout << "    Prints summary counts only; writes no files.\n\n";
     std::cout << "  With --output:\n";
-    std::cout << "    Writes one event_candidates file at the given path and an\n";
-    std::cout << "    event_photons file beside it when save_event_photons is "
-                 "set. The\n";
+    std::cout << "    Writes one event_candidates file at the given path. When\n";
+    std::cout << "    save_event_photons is set, the event_photons file is "
+                 "written to\n";
+    std::cout << "    an event_photons/ directory beside the output directory. "
+                 "The\n";
     std::cout << "    reconstruction-summary JSON is written to a logs/events/ "
                  "directory\n";
     std::cout << "    beside the output directory.\n";
