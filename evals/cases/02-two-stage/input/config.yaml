@@ -15,6 +15,8 @@ environment:
 analysis:
   mode: hermes
   resource_limit_percent: 90
+  detector_layout:
+    kind: single_chip
   unpacking:
     program:
       name: tpx3-spidr-cpp

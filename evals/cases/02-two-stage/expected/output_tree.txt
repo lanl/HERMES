@@ -9,14 +9,14 @@ data/02-two-stage/tantalum-ironpowder/
 │   ├── tdc_triggers/
 │   │   └── Tantalum_IronPowder_tdc1_rising_triggers_00000.parquet
 │   ├── photons/
-│   │   └── Tantalum_IronPowder_photon_00000.parquet
+│   │   └── Tantalum_IronPowder_chip_0_photon_00000.parquet
 │   ├── pixel_clusters/
-│   │   └── Tantalum_IronPowder_pixel_clusters_00000.parquet
+│   │   └── Tantalum_IronPowder_chip_0_pixel_clusters_00000.parquet
 │   ├── logs/
 │       ├── unpacking/
 │       │   └── Tantalum_IronPowder_unpacker_summary.json
 │       └── photon_reconstruction/
-│           └── Tantalum_IronPowder_photon_reconstruction_summary.json
+│           └── Tantalum_IronPowder_chip_0_photon_reconstruction_summary_00000.json
 ├── logs/
 │   ├── acquisition.serval.jsonl
 │   ├── analysis.jsonl

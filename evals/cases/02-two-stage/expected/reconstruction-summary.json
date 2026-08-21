@@ -5,23 +5,23 @@
   },
   "reconstruction": {
     "pixels_read": 505721,
-    "clusters_formed": 100969,
-    "rejected_clusters": 8266,
+    "clusters_formed": 108990,
+    "rejected_clusters": 9081,
     "rejection_reasons": {
-      "below_min_cluster_size": 7097,
-      "above_max_cluster_size": 5,
-      "below_min_cluster_tot": 133,
-      "above_max_cluster_tot": 0,
-      "above_max_aspect_ratio": 26,
-      "below_min_filled_fraction": 1140
+      "below_min_cluster_size": 8377,
+      "above_max_cluster_size": 4,
+      "below_min_cluster_tot": 171,
+      "above_max_cluster_tot": 178,
+      "above_max_aspect_ratio": 25,
+      "below_min_filled_fraction": 533
     },
     "quality_flag_counts": {
       "saturated_pixel": 0,
-      "bridged_components": 3502
+      "bridged_components": 1881
     },
     "warnings": [],
     "errors": [],
-    "total_photons": 92703
+    "total_photons": 99909
   },
   "clustering": {
     "algorithm": "connected_components",
@@ -38,7 +38,8 @@
       "position_averaging": "arithmetic",
       "photon_time_estimator": "leading_edge",
       "timewalk_calibration_file": "calibrations/tpx3/time-walk_example.json",
-      "save_photon_pixels": true
+      "save_photon_pixels": true,
+      "detector_layout": "single_chip"
     }
   },
   "photon_timing": {
@@ -56,16 +57,16 @@
       "data/02-two-stage/tantalum-ironpowder/analysis/pixel_hits/Tantalum_IronPowder_chip_0_pixels_00000.parquet"
     ],
     "photons": {
-      "row_count": 92703,
+      "row_count": 99909,
       "files": [
-        "data/02-two-stage/tantalum-ironpowder/analysis/photons/Tantalum_IronPowder_photon_00000.parquet"
+        "data/02-two-stage/tantalum-ironpowder/analysis/photons/Tantalum_IronPowder_chip_0_photon_00000.parquet"
       ]
     },
     "pixel_clusters": {
       "requested": true,
-      "row_count": 482699,
+      "row_count": 488304,
       "files": [
-        "data/02-two-stage/tantalum-ironpowder/analysis/pixel_clusters/Tantalum_IronPowder_pixel_clusters_00000.parquet"
+        "data/02-two-stage/tantalum-ironpowder/analysis/pixel_clusters/Tantalum_IronPowder_chip_0_pixel_clusters_00000.parquet"
       ]
     }
   },
