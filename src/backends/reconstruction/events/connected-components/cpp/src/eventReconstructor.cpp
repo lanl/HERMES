@@ -141,20 +141,29 @@ int main(const int argc, char* argv[]) {
     const std::string settings_json =
         hermes_event_reconstructor::clusteringSettingsJson(settings, cell_width);
 
-    // The event_photons and summary paths derive from the output file: the
-    // event_photons file sits beside the event file, while the summary is a log
-    // artifact written to a logs/events/ directory beside the output directory
-    // (the photon stage writes to logs/photons/). Both directories are created up
-    // front so the summary is written even when reconstruction produces zero
-    // events. Only used when --output is set.
+    // The event_photons and summary paths derive from the output file. The
+    // event_photons file goes in its own event_photons/ directory beside the
+    // events/ output directory, mirroring how the photon stage writes its
+    // pixel_clusters/ file beside photons/. The summary is a log artifact written
+    // to a logs/events/ directory beside the output directory (the photon stage
+    // writes to logs/photons/). The events/ and logs/events/ directories are
+    // created up front so the summary is written even when reconstruction
+    // produces zero events; event_photons/ is created only when
+    // save_event_photons is set. Only used when --output is set.
     std::string event_photons_file;
     std::string summary_path;
     if (have_output) {
         const fs::path output_path(output_file);
         const fs::path parent = output_path.parent_path();
         const std::string stem = output_path.stem().string();
-        const fs::path logs_dir = parent.parent_path() / "logs" / "events";
-        for (const fs::path& directory : {parent, logs_dir}) {
+        const fs::path analysis_dir = parent.parent_path();
+        const fs::path logs_dir = analysis_dir / "logs" / "events";
+        const fs::path event_photons_dir = analysis_dir / "event_photons";
+        std::vector<fs::path> directories = {parent, logs_dir};
+        if (settings.save_event_photons) {
+            directories.push_back(event_photons_dir);
+        }
+        for (const fs::path& directory : directories) {
             if (directory.empty()) {
                 continue;
             }
@@ -167,7 +176,7 @@ int main(const int argc, char* argv[]) {
             }
         }
         event_photons_file =
-            (parent / (stem + "-event-photons.parquet")).string();
+            (event_photons_dir / (stem + "-event-photons.parquet")).string();
         summary_path =
             (logs_dir / (stem + "-reconstruction-summary.json")).string();
     }
