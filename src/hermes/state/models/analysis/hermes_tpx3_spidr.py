@@ -20,7 +20,7 @@ TPX3_PARQUET_CATEGORY_DIRECTORIES = {
     "tdc_timestamps": "tdc_triggers",
     "heartbeat_packets": "global_timestamps",
     "control_packets": "control_packets",
-    "unrecognized_packets": "unknownPackets",
+    "unrecognized_packets": "unrecognized_packets",
 }
 SortingStrategy = Literal["in_memory", "external_merge"]
 ClusteringAlgorithm = Literal["connected_components", "dbscan"]

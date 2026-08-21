@@ -35,7 +35,7 @@ void printHelp(const char* program_name) {
     std::cout << "      - tdc_triggers/        Sorted TDC trigger events\n";
     std::cout << "      - global_timestamps/   Global timestamp anchors\n";
     std::cout << "      - control_packets/     Control packets\n";
-    std::cout << "      - unknownPackets/     Unknown packets\n";
+    std::cout << "      - unrecognized_packets/ Unrecognized packets\n";
     std::cout << "      - logs/unpacking/     Input-specific summary JSON\n\n";
     std::cout << "Examples:\n";
     std::cout << "  # Print summary only\n";

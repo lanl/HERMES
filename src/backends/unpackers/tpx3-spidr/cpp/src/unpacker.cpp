@@ -286,7 +286,7 @@ constexpr std::array<const char*, 6> analysis_directories = {
     "tdc_triggers",
     "global_timestamps",
     "control_packets",
-    "unknownPackets",
+    "unrecognized_packets",
     "logs/unpacking",
 };
 
@@ -295,7 +295,7 @@ constexpr std::array<const char*, 5> parquet_directories = {
     "tdc_triggers",
     "global_timestamps",
     "control_packets",
-    "unknownPackets",
+    "unrecognized_packets",
 };
 
 void findExistingOutputFiles(const std::filesystem::path& analysis_directory,
@@ -363,21 +363,6 @@ std::set<std::uint8_t> collectTimestampedChipIndexes(
     }
 
     return chip_indexes;
-}
-
-// A TDC trigger is a board-level signal that SPIDR copies into every chip's data
-// stream, so each physical trigger is decoded once per chip. Keep one row per
-// distinct trigger, identified by its channel/edge and canonical time.
-void deduplicateTdcTriggers(std::vector<TdcOutputRow>& tdcs) {
-    std::set<std::pair<std::uint8_t, std::uint64_t>> seen;
-    std::vector<TdcOutputRow> unique_rows;
-    unique_rows.reserve(tdcs.size());
-    for (const auto& row : tdcs) {
-        if (seen.insert({row.trigger_type, row.timestamp_canonical}).second) {
-            unique_rows.push_back(row);
-        }
-    }
-    tdcs = std::move(unique_rows);
 }
 
 }  // namespace
@@ -635,26 +620,53 @@ WorkflowResult runTwoPassWorkflow(std::istream& input,
         }
     }
 
-    for (const auto& tdc : unpack_result.tdc_hits) {
-        if (auto row = convertTdcToOutputRow(tdc)) {
-            output_rows.tdcs.push_back(*row);
-        }
-    }
-
-    // Collapse the per-chip copies of each trigger and report the unique counts.
-    deduplicateTdcTriggers(output_rows.tdcs);
+    // Classify and collapse the TDC triggers in one pass. SPIDR copies each
+    // board-level trigger into every chip's stream, so the per-chip copies are
+    // collapsed to one written row per unique trigger, identified by its
+    // channel/edge and canonical time. The four edge counts, the total, and the
+    // written rows then all agree. Malformed hits are not written and are each
+    // reported once per unique raw value, so their counts also match the
+    // number of unique problems rather than the raw per-chip copies.
     auto& tdc_summary = workflow_result.summary.unpack_summary;
     tdc_summary.tdc1_rising_count = 0;
     tdc_summary.tdc1_falling_count = 0;
     tdc_summary.tdc2_rising_count = 0;
     tdc_summary.tdc2_falling_count = 0;
-    for (const auto& row : output_rows.tdcs) {
-        switch (row.trigger_type) {
+    tdc_summary.unknown_tdc_edge_count = 0;
+    tdc_summary.invalid_tdc_fine_value_count = 0;
+
+    std::set<std::pair<std::uint8_t, std::uint64_t>> seen_triggers;
+    std::set<std::pair<std::uint8_t, std::uint64_t>> seen_invalid_fine;
+    std::set<std::pair<std::uint8_t, std::uint64_t>> seen_unknown_edge;
+    for (const auto& tdc : unpack_result.tdc_hits) {
+        if (!tdc.fine_value_valid) {
+            if (seen_invalid_fine.insert({tdc.edge_code, tdc.tdc_timestamp_raw})
+                    .second) {
+                ++tdc_summary.invalid_tdc_fine_value_count;
+            }
+            continue;
+        }
+        const auto trigger_type = getTdcTriggerType(tdc);
+        if (trigger_type > 3U) {
+            if (seen_unknown_edge.insert({tdc.edge_code, tdc.tdc_timestamp_raw})
+                    .second) {
+                ++tdc_summary.unknown_tdc_edge_count;
+            }
+            continue;
+        }
+        const auto timestamp = calculateTdcTimestamp(tdc);
+        if (!seen_triggers.insert({trigger_type, *timestamp}).second) {
+            continue;
+        }
+        switch (trigger_type) {
             case 0: ++tdc_summary.tdc1_rising_count; break;
             case 1: ++tdc_summary.tdc1_falling_count; break;
             case 2: ++tdc_summary.tdc2_rising_count; break;
             case 3: ++tdc_summary.tdc2_falling_count; break;
             default: break;
+        }
+        if (auto row = convertTdcToOutputRow(tdc)) {
+            output_rows.tdcs.push_back(*row);
         }
     }
     tdc_summary.tdc_timestamp_count = output_rows.tdcs.size();

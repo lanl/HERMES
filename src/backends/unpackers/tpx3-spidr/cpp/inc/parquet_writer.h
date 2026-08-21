@@ -28,7 +28,7 @@ struct ParquetWriterDiagnostics {
     ParquetCategoryFiles tdc_triggers{"tdc_triggers", 0, {}};
     ParquetCategoryFiles global_timestamps{"global_timestamps", 0, {}};
     ParquetCategoryFiles control_packets{"control_packets", 0, {}};
-    ParquetCategoryFiles unknown_packets{"unknownPackets", 0, {}};
+    ParquetCategoryFiles unknown_packets{"unrecognized_packets", 0, {}};
     std::vector<std::string> errors;
 };
 
