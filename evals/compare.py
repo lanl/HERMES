@@ -26,6 +26,24 @@ def _is_wildcard(value) -> bool:
     return isinstance(value, str) and bool(_WILDCARD.match(value))
 
 
+def _relativize(value, prefix: str):
+    """Rewrite produced absolute paths to the working-directory-relative form.
+
+    The unpacker summary records output paths as absolute (the unpacker is
+    handed an absolute output directory), while the expected files store them
+    relative to the current directory, the same form the workflow log writes.
+    Strip the current-directory prefix from every produced string so the two
+    read the same and the fixtures stay portable across machines.
+    """
+    if isinstance(value, str):
+        return value[len(prefix):] if value.startswith(prefix) else value
+    if isinstance(value, dict):
+        return {key: _relativize(item, prefix) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_relativize(item, prefix) for item in value]
+    return value
+
+
 def _diff(expected, actual, path: str) -> list[str]:
     if _is_wildcard(expected):
         return []
@@ -57,12 +75,14 @@ def _diff(expected, actual, path: str) -> list[str]:
 
 
 def compare_json(expected_file: Path, actual_file: Path) -> list[str]:
+    prefix = str(Path.cwd()) + "/"
     expected = json.loads(expected_file.read_text())
-    actual = json.loads(actual_file.read_text())
+    actual = _relativize(json.loads(actual_file.read_text()), prefix)
     return _diff(expected, actual, expected_file.name)
 
 
 def compare_jsonl(expected_file: Path, actual_file: Path) -> list[str]:
+    prefix = str(Path.cwd()) + "/"
     expected_lines = expected_file.read_text().splitlines()
     actual_lines = actual_file.read_text().splitlines()
     problems = []
@@ -71,7 +91,8 @@ def compare_jsonl(expected_file: Path, actual_file: Path) -> list[str]:
             f"{expected_file.name}: {len(actual_lines)} records != expected {len(expected_lines)}"
         )
     for i, (e, a) in enumerate(zip(expected_lines, actual_lines)):
-        problems += _diff(json.loads(e), json.loads(a), f"{expected_file.name}[{i}]")
+        actual = _relativize(json.loads(a), prefix)
+        problems += _diff(json.loads(e), actual, f"{expected_file.name}[{i}]")
     return problems
 
 
