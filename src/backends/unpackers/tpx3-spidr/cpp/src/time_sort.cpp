@@ -5,6 +5,7 @@
 #include <cmath>
 #include <limits>
 #include <map>
+#include <utility>
 #include <vector>
 
 namespace hermes_tpx3_spidr {
@@ -46,7 +47,8 @@ std::uint64_t findBestEpoch(const std::uint64_t raw_counter,
                             const std::uint64_t modulus,
                             const std::uint64_t canonical_factor,
                             const ChipAnchorIndex& anchors,
-                            const std::uint64_t source_packet_order,
+                            const std::size_t row_chunk_index,
+                            const std::size_t row_packet_index,
                             EpochAssignmentDiagnostics& diagnostics) {
     if (anchors.anchors.empty()) {
         diagnostics.used_fallback = true;
@@ -54,7 +56,24 @@ std::uint64_t findBestEpoch(const std::uint64_t raw_counter,
         return 0;
     }
 
-    const auto& anchor = anchors.anchors[0];
+    // Anchors are sorted by (chunk_index, packet_index). Pick the last anchor at
+    // or before this row so the row unwraps toward the heartbeat nearest it in
+    // the stream. Using the first heartbeat for every row collapses rows after a
+    // counter wrap back to near zero.
+    const std::pair<std::size_t, std::size_t> row_position{
+        row_chunk_index, row_packet_index};
+    const auto after_row = std::upper_bound(
+        anchors.anchors.begin(), anchors.anchors.end(), row_position,
+        [](const std::pair<std::size_t, std::size_t>& row,
+           const GlobalAnchor& candidate) {
+            if (row.first != candidate.chunk_index) {
+                return row.first < candidate.chunk_index;
+            }
+            return row.second < candidate.packet_index;
+        });
+    const auto& anchor = (after_row == anchors.anchors.begin())
+                             ? anchors.anchors.front()
+                             : *(after_row - 1);
     const auto anchor_canonical =
         anchor.global_time_48bit * CANONICAL_TICKS_PER_25NS;
 
@@ -78,7 +97,6 @@ std::uint64_t findBestEpoch(const std::uint64_t raw_counter,
         }
     }
 
-    (void)source_packet_order;
     return best_epoch;
 }
 
@@ -93,7 +111,8 @@ void assignEpochsToPixels(std::vector<PixelHit>& pixels,
 
         const auto epoch = findBestEpoch(
             pixel.coarse_time_25ns, PIXEL_COUNTER_MODULUS,
-            CANONICAL_TICKS_PER_25NS, anchors, 0, diagnostics);
+            CANONICAL_TICKS_PER_25NS, anchors, pixel.position.chunk_index,
+            pixel.position.packet_index, diagnostics);
 
         const auto unwrapped_coarse =
             pixel.coarse_time_25ns + epoch * PIXEL_COUNTER_MODULUS;
@@ -115,7 +134,8 @@ void assignEpochsToTdcs(std::vector<TdcHit>& tdcs,
 
         const auto epoch = findBestEpoch(
             tdc.tdc_timestamp_raw, TDC_COUNTER_MODULUS,
-            CANONICAL_TICKS_PER_TDC_RAW, anchors, 0, diagnostics);
+            CANONICAL_TICKS_PER_TDC_RAW, anchors, tdc.position.chunk_index,
+            tdc.position.packet_index, diagnostics);
 
         const auto unwrapped_timestamp =
             tdc.tdc_timestamp_raw + epoch * TDC_COUNTER_MODULUS;
@@ -139,7 +159,8 @@ void assignEpochsToControls(std::vector<SpidrControl>& controls,
 
         const auto epoch = findBestEpoch(
             control.timestamp_raw, CONTROL_COUNTER_MODULUS,
-            CANONICAL_TICKS_PER_25NS, anchors, 0, diagnostics);
+            CANONICAL_TICKS_PER_25NS, anchors, control.position.chunk_index,
+            control.position.packet_index, diagnostics);
 
         const auto unwrapped_timestamp =
             control.timestamp_raw + epoch * CONTROL_COUNTER_MODULUS;

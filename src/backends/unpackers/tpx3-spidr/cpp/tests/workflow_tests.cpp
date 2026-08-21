@@ -100,7 +100,7 @@ void testWorkflowWithEmptyInput(TestContext& test) {
 
     for (const auto* directory : {"pixel_hits", "tdc_triggers",
                                   "global_timestamps", "control_packets",
-                                  "unknownPackets", "logs/unpacking"}) {
+                                  "unrecognized_packets", "logs/unpacking"}) {
         test.expect(std::filesystem::is_directory(analysis_directory / directory),
                     std::string("created shared directory ") + directory);
     }

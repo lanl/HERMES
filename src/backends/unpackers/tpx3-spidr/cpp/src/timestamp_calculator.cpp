@@ -3,7 +3,7 @@
 namespace hermes_tpx3_spidr {
 
 std::uint64_t calculatePixelTimestamp(const PixelHit& pixel) {
-    if (pixel.fine_time_1p5625ns <= 0) {
+    if (pixel.fine_time_1p5625ns < 0) {
         return 0;
     }
     return static_cast<std::uint64_t>(pixel.fine_time_1p5625ns) * 768U;

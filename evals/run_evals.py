@@ -10,6 +10,7 @@ each other. Exit status is non-zero if any case deviates from its expected/ file
 
 from __future__ import annotations
 
+import shutil
 import sys
 from pathlib import Path
 
@@ -22,19 +23,26 @@ _CASES_DIR = Path(__file__).parent / "cases"
 
 
 def run_case(case_directory: Path) -> list[str]:
-    
+
     # Set the config file
     config_file = case_directory / "input" / "config.yaml"
 
     # Load the HERMES record from the config file
     record = load_hermes_record_from_yaml(str(config_file))
-    
-    # Run the workflow
-    Workflow(record).run()
-    
+
     # Determine the root directory for comparison based on the run directory of the record
     compare_root = record.environment.run_directory.resolved_path
-    
+
+    # Clear any output from a previous run so the workflow always runs fresh
+    # rather than skipping files it already produced (a skipped file reports a
+    # different status and leaves renamed-away files behind, both of which the
+    # expected fixtures would flag).
+    if compare_root.exists():
+        shutil.rmtree(compare_root)
+
+    # Run the workflow
+    Workflow(record).run()
+
     # Return the comparison results
     return compare.compare_case(case_directory / "expected", compare_root)
 

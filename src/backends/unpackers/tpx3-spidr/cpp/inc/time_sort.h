@@ -82,7 +82,8 @@ std::uint64_t findBestEpoch(std::uint64_t raw_counter,
                             std::uint64_t modulus,
                             std::uint64_t canonical_factor,
                             const ChipAnchorIndex& anchors,
-                            std::uint64_t source_packet_order,
+                            std::size_t row_chunk_index,
+                            std::size_t row_packet_index,
                             EpochAssignmentDiagnostics& diagnostics);
 
 void assignEpochsToPixels(std::vector<PixelHit>& pixels,

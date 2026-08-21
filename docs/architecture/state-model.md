@@ -716,7 +716,7 @@ values depend on the image intensifier, phosphor, detector threshold, and
 measurement.
 
 The shared directory contains `pixel_hits/`, `tdc_triggers/`,
-`global_timestamps/`, `control_packets/`, `unknownPackets/`, `logs/`,
+`global_timestamps/`, `control_packets/`, `unrecognized_packets/`, `logs/`,
 `photons/`, and later `events/`. Parquet filenames begin with the corresponding
 raw TPX3 filename stem. Input-specific summary paths are derived as:
 

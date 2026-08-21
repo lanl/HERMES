@@ -26,7 +26,7 @@ _PARQUET_DIRECTORY_LABELS = {
     "tdc_triggers": "tdc_triggers",
     "global_timestamps": "global_timestamps",
     "control_packets": "control_packets",
-    "unknownPackets": "unrecognized_packets",
+    "unrecognized_packets": "unrecognized_packets",
 }
 _PARQUET_DIRECTORIES = tuple(_PARQUET_DIRECTORY_LABELS)
 # TDC triggers are written one file per channel+edge that occurs, so the
@@ -335,7 +335,7 @@ def _validate_completed_files(
         ("tdc_triggers", summary.output_parquet.tdc_timestamps, False),
         ("global_timestamps", summary.output_parquet.heartbeat_packets, False),
         ("control_packets", summary.output_parquet.control_packets, False),
-        ("unknownPackets", summary.output_parquet.unrecognized_packets, False),
+        ("unrecognized_packets", summary.output_parquet.unrecognized_packets, False),
     )
     listed_files: set[Path] = set()
     # The binary names pixel files "<stem>_chip_<chip>_pixels_<part>.parquet"
