@@ -762,7 +762,7 @@ def test_event_summary_round_trips_with_event_photons() -> None:
     assert isinstance(parquet, dict)
     parquet["event_photons"] = {
         "row_count": 10,
-        "files": ["events/raw-chip-0-event-photons-part-00000.parquet"],
+        "files": ["event_photons/raw-chip-0-event-photons-part-00000.parquet"],
     }
 
     summary = HermesTpx3EventReconstructionSummary.model_validate_json(

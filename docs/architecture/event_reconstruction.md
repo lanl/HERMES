@@ -2,7 +2,8 @@
 
 Event reconstruction is a separate analysis step, not part of the unpacker or
 photon reconstruction. A user-selected HERMES program reads photon Parquet files
-from `analysis/photons/` and writes event Parquet files under `analysis/events/`.
+from `analysis/photons/` and writes event Parquet files under `analysis/events/`,
+plus an optional per-photon diagnostic file under `analysis/event_photons/`.
 Each clustering algorithm is its own program in its own directory, and C++ and
 Rust versions live beside each other:
 
@@ -251,11 +252,16 @@ the unpacker and photon reconstruction.
 
 ## Event Parquet Files
 
-The `analysis/events/` directory contains up to two filename groups:
+Event reconstruction writes to two sibling directories under the analysis
+directory, mirroring the photon stage's `photons/` and `pixel_clusters/`:
+
+- `analysis/events/` holds the `event_candidates` files.
+- `analysis/event_photons/` holds the `event_photons` files, and is created only
+  when `save_event_photons` is true.
 
 ```text
-<raw-file-stem>-chip-<chip-index>-event-candidates-part-<five-digit-part-index>.parquet
-<raw-file-stem>-chip-<chip-index>-event-photons-part-<five-digit-part-index>.parquet
+events/<raw-file-stem>-chip-<chip-index>-event-candidates-part-<five-digit-part-index>.parquet
+event_photons/<raw-file-stem>-chip-<chip-index>-event-photons-part-<five-digit-part-index>.parquet
 ```
 
 Part numbers start at zero independently for each raw input and chip.
@@ -266,8 +272,10 @@ files and a zero row count in the summary.
 is true. It records one row per member photon, tying each photon to the event it
 was grouped into, so cluster membership can be inspected or plotted without
 rerunning the clustering. It is the event-stage counterpart of the photon stage's
-`photon_pixels` output. It is off by default because it is larger than
-`event_candidates` and not needed for routine analysis.
+`photon_pixels` output, and like that output it lives in its own directory
+(`event_photons/`, beside `events/`) so a step gathering event files from
+`events/` never picks it up by accident. It is off by default because it is
+larger than `event_candidates` and not needed for routine analysis.
 
 ### `event_candidates`
 
@@ -383,9 +391,10 @@ hermes-event-reconstructor --input <photon_events_file> [--output <event_file>]
 
 - `--input` is required; without `--output` the program prints summary counts
   and writes no files.
-- With `--output` it writes the `event_candidates` file at the given path and
-  the event-reconstruction summary JSON to a `logs/` directory beside the output
-  directory.
+- With `--output` it writes the `event_candidates` file at the given path, the
+  `event_photons` file (when `save_event_photons` is set) to an `event_photons/`
+  directory beside the output directory, and the event-reconstruction summary
+  JSON to a `logs/` directory beside the output directory.
 - `--overwrite` replaces existing event and summary files; without it, an
   existing file is refused.
 - Exit code 0 on success, 2 on argument or settings errors.
