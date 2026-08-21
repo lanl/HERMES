@@ -218,7 +218,7 @@ void testFindBestEpochNoAnchors(TestContext& test) {
     EpochAssignmentDiagnostics diagnostics;
 
     const auto epoch = findBestEpoch(0x10000000, PIXEL_COUNTER_MODULUS,
-                                     CANONICAL_TICKS_PER_25NS, empty_index, 0,
+                                     CANONICAL_TICKS_PER_25NS, empty_index, 0, 0,
                                      diagnostics);
 
     test.expectEqual(epoch, std::uint64_t{0}, "no anchors returns epoch 0");
@@ -239,7 +239,7 @@ void testFindBestEpochPixelScale(TestContext& test) {
     EpochAssignmentDiagnostics diagnostics;
 
     const auto epoch = findBestEpoch(0, PIXEL_COUNTER_MODULUS,
-                                     CANONICAL_TICKS_PER_25NS, index, 0,
+                                     CANONICAL_TICKS_PER_25NS, index, 0, 0,
                                      diagnostics);
 
     test.expectEqual(epoch, std::uint64_t{3},
@@ -261,12 +261,47 @@ void testFindBestEpochTdcScale(TestContext& test) {
     EpochAssignmentDiagnostics diagnostics;
 
     const auto epoch = findBestEpoch(0, TDC_COUNTER_MODULUS,
-                                     CANONICAL_TICKS_PER_TDC_RAW, index, 0,
+                                     CANONICAL_TICKS_PER_TDC_RAW, index, 0, 0,
                                      diagnostics);
 
     test.expectEqual(epoch, std::uint64_t{3},
                      "TDC raw 0 unwraps to the 3rd TDC rollover");
     test.expect(!diagnostics.used_fallback, "no fallback with anchors");
+}
+
+void testFindBestEpochNearestAnchor(TestContext& test) {
+    // Two heartbeats sit at different points in the stream: the first near zero,
+    // the second three pixel rollovers later. A row positioned after the second
+    // heartbeat must unwrap toward that second anchor (epoch 3), not the first
+    // (epoch 0). This pins the nearest-anchor selection that keeps timestamps
+    // growing across a counter wrap.
+    ChipAnchorIndex index;
+
+    GlobalAnchor first_anchor;
+    first_anchor.global_time_48bit = 0;
+    first_anchor.chunk_index = 0;
+    first_anchor.packet_index = 10;
+    index.anchors.push_back(first_anchor);
+
+    GlobalAnchor second_anchor;
+    second_anchor.global_time_48bit = 3ULL * PIXEL_COUNTER_MODULUS;
+    second_anchor.chunk_index = 0;
+    second_anchor.packet_index = 100;
+    index.anchors.push_back(second_anchor);
+
+    EpochAssignmentDiagnostics diagnostics;
+
+    const auto before = findBestEpoch(0, PIXEL_COUNTER_MODULUS,
+                                      CANONICAL_TICKS_PER_25NS, index, 0, 20,
+                                      diagnostics);
+    test.expectEqual(before, std::uint64_t{0},
+                     "row before the second heartbeat unwraps to the first");
+
+    const auto after = findBestEpoch(0, PIXEL_COUNTER_MODULUS,
+                                     CANONICAL_TICKS_PER_25NS, index, 0, 200,
+                                     diagnostics);
+    test.expectEqual(after, std::uint64_t{3},
+                     "row after the second heartbeat unwraps to the second");
 }
 
 void testAssignEpochsToPixels(TestContext& test) {
@@ -520,6 +555,7 @@ int main() {
     testFindBestEpochNoAnchors(test);
     testFindBestEpochPixelScale(test);
     testFindBestEpochTdcScale(test);
+    testFindBestEpochNearestAnchor(test);
     testAssignEpochsToPixels(test);
     testAssignEpochsToPixelsUsesChipSpecificAnchors(test);
     testAssignEpochsToTdcs(test);
