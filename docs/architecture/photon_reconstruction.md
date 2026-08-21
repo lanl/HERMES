@@ -149,11 +149,11 @@ so the model choice can be reviewed before reconstruction is implemented.
 
 `photon_time_estimator="leading_edge"` is the first implemented timing rule.
 When a calibration file is supplied, the program subtracts the selected
-normalized correction from every source-pixel timestamp and takes the earliest
-corrected timestamp. The correction `delta_t(tot_raw) = a/(tot_raw+b)+c` is
-fractional, so the corrected leading edge is written as a floating-point value
-in canonical ticks to preserve sub-tick precision; it is not rounded to an
-integer. When no calibration file is supplied, the correction is zero, the
+normalized correction `correction(q) = f(q) - f(high_tot_anchor)` from every
+source-pixel timestamp and takes the earliest corrected timestamp. That
+correction is fractional, so the corrected leading edge is written as a
+floating-point value in canonical ticks to preserve sub-tick precision; it is
+not rounded to an integer. When no calibration file is supplied, the correction is zero, the
 earliest source-pixel timestamp is written unchanged (an integer value in the
 float column), and the program records that it used the uncorrected leading
 edge. It must not use guessed correction parameters.
@@ -164,22 +164,50 @@ correction produces sub-tick offsets, so the reconstructed photon time is a
 float64 canonical-tick value. `"brightest"`, `"mean"`, and `"tot_weighted"` are
 reserved timing values and must be rejected until implemented.
 
+## Sensor Coordinate Frame
+
+Clustering runs one chip at a time in that chip's own 256x256 pixel space, but
+the photon `x` and `y` written to the photon table are in a single shared sensor
+frame so the event stage can group light that lands on more than one chip. The
+`detector_layout` setting selects the frame:
+
+- `single_chip` leaves the chip's `local_x`/`local_y` unchanged, a 256x256
+  frame.
+- `quad` tiles four chips 2x2 with a four-pixel dead gap between them, giving a
+  516x516 sensor with empty columns and rows at 256-259. Each chip's photon
+  position maps into the sensor as:
+
+  | Chip | Sensor x | Sensor y |
+  | --- | --- | --- |
+  | 0 | `x + 260` | `y` |
+  | 1 | `515 - x` | `515 - y` |
+  | 2 | `255 - x` | `515 - y` |
+  | 3 | `x` | `y` |
+
+The map is an offset and flip only, so applying it to a photon's mean position
+gives the same result as mapping every source pixel and then averaging;
+clustering stays chip-local and only the photon table moves to the sensor frame.
+The `pixel_clusters` table keeps each source pixel's raw chip-local `local_x`
+and `local_y`. A `quad` chip index outside 0-3 is an error.
+
 ## Photon Parquet Files
 
 Reconstruction writes two tables in two directories under `analysis/`. The
 photon table goes in `photons/` and the pixel-to-cluster table goes in
-`pixel_clusters/`. Both filenames join the raw TPX3 filename stem, a descriptive
-label, and the pixel file's five-digit part index with underscores:
+`pixel_clusters/`. Both filenames join the raw TPX3 filename stem, the chip
+number, a descriptive label, and the pixel file's five-digit part index with
+underscores:
 
 ```text
-photons/<raw-file-stem>_photon_<five-digit-part-index>.parquet
-pixel_clusters/<raw-file-stem>_pixel_clusters_<five-digit-part-index>.parquet
+photons/<raw-file-stem>_chip_<chip>_photon_<five-digit-part-index>.parquet
+pixel_clusters/<raw-file-stem>_chip_<chip>_pixel_clusters_<five-digit-part-index>.parquet
 ```
 
 For example, reconstructing
 `pixel_hits/Tantalum_IronPowder_chip_0_pixels_00000.parquet` writes
-`photons/Tantalum_IronPowder_photon_00000.parquet` and, when
-`save_photon_pixels` is true, `pixel_clusters/Tantalum_IronPowder_pixel_clusters_00000.parquet`.
+`photons/Tantalum_IronPowder_chip_0_photon_00000.parquet` and, when
+`save_photon_pixels` is true,
+`pixel_clusters/Tantalum_IronPowder_chip_0_pixel_clusters_00000.parquet`.
 
 The part index matches the pixel file the run read. The photon table is always
 written when accepted photons exist. The pixel-to-cluster table is written only
@@ -191,8 +219,8 @@ empty table has zero files and a zero row count in the summary.
 | Column | Arrow type | Nullable | Description |
 | --- | --- | --- | --- |
 | `photon_id` | `uint64` | no | Zero-based photon number within the raw input and chip |
-| `x` | `float64` | no | Arithmetic mean source-pixel x coordinate |
-| `y` | `float64` | no | Arithmetic mean source-pixel y coordinate |
+| `x` | `float64` | no | Arithmetic mean source-pixel x coordinate, in the sensor frame |
+| `y` | `float64` | no | Arithmetic mean source-pixel y coordinate, in the sensor frame |
 | `timestamp_canonical` | `float64` | no | Time-walk-corrected leading-edge photon time in canonical ticks (fractional; equals the earliest source-pixel timestamp when no calibration is applied) |
 | `tot` | `uint64` | no | Sum of source-pixel `tot_raw` values |
 | `quality_flags` | `uint16` | no | Accepted-photon flag bit mask |
@@ -222,20 +250,27 @@ Every photon Parquet file records these string metadata values:
 - correction model, fitted parameters, and high-ToT anchor, or
   `correction_model="none"`
 - whether `photon_pixels` was requested
+- detector layout (`single_chip` or `quad`); the photon `x`/`y` are in this
+  layout's sensor frame
 
 ## Reconstruction Summary JSON File
 
-Each raw TPX3 filename stem has one reconstruction summary in
-`analysis/logs/photon_reconstruction/`:
+Each input pixel file has one reconstruction summary in
+`analysis/logs/photon_reconstruction/`, named for the same raw filename stem,
+chip number, and five-digit part index as the pixel file it read:
 
 ```text
-analysis/logs/photon_reconstruction/<raw-file-stem>_photon_reconstruction_summary.json
+analysis/logs/photon_reconstruction/<raw-file-stem>_chip_<chip>_photon_reconstruction_summary_<five-digit-part-index>.json
 ```
+
+The chip number and part index keep each input's summary distinct, so a later
+part does not overwrite part `00000` and get skipped on a rerun.
 
 The reconstruction program reads the same run-identity inputs as the unpacker
 (`--measurement-id` and `--run`) and copies them into the summary so it names
-the measurement and run it belongs to. The summary is written only after every
-final photon Parquet file closes successfully. Each listed Parquet path is the
+the measurement and run it belongs to. The summary is written after the input's
+photon Parquet file closes successfully, and also when the input produces zero
+photons and no photon file is written. Each listed Parquet path is the
 `--input` path or the output path the program wrote, so a reader can open the
 file directly from the working directory. The summary has this structure:
 
@@ -296,7 +331,7 @@ processing_times_seconds:
 `clustering.settings` holds the complete settings the run used: adjacency,
 maximum time spread, cluster-size limits, pixel and cluster ToT limits, maximum
 aspect ratio, minimum filled fraction, position rule, timing rule, optional
-calibration path, and `save_photon_pixels`. `pixel_clusters.requested` mirrors
+calibration path, `save_photon_pixels`, and `detector_layout`. `pixel_clusters.requested` mirrors
 `save_photon_pixels`, and its `row_count` counts the pixels in accepted
 clusters. Detailed per-input counts, filenames, warnings, errors, timing, and
 throughput stay in this summary and are not copied into the HERMES YAML file.
