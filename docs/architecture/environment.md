@@ -1,21 +1,21 @@
 # Environment
 
 The state of record should capture the runtime environment used for a run. This
-includes the location and version of external tools, the active working
-directory, and all output directories used by acquisition and analysis.
+includes the active working directory, the output directories used by
+acquisition and analysis, and install-level provenance.
 
-Important environment fields include:
+The runtime environment holds:
 
-- SERVAL URL or host/port
-- SERVAL software version reported by `/dashboard`
-- EMPIR installation path or executable path as a `Path`
-- EMPIR version, when available
-- HERMES Python package version
-- selected unpacker name, executable path as a `Path`, and version
-- selected photon reconstruction backend name, executable path, and version
-- selected event reconstruction backend name, executable path, and version
-- Python version and platform, when useful for provenance
-- A working directory is required to be defined in HERMES
+- directory state for the working directory, run directory, raw data directory,
+  analysis directory, log directory, preview directory, and config file
+- HERMES Python package version, Python version, and platform, for provenance
+- whether overlapping output directories are allowed
+- the log level for the run
+
+A working directory is always required. Tool identities — the SERVAL URL and
+version, the EMPIR path and version, and each analysis stage's program name,
+executable path, and version — live on the acquisition and analysis stage models
+that use them, not on the environment.
 
 ## Directory State
 
@@ -64,7 +64,7 @@ warning is appropriate only when HERMES can safely choose and record a default.
 
 Directory fields should be individually configurable. When a workflow needs a
 directory and the user has not provided one, HERMES may resolve practical
-defaults from `working_dir`, such as:
+defaults from `working_directory`, such as:
 
 ```text
 working_directory = /tmp/myfakemeasurements
@@ -75,12 +75,13 @@ log_directory = working_directory / "logs"
 preview_directory = working_directory / "preview"
 ```
 
-HERMES unpacking uses `analysis_directory` as one shared analysis directory for
-The `analysis_directory` lives under the 
-run directory. Its unpacked data directories are `pixel_hits/`, `tdc_triggers/`, 
-`global_timestamps/`, `control_packets/`, and`unknown_packets/`. Input-specific 
-unpacker summaries are saved under `analysis_directory/logs/unpacker/`. The separate 
-runtime `log_directory` may still contain the overall HERMES process log.
+HERMES unpacking uses `analysis_directory` as one shared analysis directory that
+lives under the run directory. Its unpacked data directories are `pixel_hits/`,
+`tdc_triggers/`, `global_timestamps/`, `control_packets/`, and
+`unrecognized_packets/`. Input-specific unpacker summaries are saved under
+`analysis_directory/logs/unpacking/` and photon-reconstruction summaries under
+`analysis_directory/logs/photon_reconstruction/`. The separate runtime
+`log_directory` may still contain the overall HERMES process log.
 
 If a user provides any field explicitly, that value should be used instead of the
 default. For example, a run may use the default `run_directory` but send preview
@@ -93,10 +94,13 @@ directory used by the run is visible in the saved state.
 
 Path models should validate relationships and catch obvious mistakes:
 
-- directory and executable path fields should validate into `Path` values in the
-  Pydantic model, not remain loose strings
-- relative paths should be resolved relative to `working_directory`
-`raw_data_directory`, `analysis_directory`, and `preview_directory` should not silently
-  point to the same directory unless explicitly allowed
+- directory fields should validate into `Path` values in the Pydantic model, not
+  remain loose strings
+- relative paths should resolve against `working_directory`, or against
+  `run_directory` when one is set; an omitted `working_directory` defaults to the
+  current directory, and relative sub-directories still resolve against it
+- `raw_data_directory`, `analysis_directory`, and `preview_directory` should not
+  silently point to the same directory unless `allow_overlapping_output_dirs` is
+  set
 - the model should not create directories by itself; directory creation belongs
   in workflow or I/O code

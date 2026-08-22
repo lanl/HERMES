@@ -26,9 +26,9 @@ Whether a field is optional or required depends on what the user has selected:
   optional. A run may be analysis-only, acquisition-only, or both.
 - The shared `RuntimeEnvironment` stays minimal. It holds install-level
   provenance (such as `hermes_version`, `python_version`, `platform`), not
-  mode-specific tool paths. A binary path belongs on the mode model that needs
-  it (for example `Tpx3SpidrUnpackerProgram.executable_path`), not on the
-  environment.
+  mode-specific tool paths. A binary path belongs on the stage that needs it
+  (for example the `BinaryProgram.executable_path` on `Tpx3Unpacking`), not on
+  the environment.
 - Once a mode model is created (such as `HermesTpx3AnalysisState` or
   `ServalAcquisitionState`), the fields that mode needs to run are required on
   that model. Fields filled in progressively during a run — applied
@@ -106,25 +106,29 @@ measurement_info:
   run: single-file
 
 environment:
-  working_dir: data/examples/analysis/unpacking/single_file
+  working_directory: data/examples/analysis/unpacking/single_file
+  analysis_directory: analysis
 
 analysis:
   mode: hermes
-  unpacker_program:
-    name: tpx3-spidr-cpp
-    executable_path: build/backends/tpx3-spidr/hermes-tpx3-spidr
-  analysis_directory: data/examples/analysis/unpacking/single_file/analysis
-  tpx3_files:
-    - path: tests/data/Example_1kHz_5frames.tpx3
+  unpacking:
+    program:
+      name: tpx3-spidr-cpp
+      executable_path: hermes-tpx3-spidr
+    runtime_options:
+      overwrite: true
+    tpx3_files:
+      - path: tests/data/tpx3/Example_1kHz_5frames.tpx3
 ```
 
-Pydantic supplies `acquisition: null`, `resource_limit_percent: 90`, planned
-unpacking results, and `None` for the optional unpacker version and optional raw
-TPX3 file information.
+Pydantic supplies `acquisition: null`, `resource_limit_percent: 90`,
+`detector_layout.kind: quad`, an empty per-file results list, and `None` for the
+optional program version. `photon_reconstruction` and `event_reconstruction`
+stay unset, so this record only unpacks.
 
 ### Raw TPX3 file input
 
-`HermesTpx3AnalysisState.tpx3_files` accepts an explicit list:
+`Tpx3Unpacking.tpx3_files` accepts an explicit list:
 
 ```yaml
 tpx3_files:
@@ -146,10 +150,10 @@ working directory. Relative raw TPX3 paths inside the text file are resolved
 from the text file's directory.
 
 Pydantic expands the text file into the existing `list[FileReference]` before
-the rest of `HermesTpx3AnalysisState` is validated. Missing, unreadable, and
-empty text files fail validation. Duplicate raw TPX3 filename stems remain
-rejected. Saving the HERMES record always writes the expanded explicit
-`tpx3_files` list and does not save `file_list`.
+the rest of `Tpx3Unpacking` is validated. Missing, unreadable, and empty text
+files fail validation. Duplicate raw TPX3 filename stems remain rejected. Saving
+the HERMES record always writes the expanded explicit `tpx3_files` list and does
+not save `file_list`.
 
 ### Current required/default review
 
@@ -157,15 +161,18 @@ rejected. Saving the HERMES record always writes the expanded explicit
 - `MeasurementInfo.measurement_id` and `MeasurementInfo.run` (the run label)
   are required. Its other fields, including the optional `run_number`, have
   defaults.
-- Every `RuntimeEnvironment` field has a default. Its `working_dir` defaults to
-  the current directory and is marked required and resolved.
-- `HermesTpx3AnalysisState.unpacker_program`, `analysis_directory`, and
-  `tpx3_files` are required. `tpx3_files` must contain at least one entry.
-- `HermesTpx3AnalysisState.resource_limit_percent`, `detector_layout`,
-  `photon_reconstruction`, and `results` have defaults. `detector_layout`
-  defaults to `quad`. A raw file with no recorded result has not run yet.
-- `Tpx3SpidrUnpackerProgram.name` and `executable_path` are required; `version`
-  defaults to `None`.
+- Every `RuntimeEnvironment` field has a default. Its `working_directory`
+  defaults to the current directory and is marked required and resolved; every
+  other directory field is optional and stays unresolved until it is set.
+- Every `HermesTpx3AnalysisState` stage (`unpacking`, `photon_reconstruction`,
+  `event_reconstruction`) defaults to `None`, so a record can run any subset of
+  the stages. `resource_limit_percent` and `detector_layout` have defaults;
+  `detector_layout.kind` defaults to `quad`.
+- When a stage is set, its `program` is required and its `results` list starts
+  empty. `Tpx3Unpacking.tpx3_files` must contain at least one entry with unique
+  stems. A file with no recorded result has not run yet.
+- `BinaryProgram.name` and `executable_path` are required; `version` defaults to
+  `None`.
 - `FileReference.path` is required; its file information fields default to
   `None`.
 
@@ -180,7 +187,7 @@ explicit. No model change is part of this documentation stage.
 ## Expected model groups ###
 Expected model groups and their responsibilities include:
 - MeasurementInfo: metadata about the measurement, including measurement ID, run number, beamline, proposal ID, image intensifier serial number, scintillator serial number, sample name, operator name, log notes, and any other relevant metadata fields that are important for provenance and record-keeping.
-- RuntimeEnvironment: information about the runtime environment used for the measurement, including `Path` fields for working directory, data directory, raw data directory, analyzed data directory, log directory, preview directory, optional config directory, executable paths, and any other relevant environment information.
+- RuntimeEnvironment: information about the runtime environment used for the measurement, including directory state for the working directory, run directory, raw data directory, analysis directory, log directory, preview directory, and config file, plus tool versions and the log level. Binary paths live on the analysis stage that needs them, not here.
 - DetectorSnapshot: TPX3Cam hardware identity, chip identity, layout, health, and applied detector configuration read from detector-specific endpoints.
 - AcquisitionState: optional requested settings, applied settings, status, and
   output files for SERVAL, PyMEPix, or MCP2Hist acquisition.
@@ -223,8 +230,6 @@ should use a clearly named `Path` field, such as `analysis_directory`.
 FileReference
   path: Path
   media_type: str | None
-  sha256: str | None
-  size_bytes: int | None
   created_at: datetime | None
   description: str | None
 ```
@@ -283,29 +288,44 @@ MeasurementInfo
 ```
 
 #### RuntimeEnvironment ####
-The RuntimeEnvironment model should capture all relevant information about the
-runtime environment used for the measurement. Directory and executable path
-fields should be `Path` values in the model, not loose strings. The canonical
-directory field names are:
-- `working_dir`
-- `data_dir`
-- `raw_data_dir`
-- `analyzed_data_dir`
-- `log_dir`
-- `preview_dir`
-- `config_dir`, if needed
+The RuntimeEnvironment model captures the directories and tool versions for a
+run. Each directory is a `DirectoryState` that keeps the user-requested `path`,
+whether the run `requires` it, and the absolute `resolved_path`. Relative paths
+resolve against the working directory (or the run directory when one is set), so
+the model saves both what the user asked for and where it landed. The directory
+fields are:
+- `working_directory` (defaults to the current directory; always required)
+- `run_directory`
+- `raw_data_directory`
+- `analysis_directory`
+- `log_directory`
+- `preview_directory`
+- `config_file`
 
 ```python
+DirectoryState
+  path: Path | None
+  required: bool = false
+  resolved_path: Path | None
+
 RuntimeEnvironment
-  working_dir: Path
-  data_dir: Path
-  raw_data_dir: Path
-  analyzed_data_dir: Path
-  log_dir: Path
-  preview_dir: Path
-  config_dir: Path | None
-  ...
+  working_directory: DirectoryState  # defaults to the current directory
+  run_directory: DirectoryState
+  raw_data_directory: DirectoryState
+  analysis_directory: DirectoryState
+  log_directory: DirectoryState
+  preview_directory: DirectoryState
+  config_file: DirectoryState
+  hermes_version: str | None
+  python_version: str | None
+  platform: str | None
+  allow_overlapping_output_dirs: bool = false
+  log_level: str = "INFO"
 ```
+
+The raw-data, analysis, and preview directories must resolve to distinct paths
+unless `allow_overlapping_output_dirs` is set. See `environment.md` for how the
+paths resolve and how the workflow checks required directories.
 
 #### DetectorSnapshot ####
 DetectorSnapshot should capture durable TPX3Cam facts and detector-facing state
@@ -613,48 +633,59 @@ AnalysisState
   mode: hermes | empir
 ```
 
-For `hermes`, record one unpacker program, one shared analysis directory, the
-raw TPX3 files, optional photon-reconstruction configuration, and one overall
-result section. Detailed unpacking and reconstruction results for each raw file
-remain in their input-specific summary JSON files.
+For `hermes`, record the sensor layout and one optional container per stage:
+`unpacking`, `photon_reconstruction`, and `event_reconstruction`. Each stage
+container holds its own program, its input files, its runtime options, and a
+list of per-file results. A stage is left unset when it is not run, so
+reconstruction can run on its own when the pixel or photon files it needs are
+already on disk. The shared analysis directory lives on the environment
+(`analysis_directory`), not here. Detailed per-file results remain in their
+input-specific summary JSON files.
 
 ##### HermesTpx3AnalysisState ####
 ```python
 HermesTpx3AnalysisState
   mode: Literal["hermes"]
-  unpacker_program: Tpx3SpidrUnpackerProgram
-  analysis_directory: Path
-  tpx3_files: list[FileReference]
   resource_limit_percent: int = 90  # integer from 1 through 100
-  detector_layout: DetectorLayout = DetectorLayout(kind="quad")
-  photon_reconstruction: HermesTpx3PhotonReconstructionConfiguration | None
-  results: HermesTpx3AnalysisResults
+  detector_layout: SensorLayout = SensorLayout(kind="quad")
+  unpacking: Tpx3Unpacking | None = None
+  photon_reconstruction: HermesTpx3PhotonReconstruction | None = None
+  event_reconstruction: HermesTpx3EventReconstruction | None = None
 
-DetectorLayout
+SensorLayout
   kind: single_chip | quad = quad
 
-Tpx3SpidrUnpackerProgram
+BinaryProgram
   name: str
   executable_path: Path
   version: str | None
 
-HermesTpx3PhotonReconstructionConfiguration
-  program: PhotonReconstructorProgram
+Tpx3Unpacking
+  program: BinaryProgram
+  tpx3_files: list[FileReference]  # at least one entry, unique stems
+  runtime_options: Tpx3UnpackingRuntimeOptions
+  results: list[HermesTpx3UnpackingResult]
+
+Tpx3UnpackingRuntimeOptions
+  overwrite: bool = false
+  time_sort: bool = true
+
+HermesTpx3PhotonReconstruction
+  program: BinaryProgram
   pixel_files: auto | list[FileReference]
   clustering_algorithm: HermesTpx3PhotonClustering
+  runtime_options: HermesTpx3PhotonReconstructionRuntimeOptions
+  results: list[HermesTpx3PhotonReconstructionResult]
 
-PhotonReconstructorProgram
-  name: str
-  executable_path: Path
-  version: str | None
+HermesTpx3PhotonReconstructionRuntimeOptions
+  overwrite: bool = false
 
 HermesTpx3PhotonClustering
-  name: connected_components | dbscan
+  name: connected_components | dbscan = connected_components
   save_photon_pixels: bool = false
   settings: HermesTpx3PhotonClusteringSettings
 
 HermesTpx3PhotonClusteringSettings
-  adjacency: 4 | 8
   max_time_spread_ticks: int
   min_cluster_size: int
   max_cluster_size: int
@@ -663,28 +694,50 @@ HermesTpx3PhotonClusteringSettings
   max_cluster_tot_raw: int
   max_aspect_ratio: float
   min_filled_fraction: float
+  adjacency: 4 | 8 = 8
   position_averaging: arithmetic
   photon_time_estimator: leading_edge
   timewalk_calibration_file: Path | None
 
-HermesTpx3AnalysisResults
-  unpacking: HermesTpx3UnpackingResult
-  reconstruction: HermesTpx3PhotonReconstructionResult | None
+HermesTpx3EventReconstruction
+  program: BinaryProgram
+  photon_parquet_files: auto | list[FileReference]
+  clustering_algorithm: connected_components | dbscan = connected_components
+  settings: HermesTpx3EventReconstructionSettings
+  runtime_options: HermesTpx3EventReconstructionRuntimeOptions
+  results: list[HermesTpx3EventReconstructionResult]
+
+HermesTpx3EventReconstructionRuntimeOptions
+  overwrite: bool = false
+
+HermesTpx3EventReconstructionSettings
+  spatial_link_radius_pixels: float
+  spatial_cells_per_axis: int
+  max_time_difference_ticks: float
+  max_event_duration_ticks: float
+  min_photon_count: int
+  save_event_photons: bool = false
 
 HermesTpx3UnpackingResult
+  input_file: FileReference
   status: completed | skipped | failed
 
 HermesTpx3PhotonReconstructionResult
+  input_file: FileReference
+  output_file: Path
   status: completed | skipped | failed
-  photon_count: int
-  rejected_count: int
-  warnings: list[str]
-  errors: list[str]
+  counts: photon-reconstruction counts summary | None
+
+HermesTpx3EventReconstructionResult
+  input_file: FileReference
+  output_file: Path
+  status: completed | skipped | failed
+  counts: event-reconstruction counts summary | None
 ```
 
-`tpx3_files` must contain at least one raw TPX3 file. The analysis runner must
-reject duplicate raw filename stems because the stem is used in every derived
-Parquet and summary JSON filename.
+`unpacking.tpx3_files` must contain at least one raw TPX3 file. The unpacking
+stage rejects duplicate raw filename stems because the stem is used in every
+derived Parquet and summary JSON filename.
 
 `resource_limit_percent` controls the resource dial for the complete HERMES
 analysis. It accepts any integer from 1 through 100 percent and defaults to 90
@@ -732,20 +785,20 @@ The shared directory contains `pixel_hits/`, `tdc_triggers/`,
 raw TPX3 filename stem. Input-specific summary paths are derived as:
 
 ```text
-<analysis_directory>/logs/<raw-file-stem>-unpacker-summary.json
-<analysis_directory>/logs/<raw-file-stem>-reconstruction-summary.json
+<analysis_directory>/logs/unpacking/<raw-file-stem>_unpacker_summary.json
+<analysis_directory>/logs/photon_reconstruction/<raw-file-stem>_chip_<chip>_photon_reconstruction_summary_<part>.json
 ```
 
-The HERMES state does not save one result per raw file, generated command
-arguments, summary JSON paths, Parquet filenames, file counts, packet or row
-counts, timestamp diagnostics, sorting diagnostics, detailed rejection counts,
-quality-flag counts, or per-file exit codes. Each summary JSON
-file is the sole saved detailed result for its raw TPX3 file. The
-reconstruction result keeps only status, total accepted and rejected
-component counts, and combined warnings and errors.
+Each stage saves one result per input file after that file finishes, holding the
+input file, the output file where relevant, the terminal status, and (for the
+reconstruction stages) the counts parsed from that file's summary JSON. The
+state does not save generated command arguments, summary JSON paths, Parquet
+filenames, timestamp diagnostics, sorting diagnostics, or per-file exit codes.
+Each summary JSON file remains the sole saved detailed result for its input
+file.
 
-HERMES writes one result per raw file after that file finishes, using these
-terminal values (a file that has not run yet has no result):
+Each result uses one of these terminal statuses (a file that has not run yet has
+no result):
 
 - `completed`: the file has a valid summary and valid listed Parquet files
 - `skipped`: a valid result already existed, so the file was not reprocessed
@@ -801,6 +854,6 @@ src/
             │   ├── pymepix.py              # PyMEPIX acquisition environment, configuration, and related settings
             │   └── mcp2hist.py             # MCP2Hist acquisition environment, configuration, and related settings
             ├── detector.py                 # TPX3Cam chip, layout, health, and detector config metadata
-            ├── environment.py              # Path fields for working, data, raw data, analyzed data, log, preview, config, and tool paths
+            ├── environment.py              # directory state for working, run, raw data, analysis, log, preview, config file, plus tool versions
             └── shared_models.py            # shared models and enums for the state models
 ``` 
