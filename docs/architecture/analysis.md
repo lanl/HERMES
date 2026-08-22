@@ -261,8 +261,9 @@ unpacker. Files are handled according to these rules:
 2. Run the unpacker when neither its summary nor matching Parquet files exist.
 3. Stop when matching Parquet files exist without a valid summary.
 4. Stop when the summary exists but is invalid.
-5. Mark the overall unpacking result `completed` only after every raw file
-   passes validation.
+5. Record each raw file's result as it finishes; a file is `completed` only
+   after its outputs pass validation, `skipped` when reused, or `failed` when
+   its unpacker did not finish successfully.
 
 Skipped inputs are logged but never submitted to the worker pool. Files whose
 planned action is `run` are submitted to a `ThreadPoolExecutor` with the
@@ -273,10 +274,13 @@ regardless of completion order. All HERMES state changes remain on the main
 thread. Worker threads may launch and validate one unpacker process but must not
 modify HERMES state directly.
 
-If one unpacker fails, the runner cancels work that has not started, allows
-already running processes to finish, marks overall unpacking `failed`, and
-raises a `HermesTpx3Error`. Valid summaries and Parquet files written by
-successful processes are retained. A later run validates and skips those files.
+If one unpacker fails, the runner logs that file's failure, records it
+`failed`, and keeps unpacking the remaining files. Valid summaries and Parquet
+files written by successful processes are retained, and a later run skips them.
+A whole-stage problem still stops the run and raises a `HermesTpx3Error`: a
+missing or unbuilt executable, a missing raw file, or a prior summary that is
+invalid or has partial Parquet output (rules 3 and 4 above). Those mean the
+stage cannot safely proceed; a single file failing to unpack does not.
 
 No resume flag is needed.
 
@@ -301,10 +305,12 @@ The runner records one result per pixel file after that file finishes: it never
 writes a start-of-work status. Each result is `completed`, `skipped`, or
 `failed`.
 
-If one reconstruction process fails, the runner marks the affected results
-`failed`, raises a HERMES reconstruction error, and keeps valid photon files and
-summaries from inputs that completed. A later run validates and skips those
-inputs.
+If one reconstruction process fails, the runner logs that file's failure,
+records it `failed`, and keeps reconstructing the remaining files, retaining
+valid photon files and summaries from inputs that completed. A later run skips
+those completed inputs. A whole-stage problem still stops the run and raises a
+HERMES reconstruction error: an unsupported algorithm, a missing executable, or
+a pixel filename that does not match the expected pattern.
 
 HERMES programs may be implemented in C++ or Rust, but they must read and write
 the HERMES files and columns defined for that analysis step. Choosing a C++ or

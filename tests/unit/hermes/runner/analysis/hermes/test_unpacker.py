@@ -385,14 +385,58 @@ def test_run_failure_keeps_skipped_and_marks_only_attempted_failed(
         "hermes.runner.analysis.hermes.run.execute_unpacker", failing_unpacker
     )
 
-    with pytest.raises(HermesTpx3Error):
-        run_hermes_analysis(manager)
+    # One file failing to unpack no longer aborts the run: the failure is
+    # recorded and run_hermes_analysis returns normally with no unpacked files.
+    unpacked = run_hermes_analysis(manager)
 
+    assert unpacked == []
     results = {
         result.input_file.path.name: result.status
         for result in manager.get_state().analysis.unpacking.results
     }
     assert results == {"done.tpx3": "skipped", "boom.tpx3": "failed"}
+
+
+def test_run_continues_unpacking_remaining_files_after_one_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    analysis = _analysis(tmp_path, "good1.tpx3", "boom.tpx3", "good2.tpx3")
+    manager = StateManager(
+        _record(tmp_path, analysis),
+        config=StateServiceConfig(allow_trusted_workflow_bypass=True),
+        state_logger=CapturingStateLogger(),
+    )
+
+    def unpacker(
+        analysis: Any,
+        analysis_root: Path,
+        raw_file: FileReference,
+        measurement_info: MeasurementInfo,
+        **kwargs: Any,
+    ) -> Tpx3SpidrSummary:
+        if raw_file.path.name == "boom.tpx3":
+            raise HermesTpx3Error(f"unpacking crashed for {raw_file.path.name}")
+        return _summary(analysis_root, raw_file.path.stem)
+
+    monkeypatch.setattr(
+        "hermes.runner.analysis.hermes.run.execute_unpacker", unpacker
+    )
+
+    unpacked = run_hermes_analysis(manager)
+
+    # The failing file is skipped over; the other two still unpack and are
+    # returned in the original tpx3_files order.
+    assert [raw.path.name for raw in unpacked] == ["good1.tpx3", "good2.tpx3"]
+    results = {
+        result.input_file.path.name: result.status
+        for result in manager.get_state().analysis.unpacking.results
+    }
+    assert results == {
+        "good1.tpx3": "completed",
+        "boom.tpx3": "failed",
+        "good2.tpx3": "completed",
+    }
 
 
 def test_run_rejects_empir_analysis(tmp_path: Path) -> None:
