@@ -10,6 +10,7 @@ from loguru import logger
 
 from hermes.runner.analysis.hermes.run import HermesAnalysisError, run_hermes_analysis
 from hermes.runner.analysis.hermes.unpacker import (
+    HermesTpx3Error,
     HermesTpx3PreflightError,
     check_previous_unpacked_file,
     derive_summary_path,
@@ -357,6 +358,41 @@ def test_run_with_only_completed_files_does_not_mark_running(
     results = manager.get_state().analysis.unpacking.results
     assert len(results) == 1
     assert results[0].status == "skipped"
+
+
+def test_run_failure_keeps_skipped_and_marks_only_attempted_failed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    analysis = _analysis(tmp_path, "done.tpx3", "boom.tpx3")
+    _save_completed_files(_analysis_root(tmp_path), analysis.unpacking.tpx3_files[0])
+    manager = StateManager(
+        _record(tmp_path, analysis),
+        config=StateServiceConfig(allow_trusted_workflow_bypass=True),
+        state_logger=CapturingStateLogger(),
+    )
+
+    def failing_unpacker(
+        analysis: Any,
+        analysis_root: Path,
+        raw_file: FileReference,
+        measurement_info: MeasurementInfo,
+        **kwargs: Any,
+    ) -> Tpx3SpidrSummary:
+        raise HermesTpx3Error(f"unpacking crashed for {raw_file.path.name}")
+
+    monkeypatch.setattr(
+        "hermes.runner.analysis.hermes.run.execute_unpacker", failing_unpacker
+    )
+
+    with pytest.raises(HermesTpx3Error):
+        run_hermes_analysis(manager)
+
+    results = {
+        result.input_file.path.name: result.status
+        for result in manager.get_state().analysis.unpacking.results
+    }
+    assert results == {"done.tpx3": "skipped", "boom.tpx3": "failed"}
 
 
 def test_run_rejects_empir_analysis(tmp_path: Path) -> None:
