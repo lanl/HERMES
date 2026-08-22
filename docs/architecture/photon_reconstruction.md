@@ -218,7 +218,7 @@ empty table has zero files and a zero row count in the summary.
 
 | Column | Arrow type | Nullable | Description |
 | --- | --- | --- | --- |
-| `photon_id` | `uint64` | no | Zero-based photon number within the raw input and chip |
+| `photon_id` | `uint64` | no | Zero-based photon number within this pixel file (one chip, one part) |
 | `x` | `float64` | no | Arithmetic mean source-pixel x coordinate, in the sensor frame |
 | `y` | `float64` | no | Arithmetic mean source-pixel y coordinate, in the sensor frame |
 | `timestamp_canonical` | `float64` | no | Time-walk-corrected leading-edge photon time in canonical ticks (fractional; equals the earliest source-pixel timestamp when no calibration is applied) |
@@ -232,8 +232,8 @@ reserved for later work.
 
 | Column | Arrow type | Nullable | Description |
 | --- | --- | --- | --- |
-| `photon_id` | `uint64` | no | Photon number matching the photon table for the same raw input and chip |
-| `pixel_event_id` | `uint64` | no | Zero-based row number after reading the chip's sorted input parts in order |
+| `photon_id` | `uint64` | no | Photon number matching the photon table for the same pixel file |
+| `pixel_event_id` | `uint64` | no | Zero-based row number of the source pixel within this pixel file's sorted input |
 | `x` | `uint16` | no | Source pixel `local_x` |
 | `y` | `uint16` | no | Source pixel `local_y` |
 | `tot_raw` | `uint16` | no | Source pixel ToT |
