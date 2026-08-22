@@ -237,15 +237,20 @@ def log_overall_completion(
     *,
     raw_file_count: int,
     unpacked_file_count: int,
+    failed_file_count: int,
 ) -> None:
     _ANALYSIS_LOGGER.info(
         "Unpacking finished: {unpacked_file_count} unpacked, "
-        "{skipped_file_count} skipped of {raw_file_count} raw files",
+        "{skipped_file_count} skipped, {failed_file_count} failed of "
+        "{raw_file_count} raw files",
         event_type="analysis.tpx3_unpacking.completed",
         scope="all_raw_tpx3_files",
         raw_file_count=raw_file_count,
         unpacked_file_count=unpacked_file_count,
-        skipped_file_count=raw_file_count - unpacked_file_count,
+        failed_file_count=failed_file_count,
+        skipped_file_count=(
+            raw_file_count - unpacked_file_count - failed_file_count
+        ),
     )
 
 

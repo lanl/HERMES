@@ -268,17 +268,21 @@ def log_overall_completion(
     *,
     photon_file_count: int,
     reconstructed_file_count: int,
+    failed_file_count: int,
 ) -> None:
     """Log a summary line once every photon file has been handled."""
     _ANALYSIS_LOGGER.info(
         "Event reconstruction finished: {reconstructed_file_count} "
-        "reconstructed, {skipped_file_count} skipped of {photon_file_count} "
-        "photon files",
+        "reconstructed, {skipped_file_count} skipped, {failed_file_count} "
+        "failed of {photon_file_count} photon files",
         event_type="analysis.tpx3_event_reconstruction.completed",
         scope="all_photon_files",
         photon_file_count=photon_file_count,
         reconstructed_file_count=reconstructed_file_count,
-        skipped_file_count=photon_file_count - reconstructed_file_count,
+        failed_file_count=failed_file_count,
+        skipped_file_count=(
+            photon_file_count - reconstructed_file_count - failed_file_count
+        ),
     )
 
 

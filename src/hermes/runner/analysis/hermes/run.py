@@ -138,14 +138,15 @@ def _calculate_worker_count(
 
 
 def _run_parallel(executor_fn, items, worker_count):
-    """Run ``executor_fn`` over ``items`` concurrently, stopping on first error.
+    """Run ``executor_fn`` over every item concurrently, keeping every outcome.
 
-    Returns ``{index: result}`` for the items that completed successfully. On
-    the first failure the remaining not-started futures are cancelled and the
-    error is re-raised once in-flight work drains.
+    Returns ``(results, errors)``: ``results`` maps each successful item's index
+    to its returned value, and ``errors`` maps each failed item's index to the
+    exception it raised. One item's failure never cancels the others, so a run
+    records per-file success and failure instead of aborting on the first error.
     """
-    first_error: Exception | None = None
     results: dict[int, object] = {}
+    errors: dict[int, Exception] = {}
 
     with ThreadPoolExecutor(max_workers=worker_count) as executor:
         future_to_index = {
@@ -157,16 +158,9 @@ def _run_parallel(executor_fn, items, worker_count):
             try:
                 results[index] = future.result()
             except Exception as exc:
-                if first_error is None:
-                    first_error = exc
-                    for remaining_future in future_to_index:
-                        if not remaining_future.done():
-                            remaining_future.cancel()
+                errors[index] = exc
 
-    if first_error is not None:
-        raise first_error
-
-    return results
+    return results, errors
 
 
 def run_hermes_analysis(
@@ -207,6 +201,9 @@ def run_hermes_analysis(
             )
             raw_files = analysis.unpacking.tpx3_files
             files_to_run: list[FileReference] = []
+            # For each file submitted to the pool, remember where its result
+            # sits in unpacking_results so a failure can flip it to "failed".
+            run_result_positions: list[int] = []
             for raw_file in raw_files:
                 already_unpacked = check_previous_unpacked_file(
                     analysis_root, raw_file
@@ -221,6 +218,7 @@ def run_hermes_analysis(
                     )
                 else:
                     files_to_run.append(raw_file)
+                    run_result_positions.append(len(unpacking_results))
                     unpacking_results.append(
                         HermesTpx3UnpackingResult(
                             input_file=raw_file,
@@ -228,9 +226,10 @@ def run_hermes_analysis(
                         )
                     )
 
+            failed_count = 0
             if files_to_run:
                 worker_count = _calculate_worker_count(analysis, files_to_run)
-                completed = _run_parallel(
+                completed, errors = _run_parallel(
                     lambda raw_file: execute_unpacker(
                         analysis,
                         analysis_root,
@@ -241,6 +240,14 @@ def run_hermes_analysis(
                     files_to_run,
                     worker_count,
                 )
+                for run_index in errors:
+                    unpacking_results[run_result_positions[run_index]] = (
+                        HermesTpx3UnpackingResult(
+                            input_file=files_to_run[run_index],
+                            status="failed",
+                        )
+                    )
+                failed_count = len(errors)
                 unpacked_files = [files_to_run[i] for i in sorted(completed)]
 
             _apply_unpacking_results(
@@ -252,7 +259,8 @@ def run_hermes_analysis(
             )
             log_overall_completion(
                 raw_file_count=len(raw_files),
-                unpacked_file_count=len(files_to_run),
+                unpacked_file_count=len(unpacked_files),
+                failed_file_count=failed_count,
             )
 
         current_analysis = _current_hermes_analysis(state_manager)
@@ -273,10 +281,13 @@ def run_hermes_analysis(
 
         return unpacked_files
     except HermesTpx3Error as exc:
-        # A file already unpacked on a previous run stays "skipped": its output
-        # is valid on disk and one other file's failure does not undo it. Only
-        # the files this run attempted are marked failed. If the failure came
-        # before any file was examined, fall back to marking every raw file.
+        # This handles a whole-stage stop, not a single file failing to unpack:
+        # a per-file execution failure is now recorded "failed" and the run
+        # continues. A missing executable or input, or a prior summary that is
+        # invalid or has partial output, still stops the stage here. A file
+        # already unpacked on a previous run stays "skipped"; the files this run
+        # attempted are marked failed. If the stop came before any file was
+        # examined, fall back to marking every raw file.
         if unpacking_results:
             results = [
                 result
@@ -347,9 +358,11 @@ def _run_photon_reconstruction(
             else:
                 files_to_run.append(input_file)
 
+        run_results: list[HermesTpx3PhotonReconstructionResult] = []
+        failed_results: list[HermesTpx3PhotonReconstructionResult] = []
         if files_to_run:
             worker_count = _calculate_worker_count(analysis, files_to_run)
-            completed = _run_parallel(
+            completed, errors = _run_parallel(
                 lambda input_file: execute_reconstruction(
                     analysis,
                     analysis_root,
@@ -361,22 +374,35 @@ def _run_photon_reconstruction(
                 worker_count,
             )
             run_results = [completed[i] for i in sorted(completed)]
-        else:
-            run_results = []
+            failed_results = [
+                HermesTpx3PhotonReconstructionResult(
+                    input_file=files_to_run[i],
+                    output_file=_best_effort_output_path(
+                        analysis_root, files_to_run[i]
+                    ),
+                    status="failed",
+                )
+                for i in sorted(errors)
+            ]
 
         _apply_reconstruction_results(
             state_manager,
-            skipped_results + run_results,
-            justification="every pixel file passed photon reconstruction",
+            skipped_results + run_results + failed_results,
+            justification="recorded photon reconstruction results per pixel file",
         )
         log_reconstruction_completion(
             pixel_file_count=len(pixel_files),
-            reconstructed_file_count=len(files_to_run),
+            reconstructed_file_count=len(run_results),
+            failed_file_count=len(failed_results),
         )
     except HermesPhotonReconstructionError as exc:
-        # Files already reconstructed on a previous run stay "skipped"; only the
-        # files this run attempted are marked failed. If the failure came before
-        # any file was examined, fall back to every reconstruction input.
+        # This handles a whole-stage stop, not a single file failing to
+        # reconstruct: a per-file execution failure is now recorded "failed" and
+        # the run continues. An unsupported algorithm, a missing executable, or a
+        # malformed pixel filename still stops the stage here. Files already
+        # reconstructed on a previous run stay "skipped"; the files this run
+        # attempted are marked failed. If the stop came before any file was
+        # examined, fall back to every reconstruction input.
         if files_to_run or skipped_results:
             failed_inputs = files_to_run
         else:
@@ -453,9 +479,11 @@ def _run_event_reconstruction(
             else:
                 files_to_run.append(input_file)
 
+        run_results: list[HermesTpx3EventReconstructionResult] = []
+        failed_results: list[HermesTpx3EventReconstructionResult] = []
         if files_to_run:
             worker_count = _calculate_worker_count(analysis, files_to_run)
-            completed = _run_parallel(
+            completed, errors = _run_parallel(
                 lambda input_file: execute_event_reconstruction(
                     analysis, analysis_root, input_file, overwrite=event_overwrite
                 ),
@@ -463,22 +491,35 @@ def _run_event_reconstruction(
                 worker_count,
             )
             run_results = [completed[i] for i in sorted(completed)]
-        else:
-            run_results = []
+            failed_results = [
+                HermesTpx3EventReconstructionResult(
+                    input_file=files_to_run[i],
+                    output_file=derive_event_output_path(
+                        analysis_root, files_to_run[i]
+                    ),
+                    status="failed",
+                )
+                for i in sorted(errors)
+            ]
 
         _apply_event_reconstruction_results(
             state_manager,
-            skipped_results + run_results,
-            justification="every photon file passed event reconstruction",
+            skipped_results + run_results + failed_results,
+            justification="recorded event reconstruction results per photon file",
         )
         log_event_reconstruction_completion(
             photon_file_count=len(photon_files),
-            reconstructed_file_count=len(files_to_run),
+            reconstructed_file_count=len(run_results),
+            failed_file_count=len(failed_results),
         )
     except HermesEventReconstructionError as exc:
-        # Files already reconstructed on a previous run stay "skipped"; only the
-        # files this run attempted are marked failed. If the failure came before
-        # any file was examined, fall back to every reconstruction input.
+        # This handles a whole-stage stop, not a single file failing to
+        # reconstruct: a per-file execution failure is now recorded "failed" and
+        # the run continues. An unsupported algorithm, a missing executable, or a
+        # malformed photon filename still stops the stage here. Files already
+        # reconstructed on a previous run stay "skipped"; the files this run
+        # attempted are marked failed. If the stop came before any file was
+        # examined, fall back to every reconstruction input.
         if files_to_run or skipped_results:
             failed_inputs = files_to_run
         else:

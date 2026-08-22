@@ -333,16 +333,21 @@ def log_overall_completion(
     *,
     pixel_file_count: int,
     reconstructed_file_count: int,
+    failed_file_count: int,
 ) -> None:
     """Log a summary line once every pixel file has been handled."""
     _ANALYSIS_LOGGER.info(
         "Reconstruction finished: {reconstructed_file_count} reconstructed, "
-        "{skipped_file_count} skipped of {pixel_file_count} pixel files",
+        "{skipped_file_count} skipped, {failed_file_count} failed of "
+        "{pixel_file_count} pixel files",
         event_type="analysis.tpx3_reconstruction.completed",
         scope="all_pixel_files",
         pixel_file_count=pixel_file_count,
         reconstructed_file_count=reconstructed_file_count,
-        skipped_file_count=pixel_file_count - reconstructed_file_count,
+        failed_file_count=failed_file_count,
+        skipped_file_count=(
+            pixel_file_count - reconstructed_file_count - failed_file_count
+        ),
     )
 
 
