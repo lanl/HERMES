@@ -34,6 +34,19 @@ def test_resolve_executable_finds_bare_name_on_path(
     assert resolve_executable(Path(executable.name)) == executable.resolve()
 
 
+def test_resolve_executable_prefers_local_file_over_path_lookup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Resolve a bare name locally when it names a file in the current directory."""
+    executable = tmp_path / "hermes-tpx3-spidr"
+    _write_executable(executable)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("PATH", str(tmp_path / "empty-bin"))
+
+    assert resolve_executable(Path(executable.name)) == executable.resolve()
+
+
 def test_resolve_executable_rejects_bare_name_not_on_path(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

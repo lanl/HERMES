@@ -12,7 +12,7 @@ from hermes.runner.analysis.empir._errors import (
     EmpirNotInstalledError,
     EmpirPreflightError,
 )
-from hermes.runner.analysis.empir._executable import resolve_executable
+from hermes.runner.analysis.executables import resolve_executable
 from hermes.runner.analysis.empir.event_to_image import (
     build_event_to_image_command,
     execute_event_to_image,

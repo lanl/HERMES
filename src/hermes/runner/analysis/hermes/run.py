@@ -198,6 +198,7 @@ def run_hermes_analysis(
     measurement_info = state.measurement_info
 
     unpacked_files: list[FileReference] = []
+    unpacking_results: list[HermesTpx3UnpackingResult] = []
     try:
         if analysis.unpacking is not None:
             validate_program_and_inputs(analysis, analysis_root)
@@ -206,7 +207,6 @@ def run_hermes_analysis(
             )
             raw_files = analysis.unpacking.tpx3_files
             files_to_run: list[FileReference] = []
-            unpacking_results: list[HermesTpx3UnpackingResult] = []
             for raw_file in raw_files:
                 already_unpacked = check_previous_unpacked_file(
                     analysis_root, raw_file
@@ -273,24 +273,44 @@ def run_hermes_analysis(
 
         return unpacked_files
     except HermesTpx3Error as exc:
-        current_analysis = state_manager.get_state().analysis
-        if (
-            isinstance(current_analysis, HermesTpx3AnalysisState)
-            and current_analysis.unpacking is not None
-        ):
+        # A file already unpacked on a previous run stays "skipped": its output
+        # is valid on disk and one other file's failure does not undo it. Only
+        # the files this run attempted are marked failed. If the failure came
+        # before any file was examined, fall back to marking every raw file.
+        if unpacking_results:
+            results = [
+                result
+                if result.status == "skipped"
+                else HermesTpx3UnpackingResult(
+                    input_file=result.input_file,
+                    status="failed",
+                )
+                for result in unpacking_results
+            ]
+        else:
+            results = [
+                HermesTpx3UnpackingResult(input_file=raw_file, status="failed")
+                for raw_file in _unpacking_inputs(state_manager)
+            ]
+        if results:
             _apply_unpacking_results(
                 state_manager,
-                [
-                    HermesTpx3UnpackingResult(
-                        input_file=raw_file,
-                        status="failed",
-                    )
-                    for raw_file in current_analysis.unpacking.tpx3_files
-                ],
+                results,
                 justification=f"TPX3 SPIDR unpacking failed: {exc}",
             )
         log_overall_failure(exc)
         raise
+
+
+def _unpacking_inputs(state_manager: StateManager) -> list[FileReference]:
+    """Best-effort raw-file list for failure reporting (never raises)."""
+    current_analysis = state_manager.get_state().analysis
+    if (
+        isinstance(current_analysis, HermesTpx3AnalysisState)
+        and current_analysis.unpacking is not None
+    ):
+        return list(current_analysis.unpacking.tpx3_files)
+    return []
 
 
 def _run_photon_reconstruction(
@@ -305,11 +325,11 @@ def _run_photon_reconstruction(
     reconstruction = analysis.photon_reconstruction
     assert reconstruction is not None
     recon_overwrite = overwrite or reconstruction.runtime_options.overwrite
+    files_to_run: list[FileReference] = []
+    skipped_results: list[HermesTpx3PhotonReconstructionResult] = []
     try:
         validate_program_and_algorithm(reconstruction)
         pixel_files = resolve_pixel_files(analysis, analysis_root)
-        files_to_run: list[FileReference] = []
-        skipped_results: list[HermesTpx3PhotonReconstructionResult] = []
         for input_file in pixel_files:
             already_reconstructed = check_previous_reconstructed_file(
                 analysis_root, input_file
@@ -354,18 +374,24 @@ def _run_photon_reconstruction(
             reconstructed_file_count=len(files_to_run),
         )
     except HermesPhotonReconstructionError as exc:
+        # Files already reconstructed on a previous run stay "skipped"; only the
+        # files this run attempted are marked failed. If the failure came before
+        # any file was examined, fall back to every reconstruction input.
+        if files_to_run or skipped_results:
+            failed_inputs = files_to_run
+        else:
+            failed_inputs = _reconstruction_inputs(analysis, analysis_root)
+        failed_results = [
+            HermesTpx3PhotonReconstructionResult(
+                input_file=input_file,
+                output_file=_best_effort_output_path(analysis_root, input_file),
+                status="failed",
+            )
+            for input_file in failed_inputs
+        ]
         _apply_reconstruction_results(
             state_manager,
-            [
-                HermesTpx3PhotonReconstructionResult(
-                    input_file=input_file,
-                    output_file=_best_effort_output_path(
-                        analysis_root, input_file
-                    ),
-                    status="failed",
-                )
-                for input_file in _reconstruction_inputs(analysis, analysis_root)
-            ],
+            skipped_results + failed_results,
             justification=f"photon reconstruction failed: {exc}",
         )
         log_reconstruction_failure(exc)
@@ -405,11 +431,11 @@ def _run_event_reconstruction(
     event_reconstruction = analysis.event_reconstruction
     assert event_reconstruction is not None
     event_overwrite = overwrite or event_reconstruction.runtime_options.overwrite
+    files_to_run: list[FileReference] = []
+    skipped_results: list[HermesTpx3EventReconstructionResult] = []
     try:
         validate_event_program_and_algorithm(event_reconstruction)
         photon_files = resolve_photon_files(analysis, analysis_root)
-        files_to_run: list[FileReference] = []
-        skipped_results: list[HermesTpx3EventReconstructionResult] = []
         for input_file in photon_files:
             already_reconstructed = check_previous_event_reconstructed_file(
                 analysis_root, input_file
@@ -450,20 +476,24 @@ def _run_event_reconstruction(
             reconstructed_file_count=len(files_to_run),
         )
     except HermesEventReconstructionError as exc:
+        # Files already reconstructed on a previous run stay "skipped"; only the
+        # files this run attempted are marked failed. If the failure came before
+        # any file was examined, fall back to every reconstruction input.
+        if files_to_run or skipped_results:
+            failed_inputs = files_to_run
+        else:
+            failed_inputs = _event_reconstruction_inputs(analysis, analysis_root)
+        failed_results = [
+            HermesTpx3EventReconstructionResult(
+                input_file=input_file,
+                output_file=derive_event_output_path(analysis_root, input_file),
+                status="failed",
+            )
+            for input_file in failed_inputs
+        ]
         _apply_event_reconstruction_results(
             state_manager,
-            [
-                HermesTpx3EventReconstructionResult(
-                    input_file=input_file,
-                    output_file=derive_event_output_path(
-                        analysis_root, input_file
-                    ),
-                    status="failed",
-                )
-                for input_file in _event_reconstruction_inputs(
-                    analysis, analysis_root
-                )
-            ],
+            skipped_results + failed_results,
             justification=f"event reconstruction failed: {exc}",
         )
         log_event_reconstruction_failure(exc)

@@ -71,7 +71,7 @@ def test_main_runs_workflow_and_calibrates(
     analysis_directory = working_directory / "analysis"
     pixel_directory = analysis_directory / "pixel_hits"
     pixel_directory.mkdir(parents=True)
-    pixel_file = pixel_directory / "input-chip-0-part-00000.parquet"
+    pixel_file = pixel_directory / "input_chip_0_pixels_00000.parquet"
     pixel_file.write_bytes(b"pixels")
     raw_tpx3_file = tmp_path / "input.tpx3"
     unpacker_executable = tmp_path / "hermes-tpx3-spidr"

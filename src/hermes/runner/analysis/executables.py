@@ -1,10 +1,10 @@
-"""Resolve a configured HERMES C++ backend name or explicit executable path.
+"""Resolve a configured HERMES or EMPIR backend name or explicit executable path.
 
-Each HERMES backend names its program in the config. A value that contains a
-directory is used as an explicit filesystem path; a bare program name is looked
-up on PATH. This lets a config say ``executable_path: hermes-tpx3-spidr`` and
-find the program that the package install placed on PATH, while still accepting
-an explicit build path.
+Each backend names its program in the config. A value that contains a directory,
+or that names an existing file in the current directory, is used as an explicit
+filesystem path; any other bare program name is looked up on PATH. This lets a
+config say ``executable_path: hermes-tpx3-spidr`` and find the program that the
+package install placed on PATH, while still accepting an explicit build path.
 """
 
 from __future__ import annotations
@@ -17,11 +17,16 @@ from pathlib import Path
 def resolve_executable(configured_path: Path) -> Path:
     """Return an absolute executable path for one configured program.
 
-    A value containing a directory is treated as an explicit filesystem path.
-    A bare program name is searched for on ``PATH``.
+    A value containing a directory, or naming an existing file in the current
+    directory, is treated as an explicit filesystem path. Any other bare
+    program name is searched for on ``PATH``.
     """
     expanded_path = configured_path.expanduser()
-    is_explicit_path = expanded_path.is_absolute() or expanded_path.parent != Path(".")
+    is_explicit_path = (
+        expanded_path.is_absolute()
+        or expanded_path.parent != Path(".")
+        or expanded_path.is_file()
+    )
 
     if is_explicit_path:
         resolved_path = expanded_path.resolve()
