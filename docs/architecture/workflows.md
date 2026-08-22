@@ -47,14 +47,23 @@ construct or configure `StateManager`. The lower-level
 analysis module for focused tests and code that intentionally manages its own
 state service.
 
-`Workflow.run_acquisition()` and `Workflow.run()` reserve the acquisition-only
-and combined acquisition-to-analysis entry points. They currently raise
-`NotImplementedError` before changing the HERMES record because acquisition
-execution does not exist yet. Their implementation is deferred until a
-hardware-facing acquisition runner has its own approved plan.
+`Workflow.run()` reads the record and runs the work it configures:
 
-One workflow will continue to own the record for acquisition-only,
-analysis-only, and combined acquisition-to-analysis runs.
+- Analysis only: it runs analysis, saves the final record to
+  `HERMES_record.yaml` in the run directory, and writes the run timeline to
+  `HERMES-workflow.jsonl` in the log directory.
+- Acquisition only: it calls `run_acquisition()`, which raises
+  `NotImplementedError` because acquisition execution does not exist yet.
+- Both acquisition and analysis: it raises `ValueError`, because running the
+  two together is not supported yet.
+- Neither: it raises `ValueError`.
+
+`Workflow.run_acquisition()` reserves the acquisition entry point and raises
+`NotImplementedError` until a hardware-facing acquisition runner has its own
+approved plan.
+
+One workflow owns the record for acquisition-only, analysis-only, and combined
+acquisition-to-analysis runs.
 
 ## First Concrete Workflow
 

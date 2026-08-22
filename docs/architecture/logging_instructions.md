@@ -13,9 +13,9 @@ that state was reached and what happened around it.
 ## Key Rule
 
 Loguru exposes one global `logger`. Configure it exactly once during HERMES
-process startup. Domain-specific loggers such as `StateLogger`, `AcquisitionLogger`, and
-`AnalysisLogger` are thin wrappers around `logger.bind(...)`; they must not call
-`logger.add(...)`.
+process startup. Only `StateLogger` is a concrete class. The workflow,
+acquisition, and analysis domains are used through `logger.bind(domain=...)`
+directly. Neither `StateLogger` nor those bindings call `logger.add(...)`.
 
 It is acceptable for the single startup configuration function to call
 `logger.add(...)` multiple times when adding filtered sinks. It is not acceptable
@@ -48,18 +48,21 @@ configuration.
 A practical run directory layout is:
 
 ```text
-working_dir/
-├── config/
-│   ├── pixelConfig.bpc             # saved pixel-configuration file for the run
-│   └── dacsFile.dacs               # saved DAC-settings file for the run
+run_directory/
+├── config/                        # saved .bpc / .dacs files, on acquisition runs
+├── HERMES_record.yaml             # the run's saved HERMES record
 └── logs/
-    ├── hermes-record.initial.yaml  # initial HermesRecord snapshot
-    ├── hermes-record.final.yaml    # final HermesRecord snapshot
-    ├── state.jsonl                 # live log with all appended state events
-    ├── acquisition.serval.jsonl    # acquisition logs filtered for acquisition backend
-    ├── workflow.jsonl              # workflow logs filtered for workflow domain
-    └── analysis.jsonl              # analysis logs filtered for analysis domain
+    ├── state.jsonl                # every appended state event
+    ├── acquisition.serval.jsonl   # SERVAL acquisition events
+    ├── analysis.jsonl             # analysis-domain runtime detail
+    └── HERMES-workflow.jsonl      # the run timeline written by the Workflow class
 ```
+
+`state.jsonl`, `acquisition.serval.jsonl`, and `analysis.jsonl` are Loguru file
+sinks. `HERMES-workflow.jsonl` is written directly by the `Workflow` class after
+the run, not through a Loguru sink, so the workflow domain has no file sink and
+its events reach only the console. `HERMES_record.yaml` is the one saved record;
+there is no separate initial and final snapshot.
 
 ## Startup Configuration
 
@@ -98,14 +101,6 @@ def configure_logging(log_dir: Path | None = None, level: str = "INFO") -> None:
         rotation="50 MB",
         retention="90 days",
         filter=_domain_filter("state"),
-    )
-    logger.add(
-        log_dir / "workflow.jsonl",
-        serialize=True,
-        enqueue=True,
-        rotation="50 MB",
-        retention="90 days",
-        filter=_domain_filter("workflow"),
     )
     logger.add(
         log_dir / "acquisition.serval.jsonl",
@@ -204,9 +199,9 @@ new values inline. For saved `.bpc` and `.dacs` files, state logs should include
 the relative saved path, original source path when available, and file hash—not
 the file contents.
 
-## WorkflowLogger
+## Workflow domain
 
-`WorkflowLogger` records high-level run progress.
+The workflow domain records high-level run progress.
 
 Responsibilities:
 
@@ -218,9 +213,9 @@ Responsibilities:
 Workflow logs should answer: "Where was the run in the acquisition-to-analysis
 procedure?"
 
-## AcquisitionLogger
+## Acquisition domain
 
-`AcquisitionLogger` records detector/backend communication and runtime detail.
+The acquisition domain records detector/backend communication and runtime detail.
 
 For SERVAL, it should log structured events for:
 
@@ -237,9 +232,9 @@ For SERVAL, it should log structured events for:
 Acquisition logs should answer: "What happened while HERMES talked to the
 acquisition backend?"
 
-## AnalysisLogger
+## Analysis domain
 
-`AnalysisLogger` records unpacking and analysis runtime detail.
+The analysis domain records unpacking and analysis runtime detail.
 
 Responsibilities:
 
@@ -310,8 +305,8 @@ the run's `config/` directory and record them with `PixelConfigFile` and
 Avoid:
 
 - calling `logger.add(...)` outside centralized startup configuration
-- creating sinks inside `StateLogger`, `AcquisitionLogger`, `AnalysisLogger`, or
-  workflow code
+- creating sinks inside `StateLogger` or the workflow, acquisition, and analysis
+  domain code
 - logging complete SERVAL `PixelConfig` or DAC settings in acquisition logs
 - logging raw images, Parquet table contents, or large stdout/stderr
 - treating backend communication logs as state record fields
@@ -322,7 +317,7 @@ Avoid:
 
 ```text
 Configure Loguru once.
-Use domain wrappers for state, workflow, acquisition, and analysis.
+Use domain bindings for state, workflow, acquisition, and analysis.
 Write each domain to filtered structured sinks.
 Keep durable state in the HERMES record.
 Keep operational detail in domain logs.
