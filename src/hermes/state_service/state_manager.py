@@ -232,9 +232,9 @@ def _record_with_change(
     path: StatePath,
     value: Any,
 ) -> HermesRecord:
-    updated = record.model_copy(deep=True)
-    _set_path_value(updated, path, value)
-    return HermesRecord.model_validate(updated.model_dump(mode="json"))
+    data = record.model_dump(mode="json")
+    _set_path_value(record, data, path, value)
+    return HermesRecord.model_validate(data)
 
 
 def _get_path_value(record: HermesRecord, path: StatePath) -> Any:
@@ -254,29 +254,42 @@ def _get_path_value(record: HermesRecord, path: StatePath) -> Any:
     return current
 
 
-def _set_path_value(record: HermesRecord, path: StatePath, value: Any) -> None:
+def _set_path_value(
+    record: HermesRecord,
+    data: dict[str, Any],
+    path: StatePath,
+    value: Any,
+) -> None:
+    # Set the value in the dumped dict rather than assigning to the live model.
+    # StrictBaseModel enables validate_assignment, so setting a nested model
+    # field mid-edit re-runs that model's validators against a half-built value
+    # (e.g. RuntimeEnvironment rejects its own directory dicts). The caller
+    # validates the finished dict once with model_validate instead. The model is
+    # walked read-only alongside the dict only to validate the path segments.
     segments = _path_segments(path)
-    parent: Any = record
+    model_cursor: Any = record
+    data_cursor: Any = data
     for segment in segments[:-1]:
-        if not isinstance(parent, BaseModel):
+        if not isinstance(model_cursor, BaseModel):
             msg = f"state path cannot traverse non-model value at {segment}: {path}"
             raise StatePathError(msg)
-        if segment not in parent.__class__.model_fields:
+        if segment not in model_cursor.__class__.model_fields:
             msg = f"unknown state path segment {segment}: {path}"
             raise StatePathError(msg)
-        parent = getattr(parent, segment)
-        if parent is None:
+        model_cursor = getattr(model_cursor, segment)
+        if model_cursor is None:
             msg = f"state path cannot traverse unset value at {segment}: {path}"
             raise StatePathError(msg)
+        data_cursor = data_cursor[segment]
 
     leaf = segments[-1]
-    if not isinstance(parent, BaseModel):
+    if not isinstance(model_cursor, BaseModel):
         msg = f"state path parent is not a model: {path}"
         raise StatePathError(msg)
-    if leaf not in parent.__class__.model_fields:
+    if leaf not in model_cursor.__class__.model_fields:
         msg = f"unknown state path segment {leaf}: {path}"
         raise StatePathError(msg)
-    setattr(parent, leaf, value)
+    data_cursor[leaf] = value
 
 
 def _path_segments(path: StatePath) -> tuple[str, ...]:
