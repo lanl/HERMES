@@ -8,7 +8,7 @@ Purpose
 - Enforce validation and consistency
 - Implement approval workflows for user- and AI-originated changes
 - Track history and ensure traceability
-- Prevent direct mutation by external components (especially AI)
+- Prevent direct mutation by outside code (especially AI)
 
 Responsibilities
     1. State Access
@@ -35,16 +35,18 @@ Responsibilities
         Examples:
         - value ranges
         - field existence
-        - compatibility between components
+        - cross-field compatibility
     5. Change Tracking / History
         - Log all approved (and optionally rejected) changes
         - Maintain audit trail for experiments
     6. High-Level Actions
         - Provide safe operations that encapsulate common workflows
-        Examples:
-        - load_hermes_record_from_yaml("LC-20231023.yaml")
-        - set_acquisition_mode("serval")
-        - update_working_dir("/data/LC-20231023")
+        - Built today: loading and saving a HermesRecord as YAML
+          (`load_hermes_record_from_yaml`, `save_hermes_record_to_yaml` in
+          `state_io.py`). Higher-level convenience wrappers (for example setting
+          the acquisition mode or updating the working directory) are not built
+          yet; until then, use `propose_change`/`approve_change`/`apply_change`
+          with the field path.
 
 State_Service Module Design Principles
 - Single entry point for mutation: no direct state edits allowed elsewhere
@@ -74,21 +76,23 @@ are logged with their source, validation result, bypass flag, proposer, and
 timestamp.
 
 ### module structure ###
-The `src/hermes/state_service/` module is organized into several key components:
+The `src/hermes/state_service/` module is organized into several key files:
 - `state_manager.py`: 
     - core logic for managing state access, change proposals, validation, and approval workflow.
-    - provides the main interface for other components to interact with the state.
+    - provides the main interface for other code to interact with the state.
     - functions include:
-        - `get_state()`: returns the current state object.
+        - `get_state()`: returns a copy of the current state object.
         - `get_value(path)`: returns the value at the specified path in the state.
+        - `get_change(change_id)`: returns a copy of a tracked ChangeRequest.
+        - `list_pending_changes()`: returns the ChangeRequests still awaiting approval.
         - `propose_change(path, new_value)`: creates a new ChangeRequest for the proposed change.
-        - `approve_change(change_id)`: approves a pending ChangeRequest and can apply it immediately.
+        - `approve_change(change_id)`: marks a pending ChangeRequest approved. It does not apply the change; a separate `apply_change` call is still required.
         - `apply_change(change_id)`: applies the proposed change if it passes validation and is approved, or if it is a trusted workflow change and approval bypass is enabled.
         - `reject_change(change_id)`: rejects the proposed change and logs the rejection.
 
 - `change_requests.py`: 
     - the ChangeRequest data model and related logic for tracking proposed changes.
-    - includes fields for change ID, path, new value, proposer, origin, timestamp, status (pending/approved/rejected/applied/failed), optional approver, optional approval bypass flag, and optional justification.
+    - includes fields for change ID, path, the previous value and the proposed value, proposer, origin, status (pending/approved/rejected/applied/failed), the approval-bypass flag, an optional justification, and the lifecycle timestamps and reasons filled in as the change moves through its states (requested, approved, rejected, applied, or failed).
     - StateManager owns the in-memory pending-change workflow.
 
 - `state_io.py`: 
