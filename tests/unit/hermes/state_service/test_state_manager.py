@@ -276,6 +276,76 @@ def test_state_manager_rejects_invalid_values_and_logs_failure(
     assert state_logger.validation_failures[0]["proposed_value"] == -1
 
 
+def test_state_manager_can_set_environment_directory(tmp_path: Path) -> None:
+    # Regression: proposing or applying an environment directory change used to
+    # crash because assigning the field re-ran RuntimeEnvironment's validators
+    # against a half-built model.
+    manager = StateManager(
+        _record(tmp_path),
+        config=StateServiceConfig(allow_trusted_workflow_bypass=True),
+        state_logger=CapturingStateLogger(),
+    )
+
+    change = manager.propose_change(
+        "environment.analysis_directory",
+        "analysis",
+        origin="trusted_workflow",
+        proposer="serval_workflow",
+    )
+    manager.apply_change(change.change_id)
+
+    analysis_directory = manager.get_value("environment.analysis_directory")
+    assert analysis_directory.resolved_path == (
+        tmp_path / "run-001" / "analysis"
+    ).resolve()
+
+
+def test_state_manager_apply_failure_marks_change_failed_and_logs(
+    tmp_path: Path,
+) -> None:
+    state_logger = CapturingStateLogger()
+    manager = StateManager(
+        _record(tmp_path),
+        config=StateServiceConfig(allow_trusted_workflow_bypass=True),
+        state_logger=state_logger,
+    )
+
+    # Each change is valid on its own because the conflicting sibling directory is
+    # still unset when it is proposed. Applying the first makes analysis and preview
+    # resolve to the same directory, so the second fails the overlap validator at
+    # apply time rather than at propose time.
+    analysis_change = manager.propose_change(
+        "environment.analysis_directory",
+        "shared_outputs",
+        origin="trusted_workflow",
+        proposer="serval_workflow",
+    )
+    preview_change = manager.propose_change(
+        "environment.preview_directory",
+        "shared_outputs",
+        origin="trusted_workflow",
+        proposer="serval_workflow",
+    )
+
+    manager.apply_change(analysis_change.change_id)
+
+    with pytest.raises(ChangeValidationError, match="failed validation during apply"):
+        manager.apply_change(preview_change.change_id)
+
+    failed = manager.get_change(preview_change.change_id)
+    assert failed.status == "failed"
+    assert failed.failure_reason is not None
+    assert failed.failed_at is not None
+    assert failed.approval_bypassed is False
+    # The failed apply does not touch the record: the applied change stands and the
+    # rejected one leaves its directory unresolved.
+    assert manager.get_value("environment.analysis_directory").resolved_path is not None
+    assert manager.get_value("environment.preview_directory").resolved_path is None
+    assert manager.list_pending_changes() == []
+    assert state_logger.validation_failures[-1]["path"] == "environment.preview_directory"
+    assert state_logger.validation_failures[-1]["change_id"] == preview_change.change_id
+
+
 def test_state_manager_change_accessors_return_defensive_copies(
     tmp_path: Path,
 ) -> None:
