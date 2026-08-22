@@ -25,10 +25,6 @@ from hermes.state.models.analysis.hermes_tpx3_spidr import (
 from hermes.state.models.shared_models import FileReference
 from hermes.runner.analysis.executables import resolve_executable
 
-# The photon stage writes an optional diagnostic file beside each photon file;
-# it is not a photon_events input and must not be handed to event reconstruction.
-_PHOTON_PIXELS_SUFFIX = "-photon-pixels.parquet"
-
 _LOG_TEXT_LIMIT = 4_000
 _ANALYSIS_LOGGER = logger.bind(
     domain="analysis",
@@ -62,9 +58,9 @@ def resolve_photon_files(
     """Return the photon Parquet files event reconstruction should run over.
 
     ``photon_parquet_files == "auto"`` gathers every ``*.parquet`` under the
-    photon stage's ``photons`` directory, skipping the photon stage's diagnostic
-    photon-pixels files (which are not photon_events inputs); an explicit list is
-    used as-is.
+    photon stage's ``photons`` directory; an explicit list is used as-is. The
+    photon stage's diagnostic pixel-cluster files live in a separate
+    ``pixel_clusters`` directory, so nothing in ``photons`` needs filtering.
     """
     event_reconstruction = _require_event_reconstruction(analysis)
     if event_reconstruction.photon_parquet_files != "auto":
@@ -76,7 +72,6 @@ def resolve_photon_files(
     return [
         FileReference(path=path)
         for path in sorted(photon_directory.glob("*.parquet"))
-        if not path.name.endswith(_PHOTON_PIXELS_SUFFIX)
     ]
 
 

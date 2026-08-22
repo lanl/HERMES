@@ -133,20 +133,6 @@ def test_resolve_photon_files_auto_gathers_photons(tmp_path: Path) -> None:
     ]
 
 
-def test_resolve_photon_files_excludes_photon_pixels(tmp_path: Path) -> None:
-    # The photon stage writes a diagnostic photon-pixels file beside each photon
-    # file; it is a different schema and must not be fed to event reconstruction.
-    analysis = _analysis(
-        tmp_path,
-        "run_000000-chip-0-part-00000.parquet",
-        "run_000000-chip-0-part-00000-photon-pixels.parquet",
-    )
-    resolved = resolve_photon_files(analysis, tmp_path / "analysis")
-    assert [file.path.name for file in resolved] == [
-        "run_000000-chip-0-part-00000.parquet"
-    ]
-
-
 # ---- skip detection -----------------------------------------------------
 
 
