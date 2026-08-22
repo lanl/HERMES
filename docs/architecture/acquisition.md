@@ -201,8 +201,9 @@ logs to reproduce or debug the run.
    exposure timing, calibration file paths, output destinations, preview
    settings, and expected raw TPX3 and preview file names.
 2. Resolve and create run directories.
-   Directory defaults should come from the environment model, such as
-   `working_dir`, `data_dir`, `raw_data_dir`, `log_dir`, and `preview_dir`.
+   Directory defaults should come from the environment model:
+   `working_directory`, `run_directory`, `raw_data_directory`,
+   `analysis_directory`, `log_directory`, `preview_directory`, and `config_file`.
    Models should validate paths, but workflow or I/O code should create the
    directories.
 3. Initialize the HERMES record.
