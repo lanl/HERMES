@@ -70,13 +70,13 @@ def run_empir_analysis(state_manager: StateManager) -> list[FileReference]:
             )
             if current_run.photon_file.exists():
                 _log_skipped("pixel_to_photon", current_run.photon_file)
-                result = EmpirPixelToPhotonResult(
+                pixel_to_photon_result = EmpirPixelToPhotonResult(
                     status="skipped",
                     photon_file=FileReference(path=current_run.photon_file),
                 )
             else:
                 try:
-                    result = execute_pixel_to_photon(
+                    pixel_to_photon_result = execute_pixel_to_photon(
                         stage, current_run, resolved.pixel_to_photon
                     )
                 except EmpirError as exc:
@@ -88,7 +88,10 @@ def run_empir_analysis(state_manager: StateManager) -> list[FileReference]:
                 state_manager,
                 index,
                 current_run.model_copy(
-                    update={"command_args": command[1:], "result": result}
+                    update={
+                        "command_args": command[1:],
+                        "result": pixel_to_photon_result,
+                    }
                 ),
                 justification="EMPIR pixel-to-photon done",
             )
@@ -102,13 +105,13 @@ def run_empir_analysis(state_manager: StateManager) -> list[FileReference]:
             )
             if current_run.event_file.exists():
                 _log_skipped("photon_to_event", current_run.event_file)
-                result = EmpirPhotonToEventResult(
+                photon_to_event_result = EmpirPhotonToEventResult(
                     status="skipped",
                     event_file=FileReference(path=current_run.event_file),
                 )
             else:
                 try:
-                    result = execute_photon_to_event(
+                    photon_to_event_result = execute_photon_to_event(
                         stage, current_run, resolved.photon_to_event
                     )
                 except EmpirError as exc:
@@ -120,7 +123,10 @@ def run_empir_analysis(state_manager: StateManager) -> list[FileReference]:
                 state_manager,
                 index,
                 current_run.model_copy(
-                    update={"command_args": command[1:], "result": result}
+                    update={
+                        "command_args": command[1:],
+                        "result": photon_to_event_result,
+                    }
                 ),
                 justification="EMPIR photon-to-event done",
             )
@@ -135,18 +141,20 @@ def run_empir_analysis(state_manager: StateManager) -> list[FileReference]:
         command = build_event_to_image_command(stage, resolved.event_to_image)
         if stage.tiff_file.exists():
             _log_skipped("event_to_image", stage.tiff_file)
-            result = EmpirEventToImageResult(
+            event_to_image_result = EmpirEventToImageResult(
                 status="skipped",
                 tiff_file=FileReference(path=stage.tiff_file),
             )
         else:
             try:
-                result = execute_event_to_image(stage, resolved.event_to_image)
+                event_to_image_result = execute_event_to_image(
+                    stage, resolved.event_to_image
+                )
             except EmpirError as exc:
                 _apply_event_failure(state_manager, stage, command[1:], exc)
                 raise
         completed_stage = stage.model_copy(
-            update={"command_args": command[1:], "result": result}
+            update={"command_args": command[1:], "result": event_to_image_result}
         )
         _apply_event_to_image_state(
             state_manager,
@@ -175,7 +183,7 @@ def run_empir_analysis(state_manager: StateManager) -> list[FileReference]:
         )
         raise
 
-    final_file = result.tiff_file
+    final_file = event_to_image_result.tiff_file
     assert final_file is not None
     _ANALYSIS_LOGGER.info(
         "EMPIR analysis completed",
@@ -353,6 +361,13 @@ def _apply_event_to_image_state(
     )
 
 
+def _failure_timing(error: EmpirError) -> tuple[float | None, int | None]:
+    """Return elapsed_seconds and exit_code when the process actually ran."""
+    if isinstance(error, EmpirExecutionError):
+        return error.outcome.elapsed_seconds, error.outcome.exit_code
+    return None, None
+
+
 def _apply_pixel_failure(
     state_manager: StateManager,
     index: int,
@@ -360,14 +375,13 @@ def _apply_pixel_failure(
     command_args: list[str],
     error: EmpirError,
 ) -> None:
-    result = EmpirPixelToPhotonResult(status="failed", errors=[str(error)])
-    if isinstance(error, EmpirExecutionError):
-        result = EmpirPixelToPhotonResult(
-            status="failed",
-            elapsed_seconds=error.outcome.elapsed_seconds,
-            exit_code=error.outcome.exit_code,
-            errors=[str(error)],
-        )
+    elapsed_seconds, exit_code = _failure_timing(error)
+    result = EmpirPixelToPhotonResult(
+        status="failed",
+        elapsed_seconds=elapsed_seconds,
+        exit_code=exit_code,
+        errors=[str(error)],
+    )
     _apply_pixel_to_photon_run(
         state_manager,
         index,
@@ -383,14 +397,13 @@ def _apply_photon_failure(
     command_args: list[str],
     error: EmpirError,
 ) -> None:
-    result = EmpirPhotonToEventResult(status="failed", errors=[str(error)])
-    if isinstance(error, EmpirExecutionError):
-        result = EmpirPhotonToEventResult(
-            status="failed",
-            elapsed_seconds=error.outcome.elapsed_seconds,
-            exit_code=error.outcome.exit_code,
-            errors=[str(error)],
-        )
+    elapsed_seconds, exit_code = _failure_timing(error)
+    result = EmpirPhotonToEventResult(
+        status="failed",
+        elapsed_seconds=elapsed_seconds,
+        exit_code=exit_code,
+        errors=[str(error)],
+    )
     _apply_photon_to_event_run(
         state_manager,
         index,
@@ -405,14 +418,13 @@ def _apply_event_failure(
     command_args: list[str],
     error: EmpirError,
 ) -> None:
-    result = EmpirEventToImageResult(status="failed", errors=[str(error)])
-    if isinstance(error, EmpirExecutionError):
-        result = EmpirEventToImageResult(
-            status="failed",
-            elapsed_seconds=error.outcome.elapsed_seconds,
-            exit_code=error.outcome.exit_code,
-            errors=[str(error)],
-        )
+    elapsed_seconds, exit_code = _failure_timing(error)
+    result = EmpirEventToImageResult(
+        status="failed",
+        elapsed_seconds=elapsed_seconds,
+        exit_code=exit_code,
+        errors=[str(error)],
+    )
     _apply_event_to_image_state(
         state_manager,
         stage.model_copy(update={"command_args": command_args, "result": result}),
