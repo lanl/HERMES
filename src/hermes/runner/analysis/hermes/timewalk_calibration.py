@@ -29,7 +29,7 @@ _CALIBRATION_DIRECTORY = (
 )
 _TIME_BLOCK_COUNT = 5
 _PIXEL_FILENAME = re.compile(
-    r"^(?P<stem>.+)-chip-(?P<chip>\d+)-part-(?P<part>\d{5})\.parquet$"
+    r"^(?P<stem>.+)_chip_(?P<chip>\d+)_pixels_(?P<part>\d{5})\.parquet$"
 )
 _CALIBRATION_LOGGER = logger.bind(
     domain="analysis",

@@ -109,7 +109,7 @@ def test_fit_recovers_known_inverse_relation() -> None:
 def test_calibration_writes_valid_json_and_comparison_plot(
     tmp_path: Path,
 ) -> None:
-    pixel_file = tmp_path / "pixel_hits/raw-chip-0-part-00000.parquet"
+    pixel_file = tmp_path / "pixel_hits/raw_chip_0_pixels_00000.parquet"
     pixel_file.parent.mkdir()
     rows = _synthetic_parquet_rows()
     pq.write_table(pa.table(rows), pixel_file)
@@ -143,7 +143,7 @@ def test_calibration_writes_valid_json_and_comparison_plot(
 def test_calibration_writes_correction_to_requested_path(
     tmp_path: Path,
 ) -> None:
-    pixel_file = tmp_path / "pixel_hits/raw-chip-0-part-00000.parquet"
+    pixel_file = tmp_path / "pixel_hits/raw_chip_0_pixels_00000.parquet"
     pixel_file.parent.mkdir()
     pq.write_table(pa.table(_synthetic_parquet_rows()), pixel_file)
     output_file = tmp_path / "logs/timewalk-calibration.json"
