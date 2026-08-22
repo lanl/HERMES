@@ -21,7 +21,6 @@ class PhotonClusterSets {
   public:
     explicit PhotonClusterSets(std::size_t photon_count)
         : parent_(photon_count),
-          cluster_size_(photon_count, 1),
           photons_in_window_count_(photon_count, 0) {
         members_.resize(photon_count);
         earliest_time_.resize(photon_count, 0.0);
@@ -65,7 +64,6 @@ class PhotonClusterSets {
             std::min(earliest_time_[root_a], earliest_time_[root_b]);
         photons_in_window_count_[root_a] += photons_in_window_count_[root_b];
         photons_in_window_count_[root_b] = 0;
-        cluster_size_[root_a] += cluster_size_[root_b];
         parent_[root_b] = root_a;
     }
 
@@ -91,7 +89,6 @@ class PhotonClusterSets {
 
   private:
     std::vector<std::size_t> parent_;
-    std::vector<std::size_t> cluster_size_;
     std::vector<std::size_t> photons_in_window_count_;
     std::vector<double> earliest_time_;
     std::vector<std::vector<std::size_t>> members_;

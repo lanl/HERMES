@@ -64,6 +64,40 @@ void printVersion() {
     std::cout << "C++17 connected-components event reconstruction\n";
 }
 
+// The raw TPX3 filename stem and chip index carried by a photon file. The photon
+// stage names photon files "<raw_file_stem>_chip_<chip>_photon_<part>.parquet";
+// event reconstruction reads the raw stem and chip index back out so the event
+// file metadata records the true provenance instead of the compound photon-file
+// stem. Mirrors the photon stage's parsePixelFileName.
+struct PhotonFileName {
+    std::string raw_file_stem;
+    std::string chip_label;
+    std::string part_index;
+    bool matched = false;
+};
+
+PhotonFileName parsePhotonFileName(const std::string& input_stem) {
+    PhotonFileName parsed;
+    const std::string chip_marker = "_chip_";
+    const std::string photon_marker = "_photon_";
+    const auto chip_position = input_stem.find(chip_marker);
+    const auto photon_position = input_stem.rfind(photon_marker);
+    if (chip_position == std::string::npos ||
+        photon_position == std::string::npos ||
+        photon_position < chip_position) {
+        return parsed;
+    }
+    parsed.raw_file_stem = input_stem.substr(0, chip_position);
+    parsed.chip_label = input_stem.substr(
+        chip_position + chip_marker.size(),
+        photon_position - (chip_position + chip_marker.size()));
+    parsed.part_index =
+        input_stem.substr(photon_position + photon_marker.size());
+    parsed.matched = !parsed.raw_file_stem.empty() &&
+                     !parsed.chip_label.empty() && !parsed.part_index.empty();
+    return parsed;
+}
+
 }  // namespace
 
 int main(const int argc, char* argv[]) {
@@ -185,10 +219,23 @@ int main(const int argc, char* argv[]) {
 
     const auto total_start = Clock::now();
 
-    // Event-file metadata; provenance lives here, not in the summary. The chip
-    // index is left at its default, matching the photon stage.
+    // Event-file metadata; provenance lives here, not in the summary. Parse the
+    // photon input filename so the metadata records the true raw stem and chip
+    // index rather than the compound photon-file stem, matching the photon stage.
+    const std::string input_stem = fs::path(input_file).stem().string();
+    const PhotonFileName photon_name = parsePhotonFileName(input_stem);
     hermes_event_reconstructor::EventFileMetadata metadata;
-    metadata.raw_file_stem = fs::path(input_file).stem().string();
+    metadata.raw_file_stem =
+        photon_name.matched ? photon_name.raw_file_stem : input_stem;
+    if (photon_name.matched) {
+        try {
+            metadata.chip_index = std::stoi(photon_name.chip_label);
+        } catch (...) {
+            std::cerr << "Error: chip label is not a valid integer: "
+                      << photon_name.chip_label << "\n";
+            return 2;
+        }
+    }
     metadata.canonical_tick_seconds = kCanonicalTickSeconds;
     metadata.event_algorithm = "connected_components";
     metadata.event_settings_json = settings_json;
