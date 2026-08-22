@@ -131,10 +131,16 @@ class RuntimeEnvironment(StrictBaseModel):
     @model_validator(mode="before")
     @classmethod
     def resolve_directory_paths(cls, data: Any) -> Any:
-        if not isinstance(data, dict) or data.get("working_directory") is None:
+        if not isinstance(data, dict):
             return data
 
         resolved = dict(data)
+
+        # working_directory defaults to the current directory when omitted, and
+        # every relative sub-directory resolves against it. Fill that default in
+        # here so the sub-directories still resolve when it is left out.
+        if resolved.get("working_directory") is None:
+            resolved["working_directory"] = Path.cwd()
         working_dir_base = _working_dir_base(resolved["working_directory"])
         resolved["working_directory"] = _normalize_directory_input(
             resolved["working_directory"],

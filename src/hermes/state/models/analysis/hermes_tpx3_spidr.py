@@ -620,20 +620,22 @@ class HermesTpx3EventReconstruction(StrictBaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Detector layout
+# Sensor layout
 # ---------------------------------------------------------------------------
 
 
-DetectorLayoutKind = Literal["single_chip", "quad"]
+SensorLayoutKind = Literal["single_chip", "quad"]
 
 
-class DetectorLayout(StrictBaseModel):
+class SensorLayout(StrictBaseModel):
     # How the detector's chips assemble into one sensor coordinate frame. A
     # single-chip camera uses its 256x256 pixel space unchanged; a quad tiles
     # four chips 2x2 with a four-pixel dead gap into a 516x516 sensor. Photon
     # reconstruction maps each chip's photon x/y into this shared frame so the
-    # event stage can group light that lands on more than one chip.
-    kind: DetectorLayoutKind = "quad"
+    # event stage can group light that lands on more than one chip. Named
+    # SensorLayout to stay distinct from the SERVAL /detector/layout response
+    # model (detector.py), which is a different concept.
+    kind: SensorLayoutKind = "quad"
 
 
 # ---------------------------------------------------------------------------
@@ -644,7 +646,7 @@ class DetectorLayout(StrictBaseModel):
 class HermesTpx3AnalysisState(StrictBaseModel):
     mode: Literal["hermes"] = "hermes"
     resource_limit_percent: int = Field(default=90, ge=1, le=100)
-    detector_layout: DetectorLayout = Field(default_factory=DetectorLayout)
+    detector_layout: SensorLayout = Field(default_factory=SensorLayout)
     # Optional so reconstruction can run on its own when unpacking is already
     # done and the pixel/photon files it needs are already on disk.
     unpacking: Tpx3Unpacking | None = None

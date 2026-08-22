@@ -52,6 +52,22 @@ def test_runtime_environment_resolves_explicit_relative_paths(tmp_path: Path) ->
     assert environment.raw_data_directory.resolved_path == (run_dir / "data" / "tpx3").resolve()
 
 
+def test_runtime_environment_resolves_relative_paths_against_cwd_default(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # With working_directory omitted it defaults to the current directory, and a
+    # relative sub-directory must still resolve against that default rather than
+    # being left unresolved.
+    monkeypatch.chdir(tmp_path)
+
+    environment = RuntimeEnvironment(analysis_directory="analysis")
+
+    assert environment.working_directory.resolved_path == tmp_path.resolve()
+    assert environment.analysis_directory.path == Path("analysis")
+    assert environment.analysis_directory.resolved_path == (tmp_path / "analysis").resolve()
+
+
 def test_runtime_environment_keeps_explicit_absolute_paths(tmp_path: Path) -> None:
     run_dir = tmp_path / "run-001"
     raw_dir = tmp_path / "external-fast-disk" / "tpx3"
