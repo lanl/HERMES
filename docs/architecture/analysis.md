@@ -127,9 +127,10 @@ def run_analysis(state_manager, *, overwrite=False):
 
 The entry point selects the mode from `analysis.mode` in the saved record, not
 from a function argument or CLI option, so the two cannot disagree. HERMES
-analysis honors `overwrite`; EMPIR has no overwrite behavior, and its preflight
-rejects an output that already exists. EMPIR and HERMES steps are never mixed:
-each runner handles one complete mode.
+analysis honors `overwrite`; EMPIR has no overwrite flag and instead skips a
+step whose requested output file already exists, recording that step as
+`skipped`. EMPIR and HERMES steps are never mixed: each runner handles one
+complete mode.
 
 ## Timing Comparison
 
@@ -357,6 +358,10 @@ raw TPX3 files
 3. `empir/event_to_image.py`
 
 Call the EMPIR binaries directly. Do not call the EMPIR shell scripts.
+
+Each step checks its requested output file before running. If that file already
+exists, the step is skipped and recorded as `skipped`; otherwise the step runs.
+A failed step marks only itself `failed` and leaves the later steps unrun.
 
 The photon file must exist long enough for `empir_photon2event` to read it, and
 the event file must exist long enough for `empir_event2image` to read it.
