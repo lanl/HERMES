@@ -73,10 +73,11 @@ class Workflow:
         raise NotImplementedError("HERMES acquisition is not implemented")
 
     def run(self) -> HermesRecord:
-        """Run the operations the record asks for: acquisition, analysis, or both.
+        """Run the work the record configures and return the updated record.
 
-        Acquisition runs before analysis when both are present. Returns the
-        record after the requested operations have updated it.
+        Analysis-only records run analysis, save the record, and write the
+        workflow log. Acquisition-only records raise NotImplementedError.
+        A record configuring both, or neither, raises ValueError.
         """
         record = self._state_manager.get_state()
         if record.acquisition is None and record.analysis is None:
