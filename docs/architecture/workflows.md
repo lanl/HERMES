@@ -93,9 +93,10 @@ The first workflow should be intentionally narrow:
     HERMES record.
 13. Return completed files in the original input order, regardless of completion
     order.
-14. If one unpacker fails, cancel work that has not started, allow already
-    running processes to finish, mark the affected results `failed`, and keep
-    valid output from successful processes.
+14. If one unpacker fails, record that file `failed` and keep unpacking the
+    remaining files, retaining valid output from successful processes. Only a
+    whole-stage problem (a missing or unbuilt executable, a missing raw file, or
+    an invalid or partial prior summary) stops the run.
 15. When repeating the workflow, skip an input only when its summary is valid
     and every listed Parquet file exists. Run an input only when neither its
     summary nor matching Parquet files exist. Stop on an invalid summary or
