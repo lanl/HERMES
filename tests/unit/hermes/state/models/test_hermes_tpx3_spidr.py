@@ -11,6 +11,7 @@ from hermes.state.models.analysis.hermes_tpx3_spidr import (
     HermesTpx3PhotonReconstructionResult,
     HermesTpx3UnpackingResult,
     HermesTpx3EventReconstruction,
+    HermesTpx3EventReconstructionResult,
     HermesTpx3EventReconstructionSettings,
     HermesTpx3EventReconstructionSummary,
     HermesTpx3PhotonClustering,
@@ -361,6 +362,29 @@ def test_reconstruction_result_defaults_and_rejects_undefined_fields(
             input_file=FileReference(path=tmp_path / "pixel_hits/raw.parquet"),
             output_file=tmp_path / "photons/raw.parquet",
             settings={},
+        )
+
+
+def test_event_reconstruction_result_keys_on_raw_file_stem(
+    tmp_path: Path,
+) -> None:
+    # Whole-sensor event reconstruction records one result per raw filename
+    # stem, not per photon file.
+    result = HermesTpx3EventReconstructionResult(
+        raw_file_stem="run_000000",
+        output_file=tmp_path / "events/run_000000_event_candidates.parquet",
+        status="completed",
+    )
+
+    assert result.raw_file_stem == "run_000000"
+    assert result.counts is None
+
+    with pytest.raises(ValidationError, match="extra_forbidden"):
+        HermesTpx3EventReconstructionResult(
+            raw_file_stem="run_000000",
+            output_file=tmp_path / "events/run_000000_event_candidates.parquet",
+            status="completed",
+            input_file=FileReference(path=tmp_path / "photons/x.parquet"),
         )
 
 

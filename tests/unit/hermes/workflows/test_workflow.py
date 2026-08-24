@@ -282,7 +282,7 @@ def test_run_logs_a_completed_line_for_every_stage(
                 "analysis.event_reconstruction.results",
                 [
                     HermesTpx3EventReconstructionResult(
-                        input_file=FileReference(path=photon_file),
+                        raw_file_stem="input",
                         output_file=event_file,
                         status="skipped",
                     )

@@ -203,11 +203,11 @@ class Workflow:
         if analysis.event_reconstruction is not None:
             for result in analysis.event_reconstruction.results:
                 summary = derive_event_reconstruction_summary_path(
-                    result.output_file
+                    analysis_root, result.raw_file_stem
                 )
                 lines.append(
                     self._stage_line(
-                        "event_reconstruction", result.input_file.path,
+                        "event_reconstruction", result.output_file,
                         result.status, summary, now,
                     )
                 )

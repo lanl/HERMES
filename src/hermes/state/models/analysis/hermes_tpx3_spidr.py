@@ -513,7 +513,9 @@ class HermesTpx3PhotonReconstructionResult(StrictBaseModel):
 
 
 class HermesTpx3EventReconstructionResult(StrictBaseModel):
-    input_file: FileReference
+    # Event reconstruction is whole-sensor: one result per raw TPX3 filename
+    # stem, covering every chip's photons together, rather than one per file.
+    raw_file_stem: str
     output_file: Path
     status: ResultStatus
     counts: HermesTpx3EventReconstructionCountsSummary | None = None
