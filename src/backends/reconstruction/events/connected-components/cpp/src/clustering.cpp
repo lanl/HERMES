@@ -9,9 +9,6 @@ namespace hermes_event_reconstructor {
 
 namespace {
 
-// Fixed chip width in pixels; the spatial grid spans one 256 x 256 chip.
-constexpr int kChipWidthPixels = 256;
-
 // Union-Find (disjoint-set) over photon indices with union by size and path
 // compression. Each cluster's root photon carries the data needed to close the
 // cluster: its member photon indices, its earliest photon time, and how many of
@@ -101,6 +98,7 @@ void clusterPhotons(
     double spatial_link_radius_pixels,
     double max_time_difference_ticks,
     int cell_width,
+    int sensor_width,
     const std::function<void(std::vector<std::size_t>&&)>& on_photon_cluster) {
     if (photons.empty()) {
         return;
@@ -109,9 +107,10 @@ void clusterPhotons(
     const double radius_squared =
         spatial_link_radius_pixels * spatial_link_radius_pixels;
 
-    // Number of cells along each axis. The largest pixel index is 255, so this
-    // covers every in-range coordinate; out-of-range coordinates are clamped.
-    const int cells_per_axis = (kChipWidthPixels - 1) / cell_width + 1;
+    // Number of cells along each axis. The largest pixel index is
+    // sensor_width - 1, so this covers every in-range coordinate; out-of-range
+    // coordinates are clamped.
+    const int cells_per_axis = (sensor_width - 1) / cell_width + 1;
     auto cellIndexOnAxis = [&](double coordinate) {
         int index = static_cast<int>(coordinate) / cell_width;
         if (index < 0) {

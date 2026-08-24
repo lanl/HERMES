@@ -19,9 +19,10 @@ std::vector<std::vector<std::uint64_t>> clustersOf(
     const std::vector<PhotonEvent>& photons,
     double r_link,
     double dt_link,
-    int cell_width) {
+    int cell_width,
+    int sensor_width) {
     std::vector<std::vector<std::uint64_t>> result;
-    clusterPhotons(photons, r_link, dt_link, cell_width,
+    clusterPhotons(photons, r_link, dt_link, cell_width, sensor_width,
                    [&](std::vector<std::size_t>&& members) {
                        std::vector<std::uint64_t> ids;
                        for (const std::size_t index : members) {
@@ -42,6 +43,7 @@ int main() {
     const double r_link = 4.0;
     const double dt_link = 100.0;
     const int cell_width = 16;
+    const int sensor_width = 256;
 
     // Two photons within both bounds form one photon cluster.
     {
@@ -49,7 +51,8 @@ int main() {
             PhotonEvent{0, 10.0, 10.0, 0.0},
             PhotonEvent{1, 12.0, 10.0, 50.0},  // distance 2, dt 50
         };
-        const auto clusters = clustersOf(photons, r_link, dt_link, cell_width);
+        const auto clusters =
+            clustersOf(photons, r_link, dt_link, cell_width, sensor_width);
         test.expectEqual(clusters.size(), std::size_t{1}, "within bounds: one cluster");
         if (clusters.size() == 1) {
             test.expectEqual(clusters[0].size(), std::size_t{2}, "both photons joined");
@@ -62,7 +65,8 @@ int main() {
             PhotonEvent{0, 10.0, 10.0, 0.0},
             PhotonEvent{1, 15.0, 10.0, 10.0},  // distance 5 > r_link 4
         };
-        const auto clusters = clustersOf(photons, r_link, dt_link, cell_width);
+        const auto clusters =
+            clustersOf(photons, r_link, dt_link, cell_width, sensor_width);
         test.expectEqual(clusters.size(), std::size_t{2}, "too far apart: two clusters");
     }
 
@@ -72,7 +76,8 @@ int main() {
             PhotonEvent{0, 10.0, 10.0, 0.0},
             PhotonEvent{1, 14.0, 10.0, 10.0},  // distance exactly 4
         };
-        const auto clusters = clustersOf(photons, r_link, dt_link, cell_width);
+        const auto clusters =
+            clustersOf(photons, r_link, dt_link, cell_width, sensor_width);
         test.expectEqual(clusters.size(), std::size_t{1},
                          "distance == r_link is inclusive");
     }
@@ -83,7 +88,8 @@ int main() {
             PhotonEvent{0, 10.0, 10.0, 0.0},
             PhotonEvent{1, 10.0, 10.0, 150.0},  // dt 150 > dt_link 100
         };
-        const auto clusters = clustersOf(photons, r_link, dt_link, cell_width);
+        const auto clusters =
+            clustersOf(photons, r_link, dt_link, cell_width, sensor_width);
         test.expectEqual(clusters.size(), std::size_t{2}, "too far in time: two clusters");
     }
 
@@ -93,7 +99,8 @@ int main() {
             PhotonEvent{0, 10.0, 10.0, 0.0},
             PhotonEvent{1, 10.0, 10.0, 100.0},  // dt exactly 100
         };
-        const auto clusters = clustersOf(photons, r_link, dt_link, cell_width);
+        const auto clusters =
+            clustersOf(photons, r_link, dt_link, cell_width, sensor_width);
         test.expectEqual(clusters.size(), std::size_t{1}, "dt == dt_link is inclusive");
     }
 
@@ -105,7 +112,8 @@ int main() {
             PhotonEvent{1, 13.0, 10.0, 20.0},
             PhotonEvent{2, 16.0, 10.0, 40.0},
         };
-        const auto clusters = clustersOf(photons, r_link, dt_link, cell_width);
+        const auto clusters =
+            clustersOf(photons, r_link, dt_link, cell_width, sensor_width);
         test.expectEqual(clusters.size(), std::size_t{1}, "transitive chain: one cluster");
         if (clusters.size() == 1) {
             test.expectEqual(clusters[0].size(), std::size_t{3}, "all three chained");
@@ -120,7 +128,8 @@ int main() {
             PhotonEvent{2, 30.0, 10.0, 40.0},   // far from the first pair
             PhotonEvent{3, 32.0, 10.0, 60.0},   // links to 2
         };
-        const auto clusters = clustersOf(photons, r_link, dt_link, cell_width);
+        const auto clusters =
+            clustersOf(photons, r_link, dt_link, cell_width, sensor_width);
         test.expectEqual(clusters.size(), std::size_t{2}, "spatial gap: two clusters");
     }
 
@@ -133,7 +142,8 @@ int main() {
             PhotonEvent{2, 17.0, 20.0, 20.0},  // left
             PhotonEvent{3, 20.0, 23.0, 30.0},  // up
         };
-        const auto clusters = clustersOf(photons, r_link, dt_link, cell_width);
+        const auto clusters =
+            clustersOf(photons, r_link, dt_link, cell_width, sensor_width);
         test.expectEqual(clusters.size(), std::size_t{1}, "branching: one cluster");
         if (clusters.size() == 1) {
             test.expectEqual(clusters[0].size(), std::size_t{4}, "all four branches joined");
@@ -145,7 +155,8 @@ int main() {
         const std::vector<PhotonEvent> photons = {
             PhotonEvent{0, 100.0, 100.0, 0.0},
         };
-        const auto clusters = clustersOf(photons, r_link, dt_link, cell_width);
+        const auto clusters =
+            clustersOf(photons, r_link, dt_link, cell_width, sensor_width);
         test.expectEqual(clusters.size(), std::size_t{1}, "single photon: one cluster");
         if (clusters.size() == 1) {
             test.expectEqual(clusters[0].size(), std::size_t{1}, "one member");
@@ -170,10 +181,12 @@ int main() {
         };
         // cell widths: 4 (== r_link), 8, 16, 52 (default 5 cells), 64, 256.
         const std::vector<int> widths = {4, 8, 16, 52, 64, 256};
-        const auto reference = clustersOf(photons, r_link, dt_link, widths[0]);
+        const auto reference =
+            clustersOf(photons, r_link, dt_link, widths[0], sensor_width);
         bool all_match = true;
         for (const int width : widths) {
-            if (clustersOf(photons, r_link, dt_link, width) != reference) {
+            if (clustersOf(photons, r_link, dt_link, width, sensor_width) !=
+                reference) {
                 all_match = false;
             }
         }
@@ -200,7 +213,7 @@ int main() {
             PhotonEvent{3, 201.0, 200.0, 1005.0},
         };
         std::vector<double> first_times;
-        clusterPhotons(photons, r_link, dt_link, cell_width,
+        clusterPhotons(photons, r_link, dt_link, cell_width, sensor_width,
                        [&](std::vector<std::size_t>&& members) {
                            double earliest = photons[members[0]].timestamp_canonical;
                            for (const std::size_t index : members) {
@@ -227,7 +240,7 @@ int main() {
             PhotonEvent{3, 10.0, 10.0, 150.0},
         };
         std::vector<double> first_times;
-        clusterPhotons(photons, r_link, dt_link, cell_width,
+        clusterPhotons(photons, r_link, dt_link, cell_width, sensor_width,
                        [&](std::vector<std::size_t>&& members) {
                            double earliest = photons[members[0]].timestamp_canonical;
                            for (const std::size_t index : members) {
@@ -246,9 +259,30 @@ int main() {
         }
     }
 
+    // On a 516-pixel quad sensor, two photons straddling the 4-pixel dead cross
+    // (columns 256-259) still link when within the radius. x=254 sits just left
+    // of the seam and x=262 just right of it; 8 pixels apart, inside a 10-pixel
+    // radius, so they merge into one cluster across the chip boundary.
+    {
+        const std::vector<PhotonEvent> photons = {
+            PhotonEvent{0, 254.0, 100.0, 0.0},
+            PhotonEvent{1, 262.0, 100.0, 20.0},  // distance 8 across the seam
+        };
+        const int quad_cell_width = 104;  // deriveCellWidth(5, 516)
+        const auto clusters =
+            clustersOf(photons, 10.0, dt_link, quad_cell_width, 516);
+        test.expectEqual(clusters.size(), std::size_t{1},
+                         "cross-seam photons merge on a quad sensor");
+        if (clusters.size() == 1) {
+            test.expectEqual(clusters[0].size(), std::size_t{2},
+                             "both cross-seam photons joined");
+        }
+    }
+
     // Empty input produces no clusters.
     {
-        const auto clusters = clustersOf({}, r_link, dt_link, cell_width);
+        const auto clusters =
+            clustersOf({}, r_link, dt_link, cell_width, sensor_width);
         test.expectEqual(clusters.size(), std::size_t{0}, "empty input: no clusters");
     }
 
