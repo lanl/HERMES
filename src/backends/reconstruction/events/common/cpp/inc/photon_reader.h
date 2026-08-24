@@ -26,6 +26,20 @@ bool readPhotonEvents(const std::string& file,
                       std::vector<PhotonEvent>& out_rows,
                       std::vector<std::string>& errors);
 
+// Reads the detector_layout value from one photon file's key-value metadata,
+// which photon reconstruction wrote to record the shared sensor coordinate
+// frame ("single_chip" or "quad"). The event stage uses it to size its grid.
+// Returns false and appends to errors when the file cannot be opened or the
+// detector_layout key is absent; out_layout is left cleared in that case.
+bool readPhotonFileLayout(const std::string& file,
+                          std::string& out_layout,
+                          std::vector<std::string>& errors);
+
+// Sorts photons in place by timestamp_canonical, breaking ties by photon_id.
+// A whole-sensor run pools every chip's photons into one vector; this puts the
+// pool into the monotonic time order the clustering stage expects.
+void sortPhotonEventsByTime(std::vector<PhotonEvent>& photons);
+
 }  // namespace hermes_event_reconstructor
 
 #endif

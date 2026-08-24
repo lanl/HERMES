@@ -48,8 +48,8 @@ std::string metaValue(const std::shared_ptr<arrow::Table>& table,
 
 EventFileMetadata sampleMetadata() {
     EventFileMetadata m;
-    m.raw_file_stem = "rawCdI_000000";
-    m.chip_index = 0;
+    m.raw_file_stem = "run_000000";
+    m.detector_layout = "quad";
     m.canonical_tick_seconds = 2.0345052083333334e-12;
     m.event_algorithm = "connected_components";
     m.event_settings_json = "{\"spatial_link_radius_pixels\":10.0}";
@@ -85,7 +85,7 @@ int main() {
     events[1].quality_flags = 0x0001;
 
     const auto candidates_file =
-        (base / "raw-chip-0-event-candidates-part-00000.parquet").string();
+        (base / "run_000000_event_candidates.parquet").string();
     std::vector<std::string> errors;
     const auto result = writeEventCandidatesParquet(
         events, candidates_file, sampleMetadata(), false, errors);
@@ -128,6 +128,11 @@ int main() {
             test.expectEqual(metaValue(table, "event_algorithm"),
                              std::string("connected_components"),
                              "event_algorithm metadata");
+            // A whole-sensor run records the detector layout, not a chip index.
+            test.expectEqual(metaValue(table, "detector_layout"),
+                             std::string("quad"), "detector_layout metadata");
+            test.expect(metaValue(table, "chip_index").empty(),
+                        "no chip_index metadata on a whole-sensor file");
             test.expectEqual(metaValue(table, "position_rule"),
                              std::string("arithmetic"), "position_rule metadata");
             test.expectEqual(metaValue(table, "event_time_estimator"),
@@ -160,7 +165,7 @@ int main() {
             EventPhotonRow{1, 3, 100.0, 100.0, 500.0},
         };
         const auto photons_file =
-            (base / "raw-chip-0-event-photons-part-00000.parquet").string();
+            (base / "run_000000_event_photons.parquet").string();
         std::vector<std::string> photon_errors;
         const auto pr = writeEventPhotonsParquet(
             rows, photons_file, sampleMetadata(), false, photon_errors);

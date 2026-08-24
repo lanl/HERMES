@@ -7,6 +7,7 @@
 #include <arrow/io/file.h>
 #include <arrow/record_batch.h>
 #include <arrow/table.h>
+#include <arrow/util/key_value_metadata.h>
 #include <parquet/arrow/reader.h>
 #endif
 
@@ -116,16 +117,57 @@ bool readPhotonEvents(const std::string& file,
     }
 
     // Photon files are written in reconstruction order, not guaranteed strictly
-    // increasing in time. Sort into time order, breaking ties by photon_id, so
-    // the clustering stage sees a monotonic stream.
-    std::stable_sort(out_rows.begin(), out_rows.end(),
-                     [](const PhotonEvent& a, const PhotonEvent& b) {
-                         if (a.timestamp_canonical != b.timestamp_canonical) {
-                             return a.timestamp_canonical < b.timestamp_canonical;
-                         }
-                         return a.photon_id < b.photon_id;
-                     });
+    // increasing in time. Sort into time order so the clustering stage sees a
+    // monotonic stream.
+    sortPhotonEventsByTime(out_rows);
 
+    return true;
+}
+
+bool readPhotonFileLayout(const std::string& file,
+                          std::string& out_layout,
+                          std::vector<std::string>& errors) {
+    out_layout.clear();
+
+    auto input_result = arrow::io::ReadableFile::Open(file);
+    if (!input_result.ok()) {
+        errors.push_back("Failed to open photon_events file " + file + ": " +
+                         input_result.status().ToString());
+        return false;
+    }
+
+    auto reader_result =
+        parquet::arrow::OpenFile(*input_result, arrow::default_memory_pool());
+    if (!reader_result.ok()) {
+        errors.push_back("Failed to read photon_events file " + file + ": " +
+                         reader_result.status().ToString());
+        return false;
+    }
+    std::unique_ptr<parquet::arrow::FileReader> reader =
+        std::move(*reader_result);
+
+    std::shared_ptr<arrow::Schema> schema;
+    auto schema_status = reader->GetSchema(&schema);
+    if (!schema_status.ok()) {
+        errors.push_back("Failed to read schema of " + file + ": " +
+                         schema_status.ToString());
+        return false;
+    }
+
+    const std::shared_ptr<const arrow::KeyValueMetadata> metadata =
+        schema->metadata();
+    if (metadata == nullptr) {
+        errors.push_back("photon_events file " + file +
+                         " has no key-value metadata");
+        return false;
+    }
+    auto layout_result = metadata->Get("detector_layout");
+    if (!layout_result.ok()) {
+        errors.push_back("photon_events file " + file +
+                         " is missing 'detector_layout' metadata");
+        return false;
+    }
+    out_layout = *layout_result;
     return true;
 }
 
@@ -139,6 +181,24 @@ bool readPhotonEvents(const std::string& /*file*/,
     return false;
 }
 
+bool readPhotonFileLayout(const std::string& /*file*/,
+                          std::string& out_layout,
+                          std::vector<std::string>& errors) {
+    out_layout.clear();
+    errors.push_back("photon_events reading requires Arrow/Parquet support");
+    return false;
+}
+
 #endif  // HERMES_HAS_ARROW_PARQUET
+
+void sortPhotonEventsByTime(std::vector<PhotonEvent>& photons) {
+    std::stable_sort(photons.begin(), photons.end(),
+                     [](const PhotonEvent& a, const PhotonEvent& b) {
+                         if (a.timestamp_canonical != b.timestamp_canonical) {
+                             return a.timestamp_canonical < b.timestamp_canonical;
+                         }
+                         return a.photon_id < b.photon_id;
+                     });
+}
 
 }  // namespace hermes_event_reconstructor
