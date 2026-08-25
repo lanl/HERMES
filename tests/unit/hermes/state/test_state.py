@@ -8,7 +8,6 @@ from hermes.state.models.acquisition.serval import (
     PixelConfigFile,
     ServalAcquisitionResult,
     ServalAcquisitionState,
-    ServalEnvironment,
 )
 from hermes.state.models.analysis.hermes_tpx3_spidr import (
     HermesTpx3AnalysisState,
@@ -53,8 +52,9 @@ def test_hermes_record_serializes_paths_datetimes_and_mode_tags(tmp_path: Path) 
             analysis_directory=tmp_path / "run-001/data/analyzed",
         ),
         acquisition=ServalAcquisitionState(
-            serval_environment=ServalEnvironment(serval_url="http://localhost:8080"),
-            result=ServalAcquisitionResult(status="completed", output_files=[raw_file])
+            config={"serval": {"url": "http://localhost:8080"}},
+            status="completed",
+            result=ServalAcquisitionResult(output_files=[raw_file]),
         ),
         analysis=HermesTpx3AnalysisState(
             unpacking=Tpx3Unpacking(
@@ -94,7 +94,7 @@ def test_hermes_record_serializes_paths_datetimes_and_mode_tags(tmp_path: Path) 
     )
 
 
-def test_hermes_record_serializes_serval_requested_applied_and_calibration(
+def test_hermes_record_serializes_serval_config_and_calibration(
     tmp_path: Path,
 ) -> None:
     pixel_config_file = PixelConfigFile(
@@ -111,23 +111,30 @@ def test_hermes_record_serializes_serval_requested_applied_and_calibration(
         measurement_info=MeasurementInfo(measurement_id="LC-20231024", run="test-run"),
         environment=RuntimeEnvironment(working_directory=tmp_path / "run-002"),
         acquisition=ServalAcquisitionState(
-            serval_environment=ServalEnvironment(serval_url="http://localhost:8080"),
-            requested_detector_config={
-                "TriggerMode": "AUTOTRIGSTART_TIMERSTOP",
-                "ExposureTime": 0.0002,
-                "nTriggers": 100,
+            config={
+                "serval": {
+                    "url": "http://localhost:8080",
+                    "program_path": str(tmp_path / "serv-3.3.0.jar"),
+                    "version": "3.3.0",
+                },
+                "calibration_files": {
+                    "pixel_config_file": str(tmp_path / "tpx3-demo.bpc"),
+                    "dacs_file": str(tmp_path / "tpx3-demo.dacs"),
+                },
+                "detector_config": {
+                    "TriggerMode": "AUTOTRIGSTART_TIMERSTOP",
+                    "ExposureTime": 0.0002,
+                    "nTriggers": 100,
+                    "BiasEnabled": True,
+                },
+                "run_timing": {
+                    "trigger_mode": "AUTOTRIGSTART_TIMERSTOP",
+                    "exposure_time_s": 0.0005,
+                    "trigger_count": 25,
+                },
             },
-            applied_detector_config={
-                "TriggerMode": "AUTOTRIGSTART_TIMERSTOP",
-                "ExposureTime": 0.0002,
-                "nTriggers": 100,
-                "BiasEnabled": True,
-            },
-            requested_destination_configuration={
-                "Raw": [{"Base": "file:/requested/raw"}],
-            },
-            applied_destination_configuration={
-                "Raw": [{"Base": "file:/applied/raw", "QueueSize": 16384}],
+            destination={
+                "Raw": [{"Base": "file:/data/raw", "QueueSize": 16384}],
             },
             calibration=CalibrationState(
                 pixel_config_file=pixel_config_file,
@@ -151,17 +158,15 @@ def test_hermes_record_serializes_serval_requested_applied_and_calibration(
     dumped = record.model_dump(mode="json", by_alias=True)
     acquisition = dumped["acquisition"]
 
-    assert acquisition["requested_detector_config"]["TriggerMode"] == (
+    assert acquisition["config"]["serval"]["url"] == "http://localhost:8080"
+    assert acquisition["config"]["serval"]["version"] == "3.3.0"
+    assert acquisition["config"]["detector_config"]["TriggerMode"] == (
         "AUTOTRIGSTART_TIMERSTOP"
     )
-    assert acquisition["applied_detector_config"]["BiasEnabled"] is True
-    assert acquisition["requested_destination_configuration"]["Raw"][0]["Base"] == (
-        "file:/requested/raw"
-    )
-    assert (
-        acquisition["applied_destination_configuration"]["Raw"][0]["QueueSize"]
-        == 16384
-    )
+    assert acquisition["config"]["detector_config"]["nTriggers"] == 100
+    assert acquisition["config"]["detector_config"]["BiasEnabled"] is True
+    assert acquisition["config"]["run_timing"]["trigger_count"] == 25
+    assert acquisition["destination"]["Raw"][0]["QueueSize"] == 16384
     assert acquisition["calibration"]["pixel_config_file"]["path"] == (
         "config/pixelConfig.bpc"
     )

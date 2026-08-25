@@ -10,7 +10,6 @@ from pydantic import ValidationError
 from hermes.state.models.acquisition.serval import (
     ServalAcquisitionResult,
     ServalAcquisitionState,
-    ServalEnvironment,
 )
 from hermes.state.models.analysis.hermes_tpx3_spidr import (
     HermesTpx3AnalysisState,
@@ -63,13 +62,13 @@ def _example_record(tmp_path: Path) -> HermesRecord:
             log_directory="logs",
         ),
         acquisition=ServalAcquisitionState(
-            serval_environment=ServalEnvironment(serval_url="http://localhost:8080"),
+            config={"serval": {"url": "http://localhost:8080"}},
+            status="completed",
             result=ServalAcquisitionResult(
-                status="completed",
                 started_at=NOW,
                 completed_at=NOW,
                 output_files=[raw_file],
-            )
+            ),
         ),
     )
 
@@ -85,8 +84,8 @@ def test_save_and_load_hermes_record_yaml_round_trip(tmp_path: Path) -> None:
     assert loaded == record
     assert loaded.measurement_info.measurement_id == "LC-20260505"
     assert loaded.acquisition is not None
+    assert loaded.acquisition.status == "completed"
     assert loaded.acquisition.result is not None
-    assert loaded.acquisition.result.status == "completed"
     assert loaded.acquisition.result.started_at == NOW
     assert loaded.acquisition.result.output_files[0].created_at == NOW
     assert loaded.analysis is None

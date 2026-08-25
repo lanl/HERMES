@@ -1,13 +1,19 @@
 from __future__ import annotations
 
+import ipaddress
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Literal, TypeAlias
 
-from pydantic import ConfigDict, Field, field_validator
+from pydantic import ConfigDict, Field, field_validator, model_validator
 
-from hermes.state.models.detector import DetectorConfiguration, DetectorSnapshot
-from hermes.state.models.shared_models import FileReference, JsonObject, StrictBaseModel
+from hermes.state.models.detector import (
+    DetectorConfiguration,
+    DetectorSnapshot,
+    DetectorTriggerMode,
+)
+from hermes.state.models.shared_models import FileReference, StrictBaseModel
 
 AcquisitionRunStatus = Literal[
     "planned",
@@ -107,12 +113,70 @@ class ServalDashboard(ServalApiModel):
 ServalDashboardSnapshot: TypeAlias = ServalDashboard
 
 
-class ServalEnvironment(StrictBaseModel):
-    """SERVAL backend identity and latest backend status snapshot."""
+class ServalServer(StrictBaseModel):
+    """Where the SERVAL server lives and which version to run.
 
-    serval_url: str = Field(min_length=1)
+    HERMES launches SERVAL itself with `java -jar <program_path>` when a program
+    path is given and the server at `url` does not already answer.
+
+    HERMES never talks to the camera directly; SERVAL does. When `tcp_ip` is set,
+    HERMES passes it (and `tcp_port` if given) to SERVAL as `--tcpIp`/`--tcpPort`
+    launch flags so SERVAL connects to that camera. When both are unset, SERVAL
+    autodiscovers the camera.
+
+    `version` is the SERVAL version HERMES is driving (e.g. "3.3.0"). Options and
+    launch flags differ between versions: `tcp_ip`/`tcp_port` only exist from
+    SERVAL 3.0 onward; older versions point at the camera with `spidrNet` alone.
+    HERMES uses `major_version` to emit the launch flags that version accepts.
+    """
+
+    url: str = Field(min_length=1)
+    program_path: Path | None = None
     version: str | None = None
-    dashboard: ServalDashboardSnapshot | None = None
+    tcp_ip: str | None = None
+    tcp_port: int | None = Field(default=None, ge=1, le=65535)
+
+    @property
+    def major_version(self) -> int | None:
+        """Leading major version parsed from `version` ("3.3.0" -> 3).
+
+        None when `version` is unset or does not begin with a number.
+        """
+        if self.version is None:
+            return None
+        match = re.match(r"\s*v?(\d+)", self.version)
+        return int(match.group(1)) if match else None
+
+    @field_validator("program_path")
+    @classmethod
+    def validate_program_path(cls, value: Path | None) -> Path | None:
+        if value is not None and value.suffix.lower() != ".jar":
+            msg = "SERVAL program_path must be a .jar file"
+            raise ValueError(msg)
+        return value
+
+    @field_validator("tcp_ip")
+    @classmethod
+    def validate_tcp_ip(cls, value: str | None) -> str | None:
+        if value is not None:
+            try:
+                ipaddress.ip_address(value)
+            except ValueError as error:
+                msg = f"SERVAL tcp_ip must be a valid IP address: {value!r}"
+                raise ValueError(msg) from error
+        return value
+
+    @model_validator(mode="after")
+    def validate_tcp_needs_v3(self) -> ServalServer:
+        if (self.tcp_ip is not None or self.tcp_port is not None) and (
+            self.major_version is not None and self.major_version < 3
+        ):
+            msg = (
+                "SERVAL tcp_ip/tcp_port require version 3.0 or newer; "
+                f"version {self.version!r} points at the camera with spidrNet only"
+            )
+            raise ValueError(msg)
+        return self
 
 
 class ServalRawDestination(ServalApiModel):
@@ -240,17 +304,73 @@ class CalibrationState(StrictBaseModel):
     dacs_load: DacsLoad | None = None
 
 
-class ServalAcquisitionPlan(StrictBaseModel):
-    trigger_mode: str | None = None
+class CalibrationFiles(StrictBaseModel):
+    """User-supplied SoPhy calibration files to load into the detector.
+
+    These are the source `.bpc` and `.dacs` paths named in the config file.
+    During a run HERMES copies them into the run's config directory and records
+    the saved copies and hashes on `CalibrationState`.
+    """
+
+    pixel_config_file: Path
+    dacs_file: Path
+
+    @field_validator("pixel_config_file")
+    @classmethod
+    def validate_pixel_config_suffix(cls, value: Path) -> Path:
+        if value.suffix.lower() != ".bpc":
+            msg = "pixel_config_file must end with .bpc"
+            raise ValueError(msg)
+        return value
+
+    @field_validator("dacs_file")
+    @classmethod
+    def validate_dacs_suffix(cls, value: Path) -> Path:
+        if value.suffix.lower() != ".dacs":
+            msg = "dacs_file must end with .dacs"
+            raise ValueError(msg)
+        return value
+
+
+class ServalRunTiming(StrictBaseModel):
+    """Exposure and trigger settings for the run.
+
+    Any field set here overrides the matching field in the detector
+    configuration. `trigger_count` maps to the detector config's `n_triggers`.
+    """
+
+    trigger_mode: DetectorTriggerMode | None = None
+    exposure_time_s: float | None = Field(default=None, ge=0, le=10)
+    trigger_period_s: float | None = Field(default=None, ge=0, le=50)
     trigger_count: int | None = Field(default=None, ge=0)
-    exposure_time_s: float | None = Field(default=None, ge=0)
-    trigger_period_s: float | None = Field(default=None, ge=0)
-    expected_output_files: list[FileReference] = Field(default_factory=list)
-    options: JsonObject = Field(default_factory=dict)
+
+
+class ServalAcquisitionConfig(StrictBaseModel):
+    """Everything HERMES loads from the acquisition config file.
+
+    The detector configuration comes either inline as `detector_config` or from
+    a JSON file named by `detector_config_file`; when both are given the file
+    wins. `run_timing` then overrides the matching detector-config fields.
+    """
+
+    serval: ServalServer
+    calibration_files: CalibrationFiles | None = None
+    detector_config: DetectorConfiguration | None = None
+    detector_config_file: Path | None = None
+    run_timing: ServalRunTiming | None = None
+
+    @field_validator("detector_config_file")
+    @classmethod
+    def validate_detector_config_suffix(cls, value: Path | None) -> Path | None:
+        if value is not None and value.suffix.lower() != ".json":
+            msg = "detector_config_file must be a .json file"
+            raise ValueError(msg)
+        return value
 
 
 class ServalAcquisitionResult(StrictBaseModel):
-    status: AcquisitionRunStatus = "unknown"
+    """Outcome of one measurement: when it ran and what it produced."""
+
     started_at: datetime | None = None
     completed_at: datetime | None = None
     stop_reason: str | None = None
@@ -259,18 +379,24 @@ class ServalAcquisitionResult(StrictBaseModel):
     warnings: list[str] = Field(default_factory=list)
     errors: list[str] = Field(default_factory=list)
     output_files: list[FileReference] = Field(default_factory=list)
-    final_dashboard: ServalDashboardSnapshot | None = None
 
 
 class ServalAcquisitionState(StrictBaseModel):
+    """Durable acquisition state: the loaded config plus what HERMES observed.
+
+    `config` is what was loaded from the config file. Every other field is
+    filled in by HERMES as the run progresses: the latest dashboard, the
+    detector snapshots taken before and after, the destination that was
+    configured, the calibration files that were saved and loaded, and the
+    measurement result.
+    """
+
     mode: Literal["serval"] = "serval"
-    serval_environment: ServalEnvironment
-    requested_plan: ServalAcquisitionPlan | None = None
-    requested_detector_config: DetectorConfiguration | None = None
-    requested_destination_configuration: DestinationConfiguration | None = None
-    applied_detector_config: DetectorConfiguration | None = None
-    applied_destination_configuration: DestinationConfiguration | None = None
+    config: ServalAcquisitionConfig
+    status: AcquisitionRunStatus = "planned"
+    dashboard: ServalDashboardSnapshot | None = None
     initial_detector_snapshot: DetectorSnapshot | None = None
     final_detector_snapshot: DetectorSnapshot | None = None
+    destination: DestinationConfiguration | None = None
     calibration: CalibrationState | None = None
     result: ServalAcquisitionResult | None = None

@@ -14,6 +14,7 @@ from hermes.state.models.acquisition.serval import (
     PixelConfigLoad,
     ServalAcquisitionState,
     ServalDashboard,
+    ServalServer,
 )
 
 
@@ -313,58 +314,147 @@ def test_serval_config_load_validates_http_status_code(
         model(server_file_path="settings", http_status_code=600)
 
 
-def test_serval_acquisition_state_separates_requested_and_applied_config() -> None:
+def test_serval_acquisition_state_loads_config() -> None:
     state = ServalAcquisitionState.model_validate(
         {
-            "serval_environment": {"serval_url": "http://localhost:8080"},
-            "requested_detector_config": {
-                "TriggerMode": "AUTOTRIGSTART_TIMERSTOP",
-                "ExposureTime": 0.0002,
-                "nTriggers": 10,
-            },
-            "applied_detector_config": {
-                "TriggerMode": "AUTOTRIGSTART_TIMERSTOP",
-                "ExposureTime": 0.0002,
-                "nTriggers": 10,
-                "BiasEnabled": True,
-            },
-            "requested_destination_configuration": {
-                "Raw": [{"Base": "file:/requested/raw"}],
-            },
-            "applied_destination_configuration": {
-                "Raw": [{"Base": "file:/applied/raw", "QueueSize": 1024}],
+            "config": {
+                "serval": {
+                    "url": "http://localhost:8080",
+                    "program_path": "/opt/serval/serv-3.3.0.jar",
+                    "version": "3.3.0",
+                },
+                "calibration_files": {
+                    "pixel_config_file": "/data/calib/chip.bpc",
+                    "dacs_file": "/data/calib/chip.dacs",
+                },
+                "detector_config": {
+                    "TriggerMode": "AUTOTRIGSTART_TIMERSTOP",
+                    "ExposureTime": 0.0002,
+                    "nTriggers": 10,
+                },
+                "run_timing": {
+                    "trigger_mode": "AUTOTRIGSTART_TIMERSTOP",
+                    "exposure_time_s": 0.0005,
+                    "trigger_count": 25,
+                },
             },
         }
     )
 
-    assert state.requested_detector_config is not None
-    assert state.requested_detector_config.n_triggers == 10
-    assert state.applied_detector_config is not None
-    assert state.applied_detector_config.bias_enabled is True
-    assert state.requested_destination_configuration is not None
-    assert (
-        state.requested_destination_configuration.raw[0].base
-        == "file:/requested/raw"
+    assert state.status == "planned"
+    assert state.config.serval.program_path == Path("/opt/serval/serv-3.3.0.jar")
+    assert state.config.serval.version == "3.3.0"
+    assert state.config.calibration_files is not None
+    assert state.config.calibration_files.pixel_config_file == Path(
+        "/data/calib/chip.bpc"
     )
-    assert state.applied_destination_configuration is not None
-    assert state.applied_destination_configuration.raw[0].queue_size == 1024
+    assert state.config.detector_config is not None
+    assert state.config.detector_config.n_triggers == 10
+    assert state.config.run_timing is not None
+    assert state.config.run_timing.trigger_count == 25
 
     dumped = state.model_dump(mode="json", by_alias=True)
-    assert dumped["requested_detector_config"]["TriggerMode"] == (
+    assert dumped["config"]["detector_config"]["TriggerMode"] == (
         "AUTOTRIGSTART_TIMERSTOP"
     )
-    assert dumped["requested_detector_config"]["nTriggers"] == 10
-    assert dumped["applied_detector_config"]["BiasEnabled"] is True
-    assert dumped["requested_destination_configuration"]["Raw"][0]["Base"] == (
-        "file:/requested/raw"
-    )
-    assert (
-        dumped["applied_destination_configuration"]["Raw"][0]["QueueSize"] == 1024
-    )
+    assert dumped["config"]["detector_config"]["nTriggers"] == 10
+    assert dumped["config"]["run_timing"]["trigger_count"] == 25
 
 
-def test_serval_acquisition_state_rejects_legacy_destination_field() -> None:
-    with pytest.raises(ValidationError, match="destination_configuration"):
+def test_serval_acquisition_state_accepts_detector_config_file() -> None:
+    state = ServalAcquisitionState.model_validate(
+        {
+            "config": {
+                "serval": {"url": "http://localhost:8080"},
+                "detector_config_file": "/data/detector.json",
+            }
+        }
+    )
+
+    assert state.config.detector_config is None
+    assert state.config.detector_config_file == Path("/data/detector.json")
+
+
+def test_serval_acquisition_config_rejects_bad_file_suffixes() -> None:
+    with pytest.raises(ValidationError, match="program_path"):
         ServalAcquisitionState.model_validate(
-            {"destination_configuration": {"Raw": [{"Base": "file:/data/raw"}]}}
+            {"config": {"serval": {"url": "u", "program_path": "/x/serv.txt"}}}
         )
+    with pytest.raises(ValidationError, match="pixel_config_file"):
+        ServalAcquisitionState.model_validate(
+            {
+                "config": {
+                    "serval": {"url": "u"},
+                    "calibration_files": {
+                        "pixel_config_file": "/a.txt",
+                        "dacs_file": "/b.dacs",
+                    },
+                }
+            }
+        )
+    with pytest.raises(ValidationError, match="detector_config_file"):
+        ServalAcquisitionState.model_validate(
+            {
+                "config": {
+                    "serval": {"url": "u"},
+                    "detector_config_file": "/x/cfg.yaml",
+                }
+            }
+        )
+
+
+def test_serval_acquisition_state_rejects_removed_request_fields() -> None:
+    with pytest.raises(ValidationError, match="requested_detector_config"):
+        ServalAcquisitionState.model_validate(
+            {
+                "config": {"serval": {"url": "http://localhost:8080"}},
+                "requested_detector_config": {"nTriggers": 10},
+            }
+        )
+
+
+@pytest.mark.parametrize(
+    ("version", "expected"),
+    [
+        ("3.3.0", 3),
+        ("2.1.6", 2),
+        ("v3.0.0", 3),
+        (None, None),
+        ("unknown", None),
+    ],
+)
+def test_serval_server_parses_major_version(
+    version: str | None,
+    expected: int | None,
+) -> None:
+    server = ServalServer(url="http://localhost:8080", version=version)
+    assert server.major_version == expected
+
+
+def test_serval_server_validates_tcp_ip() -> None:
+    with pytest.raises(ValidationError, match="tcp_ip"):
+        ServalServer(url="http://localhost:8080", tcp_ip="not-an-ip")
+
+
+def test_serval_server_allows_tcp_flags_on_version_3() -> None:
+    server = ServalServer(
+        url="http://localhost:8080",
+        version="3.3.0",
+        tcp_ip="192.168.100.1",
+        tcp_port=50000,
+    )
+    assert server.tcp_ip == "192.168.100.1"
+    assert server.tcp_port == 50000
+
+
+@pytest.mark.parametrize("field", ["tcp_ip", "tcp_port"])
+def test_serval_server_rejects_tcp_flags_on_version_2(field: str) -> None:
+    value: object = "192.168.100.1" if field == "tcp_ip" else 50000
+    with pytest.raises(ValidationError, match="3.0 or newer"):
+        ServalServer(url="http://localhost:8080", version="2.1.6", **{field: value})
+
+
+def test_serval_server_does_not_gate_tcp_flags_when_version_unset() -> None:
+    server = ServalServer(url="http://localhost:8080", tcp_ip="192.168.100.1")
+    assert server.tcp_ip == "192.168.100.1"
+    assert server.major_version is None
