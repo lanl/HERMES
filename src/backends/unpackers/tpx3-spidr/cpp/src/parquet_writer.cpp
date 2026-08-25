@@ -8,6 +8,7 @@
 #ifdef HERMES_HAS_ARROW_PARQUET
 #include <arrow/io/file.h>
 #include <parquet/arrow/writer.h>
+#include <parquet/properties.h>
 #include <arrow/table.h>
 #include <arrow/array.h>
 #include <arrow/builder.h>
@@ -329,6 +330,13 @@ void writeRowsToParquet(
         return;
     }
 
+    // ZSTD keeps every physics value bit-for-bit while shrinking the columnar
+    // streams below the raw .tpx3 size; readers decompress it transparently.
+    std::shared_ptr<parquet::WriterProperties> writer_properties =
+        parquet::WriterProperties::Builder()
+            .compression(parquet::Compression::ZSTD)
+            ->build();
+
     std::size_t num_parts = (rows.size() + config.rows_per_part - 1) / config.rows_per_part;
 
     for (std::size_t part = 0; part < num_parts; ++part) {
@@ -358,7 +366,8 @@ void writeRowsToParquet(
         outfile = *result;
 
         auto status = parquet::arrow::WriteTable(*table, arrow::default_memory_pool(),
-                                                 outfile, config.rows_per_part);
+                                                 outfile, config.rows_per_part,
+                                                 writer_properties);
         if (!status.ok()) {
             errors.push_back("Failed to write Parquet file " + full_path + ": " +
                            status.ToString());
