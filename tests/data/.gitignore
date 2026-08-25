@@ -13,5 +13,6 @@
 # Track only these specific data files (the "!" overrides the root *.tpx3 rule)
 !tpx3/Example_1kHz_5frames.tpx3
 !tpx3/Tantalum_IronPowder.tpx3
+!tpx3/quad.tpx3
 !photons/Tantalum_IronPowder.parquet
 !pixel_hits/Tantalum_IronPowder.parquet

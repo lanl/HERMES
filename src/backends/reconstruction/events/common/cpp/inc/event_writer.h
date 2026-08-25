@@ -17,10 +17,12 @@ constexpr char kEventSchemaVersion[] = "1";
 
 // String metadata attached to every event Parquet file so a reader can recover
 // how the events were produced without the summary JSON. Mirrors the photon
-// stage's PhotonFileMetadata.
+// stage's PhotonFileMetadata. A whole-sensor run covers every chip at once, so
+// the file records the detector layout ("single_chip" or "quad") rather than a
+// single chip index.
 struct EventFileMetadata {
     std::string raw_file_stem;
-    int chip_index = 0;
+    std::string detector_layout;
     double canonical_tick_seconds = 0.0;
     std::string event_algorithm;
     std::string event_settings_json;

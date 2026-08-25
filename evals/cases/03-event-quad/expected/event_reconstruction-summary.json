@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "reconstruction": {
+    "photons_read": 2749,
+    "components_formed": 2707,
+    "event_count": 2707,
+    "quality_flag_counts": {
+      "single_photon": 2669,
+      "duration_exceeded": 0
+    },
+    "min_photon_count_below": 0,
+    "warnings": [],
+    "errors": []
+  },
+  "clustering": {
+    "algorithm": "connected_components",
+    "settings": {
+      "spatial_link_radius_pixels": 10.0,
+      "spatial_cells_per_axis": 5,
+      "max_time_difference_ticks": 4915200.0,
+      "max_event_duration_ticks": 14745600.0,
+      "min_photon_count": 1,
+      "save_event_photons": true,
+      "derived_cell_width": 104
+    }
+  },
+  "event_timing": {
+    "estimator": "earliest_photon"
+  },
+  "parquet": {
+    "input_photon_events_files": [
+      "data/03-event-quad/quad-sample/analysis/photons/quad_chip_0_photon_00000.parquet",
+      "data/03-event-quad/quad-sample/analysis/photons/quad_chip_1_photon_00000.parquet",
+      "data/03-event-quad/quad-sample/analysis/photons/quad_chip_2_photon_00000.parquet",
+      "data/03-event-quad/quad-sample/analysis/photons/quad_chip_3_photon_00000.parquet"
+    ],
+    "event_candidates": {
+      "row_count": 2707,
+      "files": [
+        "data/03-event-quad/quad-sample/analysis/events/quad_event_candidates.parquet"
+      ]
+    },
+    "event_photons": {
+      "row_count": 2749,
+      "files": [
+        "data/03-event-quad/quad-sample/analysis/event_photons/quad_event_photons.parquet"
+      ]
+    }
+  },
+  "processing_times_seconds": "<IGNORE: non-deterministic timing>"
+}

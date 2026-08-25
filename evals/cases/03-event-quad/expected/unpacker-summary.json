@@ -1,0 +1,78 @@
+{
+  "measurement_info": {
+    "measurement_id": "harness-03-event-quad",
+    "run": "quad-sample"
+  },
+  "inputfile": "tests/data/tpx3/quad.tpx3",
+  "unpacking": {
+    "bytes_read": 376416,
+    "chunks_read": 3377,
+    "packets_read": 43675,
+    "pixel_data_packets": 26315,
+    "tdc_timestamps": 939,
+    "heartbeat_packets": 8,
+    "spidr_control_packets": 13520,
+    "tpx3_control_packets": 68,
+    "unrecognized_packets": 0,
+    "tdc1_rising": 274,
+    "tdc1_falling": 0,
+    "tdc2_rising": 665,
+    "tdc2_falling": 0,
+    "unknown_tdc_edges": 0,
+    "errors": [],
+    "warnings": "<IGNORE: SPIDR control warnings vary with input>"
+  },
+  "timestamp_processing": {
+    "heartbeat_pairs": {
+      "number_of_beats": 8
+    },
+    "time_adjustments": {
+      "pixel_packets": 26315,
+      "tdc_packets": 3756,
+      "control_packets": 10143,
+      "failed": 0
+    }
+  },
+  "sorting": {
+    "strategy": "in_memory",
+    "memory_budget_bytes": 1073741824,
+    "estimated_memory_bytes": 2496680,
+    "sorting_time_seconds": "<IGNORE: non-deterministic timing>"
+  },
+  "output_parquet": {
+    "pixel_data": {
+      "row_count": 26315,
+      "files": [
+        "data/03-event-quad/quad-sample/analysis/pixel_hits/quad_chip_0_pixels_00000.parquet",
+        "data/03-event-quad/quad-sample/analysis/pixel_hits/quad_chip_1_pixels_00000.parquet",
+        "data/03-event-quad/quad-sample/analysis/pixel_hits/quad_chip_2_pixels_00000.parquet",
+        "data/03-event-quad/quad-sample/analysis/pixel_hits/quad_chip_3_pixels_00000.parquet"
+      ]
+    },
+    "tdc_timestamps": {
+      "row_count": 939,
+      "files": [
+        "data/03-event-quad/quad-sample/analysis/tdc_triggers/quad_tdc1_rising_triggers_00000.parquet",
+        "data/03-event-quad/quad-sample/analysis/tdc_triggers/quad_tdc2_rising_triggers_00000.parquet"
+      ]
+    },
+    "heartbeat_packets": {
+      "row_count": 8,
+      "files": [
+        "data/03-event-quad/quad-sample/analysis/global_timestamps/quad_global_timestamps_00000.parquet"
+      ]
+    },
+    "control_packets": {
+      "row_count": 13588,
+      "files": [
+        "data/03-event-quad/quad-sample/analysis/control_packets/quad_control_packets_00000.parquet"
+      ]
+    },
+    "unrecognized_packets": {
+      "row_count": 0,
+      "files": []
+    },
+    "errors": []
+  },
+  "processing_times_seconds": "<IGNORE: non-deterministic timing>"
+}

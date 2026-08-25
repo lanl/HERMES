@@ -27,11 +27,12 @@ struct ReconParams {
     double spatial_link_radius_pixels = 10.0;
 
     // Number of spatial grid cells along each detector axis, giving an
-    // n x n grid over the 256 x 256 field of view. Larger values make finer
-    // cells (fewer photons per cell, more distance tests); smaller values make
-    // coarser cells. This only accelerates neighbor lookup and never changes
-    // which events form, provided the derived cell width stays at least the
-    // linking radius (enforced by validateReconParams).
+    // n x n grid over the sensor width (256 for a single chip, 516 for a quad).
+    // Larger values make finer cells (fewer photons per cell, more distance
+    // tests); smaller values make coarser cells. This only accelerates neighbor
+    // lookup and never changes which events form, provided the derived cell
+    // width stays at least the linking radius (enforced by validateGridForSensor
+    // once the sensor width is known from the photon files).
     std::uint32_t spatial_cells_per_axis = 5;
 
     // Maximum time difference between two linked photons, in canonical ticks.
@@ -68,21 +69,29 @@ struct ReconParams {
 // decides whether to load a file at all.
 ReconParams loadReconParams(const std::string& path);
 
-// Validates a settings struct, throwing std::runtime_error on any violation.
-// Applied by loadReconParams and reusable for the built-in defaults.
+// Validates the layout-independent settings, throwing std::runtime_error on any
+// violation (radius > 0, cells >= 1, times > 0, min_photon_count >= 1). Applied
+// by loadReconParams at load time, before the sensor width is known.
 void validateReconParams(const ReconParams& settings);
 
+// Validates the two grid checks that depend on the sensor width: the number of
+// cells per axis must not exceed the sensor width, and the derived cell width
+// must be at least the linking radius so the fixed 3x3 neighborhood search stays
+// exact. Called once the layout (and therefore the sensor width) is read from
+// the photon files. Throws std::runtime_error on a violation.
+void validateGridForSensor(const ReconParams& settings, int sensor_width);
+
 // Derives the spatial-grid cell width in pixels from the number of cells per
-// axis over the fixed 256-pixel field of view:
+// axis over the sensor width:
 //
-//   cell_width = ceil(256 / spatial_cells_per_axis)
+//   cell_width = ceil(sensor_width / spatial_cells_per_axis)
 //
-// Rounding up guarantees exactly spatial_cells_per_axis cells span the chip
-// (the last cell may be narrower). validateReconParams requires this width to
+// Rounding up guarantees exactly spatial_cells_per_axis cells span the sensor
+// (the last cell may be narrower). validateGridForSensor requires this width to
 // be at least the linking radius so the fixed 3x3 neighborhood search stays
 // exact; cell width is a lookup accelerator only and never changes which events
 // form.
-int deriveCellWidth(std::uint32_t spatial_cells_per_axis);
+int deriveCellWidth(std::uint32_t spatial_cells_per_axis, int sensor_width);
 
 // Serializes the settings to a JSON object string for provenance: the same
 // fields shown in the Settings table, plus the derived cell width for

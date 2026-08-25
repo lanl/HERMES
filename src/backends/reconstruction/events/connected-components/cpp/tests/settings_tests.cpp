@@ -9,6 +9,7 @@ namespace {
 using hermes_event_reconstructor::deriveCellWidth;
 using hermes_event_reconstructor::ReconParams;
 using hermes_event_reconstructor::loadReconParams;
+using hermes_event_reconstructor::validateGridForSensor;
 using hermes_event_reconstructor::validateReconParams;
 
 std::string writeTemp(const std::string& name, const std::string& contents) {
@@ -31,6 +32,15 @@ bool loadThrows(const std::string& name, const std::string& contents) {
 bool validates(const ReconParams& settings) {
     try {
         validateReconParams(settings);
+    } catch (const std::runtime_error&) {
+        return false;
+    }
+    return true;
+}
+
+bool validatesGrid(const ReconParams& settings, int sensor_width) {
+    try {
+        validateGridForSensor(settings, sensor_width);
     } catch (const std::runtime_error&) {
         return false;
     }
@@ -131,37 +141,47 @@ int main() {
     test.expect(loadThrows("garbage.json", "{not json"),
                 "malformed JSON is rejected");
 
-    // Cell width is the number of pixels per cell for n cells over 256 pixels,
-    // rounded up so exactly n cells span the field of view.
-    test.expectEqual(deriveCellWidth(1), 256, "1 cell spans the whole chip");
-    test.expectEqual(deriveCellWidth(2), 128, "2 cells -> width 128");
-    test.expectEqual(deriveCellWidth(4), 64, "4 cells -> width 64");
-    test.expectEqual(deriveCellWidth(5), 52, "5 cells -> width 52 (rounded up)");
-    test.expectEqual(deriveCellWidth(3), 86, "3 cells -> width 86 (rounded up)");
-    test.expectEqual(deriveCellWidth(256), 1, "256 cells -> one pixel each");
+    // Cell width is the number of pixels per cell for n cells over the sensor
+    // width, rounded up so exactly n cells span the field of view. A 256-pixel
+    // single_chip sensor and a 516-pixel quad sensor derive different widths.
+    test.expectEqual(deriveCellWidth(1, 256), 256, "1 cell spans a 256 sensor");
+    test.expectEqual(deriveCellWidth(2, 256), 128, "2 cells -> width 128");
+    test.expectEqual(deriveCellWidth(4, 256), 64, "4 cells -> width 64");
+    test.expectEqual(deriveCellWidth(5, 256), 52, "5 cells over 256 -> width 52");
+    test.expectEqual(deriveCellWidth(3, 256), 86, "3 cells over 256 -> width 86");
+    test.expectEqual(deriveCellWidth(256, 256), 1, "256 cells -> one pixel each");
+    test.expectEqual(deriveCellWidth(5, 516), 104,
+                     "5 cells over 516 -> width 104 (rounded up)");
+    test.expectEqual(deriveCellWidth(1, 516), 516, "1 cell spans a 516 sensor");
+    test.expectEqual(deriveCellWidth(516, 516), 1, "516 cells -> one pixel each");
 
-    // The correctness guard: a grid too fine for the linking radius, so the
-    // derived cell width would fall below the radius, is rejected.
+    // The correctness guard is sensor-dependent: a grid too fine for the linking
+    // radius, so the derived cell width would fall below the radius, is rejected.
     {
         ReconParams s;
         s.spatial_link_radius_pixels = 4.0;
         s.spatial_cells_per_axis = 100;  // 256/100 -> width 3 < 4
-        test.expect(!validates(s), "too-fine grid for the radius is rejected");
+        test.expect(!validatesGrid(s, 256),
+                    "too-fine grid for the radius is rejected");
     }
     // A grid whose cell width exactly meets the radius is accepted.
     {
         ReconParams s;
         s.spatial_link_radius_pixels = 52.0;
-        s.spatial_cells_per_axis = 5;  // width 52 == radius
-        test.expect(validates(s), "cell width equal to radius is accepted");
+        s.spatial_cells_per_axis = 5;  // 256/5 -> width 52 == radius
+        test.expect(validatesGrid(s, 256),
+                    "cell width equal to radius is accepted");
     }
-    // Range checks on the cell count itself.
+    // Zero cells is rejected at load, independent of the sensor.
     test.expect(loadThrows("zero_cells.json", "{\"spatial_cells_per_axis\": 0}"),
                 "zero cells per axis is rejected");
-    test.expect(
-        loadThrows("too_many_cells.json",
-                   "{\"spatial_cells_per_axis\": 300}"),
-        "more cells than pixels is rejected");
+    // More cells than pixels is a sensor-dependent rejection.
+    {
+        ReconParams s;
+        s.spatial_cells_per_axis = 300;  // 300 > 256 pixels
+        test.expect(!validatesGrid(s, 256),
+                    "more cells than the sensor width is rejected");
+    }
 
     return test.finish();
 }

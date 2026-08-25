@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <chrono>
 #include <filesystem>
 #include <iostream>
@@ -7,6 +8,7 @@
 #include "event_writer.h"
 #include "photon_reader.h"
 #include "reconstruction.h"
+#include "sensor_layout.h"
 #include "settings.h"
 #include "summary_writer.h"
 #include "version.h"
@@ -29,13 +31,13 @@ void printHelp(const char* program_name) {
     std::cout << "HERMES Event Reconstructor v"
               << hermes_event_reconstructor::kVersion << "\n\n";
     std::cout << "Usage: " << program_name
-              << " --input <photon_events_file> [--output <event_file>]"
+              << " --input <analysis_directory> --raw-file-stem <stem>"
                  " [--settings <file>] [--overwrite]\n\n";
     std::cout << "Options:\n";
-    std::cout << "  --input <photon_events_file>   One photon_events Parquet "
-                 "file to reconstruct (required)\n";
-    std::cout << "  --output <event_file>          Full path of the "
-                 "event_candidates file to write (optional)\n";
+    std::cout << "  --input <analysis_directory>   Analysis directory holding "
+                 "the photons/ subdirectory (required)\n";
+    std::cout << "  --raw-file-stem <stem>         Raw TPX3 filename stem whose "
+                 "photon files to reconstruct (required)\n";
     std::cout << "  --settings <file>              JSON file overriding "
                  "individual event\n";
     std::cout << "                                 settings (any field omitted "
@@ -44,18 +46,17 @@ void printHelp(const char* program_name) {
                  "summary files\n";
     std::cout << "  -h, --help                     Show this help message\n";
     std::cout << "  -v, --version                  Show version information\n\n";
-    std::cout << "Output Modes:\n";
-    std::cout << "  Without --output:\n";
-    std::cout << "    Prints summary counts only; writes no files.\n\n";
-    std::cout << "  With --output:\n";
-    std::cout << "    Writes one event_candidates file at the given path. When\n";
-    std::cout << "    save_event_photons is set, the event_photons file is "
-                 "written to\n";
-    std::cout << "    an event_photons/ directory beside the output directory. "
-                 "The\n";
-    std::cout << "    reconstruction-summary JSON is written to a logs/events/ "
-                 "directory\n";
-    std::cout << "    beside the output directory.\n";
+    std::cout << "Output:\n";
+    std::cout << "  Gathers every photons/<stem>_chip_<chip>_photon_<part>"
+                 ".parquet file for the\n";
+    std::cout << "  raw stem and clusters them together in the shared sensor "
+                 "frame, writing one\n";
+    std::cout << "  events/<stem>_event_candidates.parquet, an "
+                 "event_photons/<stem>_event_photons.parquet\n";
+    std::cout << "  when save_event_photons is set, and a "
+                 "logs/event_reconstruction/<stem>_event_reconstruction_summary"
+                 ".json,\n";
+    std::cout << "  all under the analysis directory.\n";
 }
 
 void printVersion() {
@@ -64,49 +65,48 @@ void printVersion() {
     std::cout << "C++17 connected-components event reconstruction\n";
 }
 
-// The raw TPX3 filename stem and chip index carried by a photon file. The photon
-// stage names photon files "<raw_file_stem>_chip_<chip>_photon_<part>.parquet";
-// event reconstruction reads the raw stem and chip index back out so the event
-// file metadata records the true provenance instead of the compound photon-file
-// stem. Mirrors the photon stage's parsePixelFileName.
-struct PhotonFileName {
-    std::string raw_file_stem;
-    std::string chip_label;
-    std::string part_index;
-    bool matched = false;
-};
-
-PhotonFileName parsePhotonFileName(const std::string& input_stem) {
-    PhotonFileName parsed;
-    const std::string chip_marker = "_chip_";
-    const std::string photon_marker = "_photon_";
-    const auto chip_position = input_stem.find(chip_marker);
-    const auto photon_position = input_stem.rfind(photon_marker);
-    if (chip_position == std::string::npos ||
-        photon_position == std::string::npos ||
-        photon_position < chip_position) {
-        return parsed;
+// Gathers every photons/<stem>_chip_<chip>_photon_<part>.parquet file for one
+// raw stem, sorted by filename so parts are read in a stable order. The
+// "<stem>_chip_" prefix and "_photon_" marker match the photon stage's naming
+// and keep stems that are prefixes of each other from picking up one another's
+// files.
+std::vector<std::string> gatherPhotonFiles(const fs::path& photons_dir,
+                                           const std::string& raw_file_stem) {
+    std::vector<std::string> files;
+    std::error_code ec;
+    if (!fs::is_directory(photons_dir, ec)) {
+        return files;
     }
-    parsed.raw_file_stem = input_stem.substr(0, chip_position);
-    parsed.chip_label = input_stem.substr(
-        chip_position + chip_marker.size(),
-        photon_position - (chip_position + chip_marker.size()));
-    parsed.part_index =
-        input_stem.substr(photon_position + photon_marker.size());
-    parsed.matched = !parsed.raw_file_stem.empty() &&
-                     !parsed.chip_label.empty() && !parsed.part_index.empty();
-    return parsed;
+    const std::string prefix = raw_file_stem + "_chip_";
+    for (const auto& entry : fs::directory_iterator(photons_dir, ec)) {
+        if (!entry.is_regular_file()) {
+            continue;
+        }
+        const std::string name = entry.path().filename().string();
+        if (name.rfind(prefix, 0) != 0) {
+            continue;
+        }
+        if (name.find("_photon_") == std::string::npos) {
+            continue;
+        }
+        if (entry.path().extension() != ".parquet") {
+            continue;
+        }
+        files.push_back(entry.path().string());
+    }
+    std::sort(files.begin(), files.end());
+    return files;
 }
 
 }  // namespace
 
 int main(const int argc, char* argv[]) {
-    std::string input_file;
-    std::string output_file;
+    std::string analysis_directory;
+    std::string raw_file_stem;
     std::string settings_file;
     bool overwrite = false;
     bool have_input = false;
-    bool have_output = false;
+    bool have_stem = false;
 
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
@@ -124,11 +124,20 @@ int main(const int argc, char* argv[]) {
         }
         if (arg == "--input") {
             if (i + 1 >= argc) {
-                std::cerr << "Error: --input requires a file path\n";
+                std::cerr << "Error: --input requires a directory path\n";
                 return 2;
             }
-            input_file = argv[++i];
+            analysis_directory = argv[++i];
             have_input = true;
+            continue;
+        }
+        if (arg == "--raw-file-stem") {
+            if (i + 1 >= argc) {
+                std::cerr << "Error: --raw-file-stem requires a value\n";
+                return 2;
+            }
+            raw_file_stem = argv[++i];
+            have_stem = true;
             continue;
         }
         if (arg == "--settings") {
@@ -139,26 +148,23 @@ int main(const int argc, char* argv[]) {
             settings_file = argv[++i];
             continue;
         }
-        if (arg == "--output") {
-            if (i + 1 >= argc) {
-                std::cerr << "Error: --output requires a file path\n";
-                return 2;
-            }
-            output_file = argv[++i];
-            have_output = true;
-            continue;
-        }
         std::cerr << "Error: unrecognized argument: " << arg << "\n\n";
         std::cerr << "Try '" << argv[0] << " --help' for more information.\n";
         return 2;
     }
 
     if (!have_input) {
-        std::cerr << "Error: --input <photon_events_file> is required\n";
+        std::cerr << "Error: --input <analysis_directory> is required\n";
+        return 2;
+    }
+    if (!have_stem) {
+        std::cerr << "Error: --raw-file-stem <stem> is required\n";
         return 2;
     }
 
     // Start from built-in defaults; a settings file overrides only named fields.
+    // Only the layout-independent checks run here; the grid checks that depend on
+    // the sensor width wait until the layout is read from the photon files.
     hermes_event_reconstructor::ReconParams settings;
     try {
         if (settings_file.empty()) {
@@ -172,70 +178,87 @@ int main(const int argc, char* argv[]) {
         return 2;
     }
 
-    const int cell_width =
-        hermes_event_reconstructor::deriveCellWidth(settings.spatial_cells_per_axis);
-    const std::string settings_json =
-        hermes_event_reconstructor::clusteringSettingsJson(settings, cell_width);
-
-    // The event_photons and summary paths derive from the output file. The
-    // event_photons file goes in its own event_photons/ directory beside the
-    // events/ output directory, mirroring how the photon stage writes its
-    // pixel_clusters/ file beside photons/. The summary is a log artifact written
-    // to a logs/events/ directory beside the output directory (the photon stage
-    // writes to logs/photons/). The events/ and logs/events/ directories are
-    // created up front so the summary is written even when reconstruction
-    // produces zero events; event_photons/ is created only when
-    // save_event_photons is set. Only used when --output is set.
-    std::string event_photons_file;
-    std::string summary_path;
-    if (have_output) {
-        const fs::path output_path(output_file);
-        const fs::path parent = output_path.parent_path();
-        const std::string stem = output_path.stem().string();
-        const fs::path analysis_dir = parent.parent_path();
-        const fs::path logs_dir = analysis_dir / "logs" / "events";
-        const fs::path event_photons_dir = analysis_dir / "event_photons";
-        std::vector<fs::path> directories = {parent, logs_dir};
-        if (settings.save_event_photons) {
-            directories.push_back(event_photons_dir);
-        }
-        for (const fs::path& directory : directories) {
-            if (directory.empty()) {
-                continue;
-            }
-            std::error_code ec;
-            fs::create_directories(directory, ec);
-            if (ec) {
-                std::cerr << "Error: cannot create directory "
-                          << directory.string() << ": " << ec.message() << "\n";
-                return 1;
-            }
-        }
-        event_photons_file =
-            (event_photons_dir / (stem + "-event-photons.parquet")).string();
-        summary_path =
-            (logs_dir / (stem + "-reconstruction-summary.json")).string();
+    const fs::path analysis_path(analysis_directory);
+    const fs::path photons_dir = analysis_path / "photons";
+    const std::vector<std::string> photon_files =
+        gatherPhotonFiles(photons_dir, raw_file_stem);
+    if (photon_files.empty()) {
+        std::cerr << "Error: no photon files found for raw file stem '"
+                  << raw_file_stem << "' under " << photons_dir.string()
+                  << "\n";
+        return 1;
     }
 
     const auto total_start = Clock::now();
 
-    // Event-file metadata; provenance lives here, not in the summary. Parse the
-    // photon input filename so the metadata records the true raw stem and chip
-    // index rather than the compound photon-file stem, matching the photon stage.
-    const std::string input_stem = fs::path(input_file).stem().string();
-    const PhotonFileName photon_name = parsePhotonFileName(input_stem);
-    hermes_event_reconstructor::EventFileMetadata metadata;
-    metadata.raw_file_stem =
-        photon_name.matched ? photon_name.raw_file_stem : input_stem;
-    if (photon_name.matched) {
-        try {
-            metadata.chip_index = std::stoi(photon_name.chip_label);
-        } catch (...) {
-            std::cerr << "Error: chip label is not a valid integer: "
-                      << photon_name.chip_label << "\n";
-            return 2;
+    // Every gathered photon file was written in the same shared sensor frame, so
+    // read the layout from the first one and size the grid over that sensor.
+    std::string detector_layout;
+    std::vector<std::string> layout_errors;
+    if (!hermes_event_reconstructor::readPhotonFileLayout(
+            photon_files.front(), detector_layout, layout_errors)) {
+        for (const auto& error : layout_errors) {
+            std::cerr << "Error: " << error << "\n";
+        }
+        return 1;
+    }
+
+    int sensor_width = 0;
+    try {
+        sensor_width = hermes_event_reconstructor::sensorWidth(detector_layout);
+    } catch (const std::exception& error) {
+        std::cerr << "Error: " << error.what() << "\n";
+        return 1;
+    }
+    try {
+        hermes_event_reconstructor::validateGridForSensor(settings,
+                                                          sensor_width);
+    } catch (const std::exception& error) {
+        std::cerr << "Error: " << error.what() << "\n";
+        return 2;
+    }
+
+    const int cell_width = hermes_event_reconstructor::deriveCellWidth(
+        settings.spatial_cells_per_axis, sensor_width);
+    const std::string settings_json =
+        hermes_event_reconstructor::clusteringSettingsJson(settings, cell_width);
+
+    // Output layout under the analysis directory: events/ and
+    // logs/event_reconstruction/ are created up front so a zero-event run still
+    // writes a summary; event_photons/ is created only when save_event_photons
+    // is set.
+    const fs::path events_dir = analysis_path / "events";
+    const fs::path event_photons_dir = analysis_path / "event_photons";
+    const fs::path logs_dir =
+        analysis_path / "logs" / "event_reconstruction";
+    std::vector<fs::path> directories = {events_dir, logs_dir};
+    if (settings.save_event_photons) {
+        directories.push_back(event_photons_dir);
+    }
+    for (const fs::path& directory : directories) {
+        std::error_code ec;
+        fs::create_directories(directory, ec);
+        if (ec) {
+            std::cerr << "Error: cannot create directory " << directory.string()
+                      << ": " << ec.message() << "\n";
+            return 1;
         }
     }
+    const std::string candidates_file =
+        (events_dir / (raw_file_stem + "_event_candidates.parquet")).string();
+    const std::string event_photons_file =
+        (event_photons_dir / (raw_file_stem + "_event_photons.parquet"))
+            .string();
+    const std::string summary_path =
+        (logs_dir / (raw_file_stem + "_event_reconstruction_summary.json"))
+            .string();
+
+    // Event-file metadata; provenance lives here, not in the summary. The whole
+    // sensor is covered at once, so the metadata records the detector layout
+    // rather than a single chip index.
+    hermes_event_reconstructor::EventFileMetadata metadata;
+    metadata.raw_file_stem = raw_file_stem;
+    metadata.detector_layout = detector_layout;
     metadata.canonical_tick_seconds = kCanonicalTickSeconds;
     metadata.event_algorithm = "connected_components";
     metadata.event_settings_json = settings_json;
@@ -246,26 +269,31 @@ int main(const int argc, char* argv[]) {
     hermes_event_reconstructor::EventReconstructionSummaryContent summary;
     summary.clustering_algorithm = "connected_components";
     summary.clustering_settings_json = settings_json;
-    summary.input_photon_events_files = {input_file};
+    summary.input_photon_events_files = photon_files;
 
-    // Read the one photon file into memory, sorted by time for clustering.
+    // Pool every chip's photons into one vector, then sort the pool by time so
+    // clustering sees a single monotonic stream across the whole sensor.
     std::vector<hermes_event_reconstructor::PhotonEvent> photons;
     const auto read_start = Clock::now();
-    std::vector<std::string> read_errors;
-    const bool read_ok = hermes_event_reconstructor::readPhotonEvents(
-        input_file, photons, read_errors);
-    summary.photon_reading_seconds = secondsSince(read_start);
-    if (!read_ok) {
-        for (const auto& error : read_errors) {
-            std::cerr << "Error: " << error << "\n";
+    for (const std::string& photon_file : photon_files) {
+        std::vector<hermes_event_reconstructor::PhotonEvent> file_photons;
+        std::vector<std::string> read_errors;
+        if (!hermes_event_reconstructor::readPhotonEvents(
+                photon_file, file_photons, read_errors)) {
+            for (const auto& error : read_errors) {
+                std::cerr << "Error: " << error << "\n";
+            }
+            return 1;
         }
-        return 1;
+        photons.insert(photons.end(), file_photons.begin(), file_photons.end());
     }
+    hermes_event_reconstructor::sortPhotonEventsByTime(photons);
+    summary.photon_reading_seconds = secondsSince(read_start);
 
-    // Group photons into candidate events for this file.
+    // Group the whole sensor's photons into candidate events.
     const auto cluster_start = Clock::now();
     auto result = hermes_event_reconstructor::reconstructEvents(
-        photons, settings, settings.save_event_photons);
+        photons, settings, sensor_width, settings.save_event_photons);
     summary.clustering_seconds = secondsSince(cluster_start);
 
     summary.photons_read = result.counts.photons_read;
@@ -276,20 +304,15 @@ int main(const int argc, char* argv[]) {
     summary.min_photon_count_below = result.counts.min_photon_count_below;
 
     std::cout << "Reconstructed " << summary.event_count << " events from "
-              << summary.photons_read << " photons.\n";
-
-    // Without --output, print the summary counts and write no files.
-    if (!have_output) {
-        std::cout << "No files written (no --output).\n";
-        return 0;
-    }
+              << summary.photons_read << " photons across "
+              << photon_files.size() << " photon file(s).\n";
 
     // Write the event_candidates file, plus an event_photons file when enabled.
     const auto write_start = Clock::now();
     std::vector<std::string> write_errors;
     const auto candidates_result =
         hermes_event_reconstructor::writeEventCandidatesParquet(
-            result.events, output_file, metadata, overwrite, write_errors);
+            result.events, candidates_file, metadata, overwrite, write_errors);
     if (!write_errors.empty()) {
         for (const auto& error : write_errors) {
             std::cerr << "Error: " << error << "\n";
@@ -328,7 +351,11 @@ int main(const int argc, char* argv[]) {
         return 1;
     }
 
-    std::cout << "Wrote: " << output_file << "\n";
+    if (!summary.event_candidates_files.empty()) {
+        std::cout << "Wrote: " << candidates_file << "\n";
+    } else {
+        std::cout << "Wrote no event_candidates file (zero events).\n";
+    }
     std::cout << "Summary: " << summary_path << "\n";
     return 0;
 }

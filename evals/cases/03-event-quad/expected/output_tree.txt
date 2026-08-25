@@ -1,0 +1,44 @@
+data/03-event-quad/quad-sample/
+├── analysis/
+│   ├── control_packets/
+│   │   └── quad_control_packets_00000.parquet
+│   ├── global_timestamps/
+│   │   └── quad_global_timestamps_00000.parquet
+│   ├── pixel_hits/
+│   │   ├── quad_chip_0_pixels_00000.parquet
+│   │   ├── quad_chip_1_pixels_00000.parquet
+│   │   ├── quad_chip_2_pixels_00000.parquet
+│   │   └── quad_chip_3_pixels_00000.parquet
+│   ├── tdc_triggers/
+│   │   ├── quad_tdc1_rising_triggers_00000.parquet
+│   │   └── quad_tdc2_rising_triggers_00000.parquet
+│   ├── photons/
+│   │   ├── quad_chip_0_photon_00000.parquet
+│   │   ├── quad_chip_1_photon_00000.parquet
+│   │   ├── quad_chip_2_photon_00000.parquet
+│   │   └── quad_chip_3_photon_00000.parquet
+│   ├── pixel_clusters/
+│   │   ├── quad_chip_0_pixel_clusters_00000.parquet
+│   │   ├── quad_chip_1_pixel_clusters_00000.parquet
+│   │   ├── quad_chip_2_pixel_clusters_00000.parquet
+│   │   └── quad_chip_3_pixel_clusters_00000.parquet
+│   ├── events/
+│   │   └── quad_event_candidates.parquet
+│   ├── event_photons/
+│   │   └── quad_event_photons.parquet
+│   ├── logs/
+│       ├── unpacking/
+│       │   └── quad_unpacker_summary.json
+│       ├── photon_reconstruction/
+│       │   ├── quad_chip_0_photon_reconstruction_summary_00000.json
+│       │   ├── quad_chip_1_photon_reconstruction_summary_00000.json
+│       │   ├── quad_chip_2_photon_reconstruction_summary_00000.json
+│       │   └── quad_chip_3_photon_reconstruction_summary_00000.json
+│       └── event_reconstruction/
+│           └── quad_event_reconstruction_summary.json
+├── logs/
+│   ├── acquisition.serval.jsonl
+│   ├── analysis.jsonl
+│   ├── state.jsonl
+│   └── HERMES-workflow.jsonl
+└── HERMES_record.yaml

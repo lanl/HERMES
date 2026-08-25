@@ -10,7 +10,7 @@ from loguru import logger
 from hermes.runner.analysis.hermes.event_reconstruction import (
     HermesEventReconstructionError,
     execute_event_reconstruction,
-    resolve_photon_files,
+    resolve_raw_file_stems,
 )
 from hermes.runner.analysis.hermes.event_reconstruction import (
     check_previous_reconstructed_file as check_previous_event_reconstructed_file,
@@ -77,46 +77,52 @@ class HermesAnalysisError(Exception):
     """Raised when the saved state cannot run the HERMES analysis."""
 
 
+def _largest_file_bytes(files: list[FileReference]) -> int:
+    """Return the size in bytes of the largest file, or 0 for an empty list."""
+    return max((f.path.stat().st_size for f in files), default=0)
+
+
 def _calculate_worker_count(
     analysis: HermesTpx3AnalysisState,
-    files_to_run: list[FileReference],
+    pending_count: int,
+    largest_input_bytes: int,
 ) -> int:
-    """Calculate the worker count based on resource limits and pending files."""
+    """Calculate the worker count based on resource limits and pending work.
+
+    ``pending_count`` is how many items are queued and ``largest_input_bytes``
+    is the biggest single input each worker reads, used to size a per-worker
+    memory allowance.
+    """
     resource_fraction = analysis.resource_limit_percent / 100.0
-    pending_file_count = len(files_to_run)
 
     physical_cpu_count = psutil.cpu_count(logical=False) or 1
     cpu_slots = max(1, floor(physical_cpu_count * resource_fraction))
 
     available_memory_bytes = psutil.virtual_memory().available
-    largest_pending_file_size = max(
-        (f.path.stat().st_size for f in files_to_run),
-        default=0,
-    )
     estimated_worker_memory_bytes = max(
         1 * 1024 * 1024 * 1024,
-        16 * largest_pending_file_size,
+        16 * largest_input_bytes,
     )
     memory_budget_bytes = floor(available_memory_bytes * resource_fraction)
     memory_slots = max(1, floor(memory_budget_bytes / estimated_worker_memory_bytes))
 
-    worker_count = min(pending_file_count, cpu_slots, memory_slots)
+    worker_count = min(pending_count, cpu_slots, memory_slots)
 
     _ANALYSIS_LOGGER.info(
-        "Using {worker_count} worker(s) for {pending_file_count} file(s)",
+        "Using {worker_count} worker(s) for {pending_count} item(s)",
         event_type="analysis.tpx3_unpacking.resource_calculation",
         resource_limit_percent=analysis.resource_limit_percent,
         resource_fraction=resource_fraction,
         physical_cpu_count=physical_cpu_count,
         cpu_slots=cpu_slots,
         available_memory_gb=round(available_memory_bytes / (1024**3), 2),
-        largest_pending_file_mb=round(largest_pending_file_size / (1024**2), 2),
+        largest_input_mb=round(largest_input_bytes / (1024**2), 2),
         estimated_worker_memory_gb=round(
             estimated_worker_memory_bytes / (1024**3), 2
         ),
         memory_budget_gb=round(memory_budget_bytes / (1024**3), 2),
         memory_slots=memory_slots,
-        pending_file_count=pending_file_count,
+        pending_count=pending_count,
         worker_count=worker_count,
     )
 
@@ -228,7 +234,9 @@ def run_hermes_analysis(
 
             failed_count = 0
             if files_to_run:
-                worker_count = _calculate_worker_count(analysis, files_to_run)
+                worker_count = _calculate_worker_count(
+                    analysis, len(files_to_run), _largest_file_bytes(files_to_run)
+                )
                 completed, errors = _run_parallel(
                     lambda raw_file: execute_unpacker(
                         analysis,
@@ -361,7 +369,9 @@ def _run_photon_reconstruction(
         run_results: list[HermesTpx3PhotonReconstructionResult] = []
         failed_results: list[HermesTpx3PhotonReconstructionResult] = []
         if files_to_run:
-            worker_count = _calculate_worker_count(analysis, files_to_run)
+            worker_count = _calculate_worker_count(
+                analysis, len(files_to_run), _largest_file_bytes(files_to_run)
+            )
             completed, errors = _run_parallel(
                 lambda input_file: execute_reconstruction(
                     analysis,
@@ -453,49 +463,60 @@ def _run_event_reconstruction(
     *,
     overwrite: bool = False,
 ) -> None:
-    """Reconstruct events file-by-file in parallel, recording per-file results."""
+    """Reconstruct events per raw stem in parallel, recording per-stem results."""
     event_reconstruction = analysis.event_reconstruction
     assert event_reconstruction is not None
     event_overwrite = overwrite or event_reconstruction.runtime_options.overwrite
-    files_to_run: list[FileReference] = []
+    stems_to_run: list[str] = []
     skipped_results: list[HermesTpx3EventReconstructionResult] = []
     try:
         validate_event_program_and_algorithm(event_reconstruction)
-        photon_files = resolve_photon_files(analysis, analysis_root)
-        for input_file in photon_files:
+        raw_file_stems = resolve_raw_file_stems(analysis, analysis_root)
+        for raw_file_stem in raw_file_stems:
             already_reconstructed = check_previous_event_reconstructed_file(
-                analysis_root, input_file
+                analysis_root, raw_file_stem
             )
             if not event_overwrite and already_reconstructed:
-                output_file = derive_event_output_path(analysis_root, input_file)
-                log_event_reconstruction_skipped(input_file, output_file)
+                output_file = derive_event_output_path(
+                    analysis_root, raw_file_stem
+                )
+                log_event_reconstruction_skipped(raw_file_stem, output_file)
                 skipped_results.append(
                     HermesTpx3EventReconstructionResult(
-                        input_file=input_file,
+                        raw_file_stem=raw_file_stem,
                         output_file=output_file,
                         status="skipped",
                     )
                 )
             else:
-                files_to_run.append(input_file)
+                stems_to_run.append(raw_file_stem)
 
         run_results: list[HermesTpx3EventReconstructionResult] = []
         failed_results: list[HermesTpx3EventReconstructionResult] = []
-        if files_to_run:
-            worker_count = _calculate_worker_count(analysis, files_to_run)
+        if stems_to_run:
+            photon_files = [
+                FileReference(path=path)
+                for path in (analysis_root / "photons").glob("*.parquet")
+            ]
+            worker_count = _calculate_worker_count(
+                analysis, len(stems_to_run), _largest_file_bytes(photon_files)
+            )
             completed, errors = _run_parallel(
-                lambda input_file: execute_event_reconstruction(
-                    analysis, analysis_root, input_file, overwrite=event_overwrite
+                lambda raw_file_stem: execute_event_reconstruction(
+                    analysis,
+                    analysis_root,
+                    raw_file_stem,
+                    overwrite=event_overwrite,
                 ),
-                files_to_run,
+                stems_to_run,
                 worker_count,
             )
             run_results = [completed[i] for i in sorted(completed)]
             failed_results = [
                 HermesTpx3EventReconstructionResult(
-                    input_file=files_to_run[i],
+                    raw_file_stem=stems_to_run[i],
                     output_file=derive_event_output_path(
-                        analysis_root, files_to_run[i]
+                        analysis_root, stems_to_run[i]
                     ),
                     status="failed",
                 )
@@ -505,32 +526,34 @@ def _run_event_reconstruction(
         _apply_event_reconstruction_results(
             state_manager,
             skipped_results + run_results + failed_results,
-            justification="recorded event reconstruction results per photon file",
+            justification="recorded event reconstruction results per raw stem",
         )
         log_event_reconstruction_completion(
-            photon_file_count=len(photon_files),
-            reconstructed_file_count=len(run_results),
-            failed_file_count=len(failed_results),
+            raw_file_stem_count=len(raw_file_stems),
+            reconstructed_stem_count=len(run_results),
+            failed_stem_count=len(failed_results),
         )
     except HermesEventReconstructionError as exc:
-        # This handles a whole-stage stop, not a single file failing to
-        # reconstruct: a per-file execution failure is now recorded "failed" and
+        # This handles a whole-stage stop, not a single stem failing to
+        # reconstruct: a per-stem execution failure is now recorded "failed" and
         # the run continues. An unsupported algorithm, a missing executable, or a
-        # malformed photon filename still stops the stage here. Files already
-        # reconstructed on a previous run stay "skipped"; the files this run
-        # attempted are marked failed. If the stop came before any file was
+        # malformed photon filename still stops the stage here. Stems already
+        # reconstructed on a previous run stay "skipped"; the stems this run
+        # attempted are marked failed. If the stop came before any stem was
         # examined, fall back to every reconstruction input.
-        if files_to_run or skipped_results:
-            failed_inputs = files_to_run
+        if stems_to_run or skipped_results:
+            failed_stems = stems_to_run
         else:
-            failed_inputs = _event_reconstruction_inputs(analysis, analysis_root)
+            failed_stems = _event_reconstruction_inputs(analysis, analysis_root)
         failed_results = [
             HermesTpx3EventReconstructionResult(
-                input_file=input_file,
-                output_file=derive_event_output_path(analysis_root, input_file),
+                raw_file_stem=raw_file_stem,
+                output_file=derive_event_output_path(
+                    analysis_root, raw_file_stem
+                ),
                 status="failed",
             )
-            for input_file in failed_inputs
+            for raw_file_stem in failed_stems
         ]
         _apply_event_reconstruction_results(
             state_manager,
@@ -544,10 +567,10 @@ def _run_event_reconstruction(
 def _event_reconstruction_inputs(
     analysis: HermesTpx3AnalysisState,
     analysis_root: Path,
-) -> list[FileReference]:
-    """Best-effort photon-file list for failure reporting (never raises)."""
+) -> list[str]:
+    """Best-effort raw-stem list for failure reporting (never raises)."""
     try:
-        return resolve_photon_files(analysis, analysis_root)
+        return resolve_raw_file_stems(analysis, analysis_root)
     except Exception:
         return []
 

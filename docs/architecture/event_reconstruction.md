@@ -409,14 +409,6 @@ hermes-event-reconstructor --input <analysis_directory> --raw-file-stem <stem>
   existing file is refused.
 - Exit code 0 on success, 2 on argument or settings errors.
 
-This whole-sensor interface is not yet built. The current `event_reconstruction.py`
-runner and its file naming are written one photon file at a time (per chip, per
-part, with dash-style `event-candidates`/`event-photons` names and a `logs/events`
-summary directory). When the event binary is implemented, the runner must move to
-this model: read every chip's photon files for a raw stem together, produce one
-event file and one summary per raw stem, and use the underscore filenames above
-that match the photon stage.
-
 The build mirrors `src/backends/reconstruction/photons/cpp/`: CMake with
 `cxx_std_17`, `-Wall -Wextra -Wpedantic`, Arrow and Parquet for Parquet I/O, and
 `nlohmann_json` for settings and the summary. It is split across two libraries:

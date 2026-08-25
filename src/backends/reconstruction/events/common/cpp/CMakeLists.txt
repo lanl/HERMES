@@ -35,6 +35,7 @@ add_library(hermes_event_recon_common
     src/event.cpp
     src/event_writer.cpp
     src/photon_reader.cpp
+    src/sensor_layout.cpp
     src/summary_writer.cpp
 )
 
@@ -75,6 +76,10 @@ if(BUILD_TESTING)
     add_executable(summary_writer_tests tests/summary_writer_tests.cpp)
     target_link_libraries(summary_writer_tests PRIVATE hermes_event_recon_common)
     add_test(NAME summary_writer_tests COMMAND summary_writer_tests)
+
+    add_executable(sensor_layout_tests tests/sensor_layout_tests.cpp)
+    target_link_libraries(sensor_layout_tests PRIVATE hermes_event_recon_common)
+    add_test(NAME sensor_layout_tests COMMAND sensor_layout_tests)
 
     if(Arrow_FOUND AND Parquet_FOUND)
         add_executable(photon_reader_tests tests/photon_reader_tests.cpp)

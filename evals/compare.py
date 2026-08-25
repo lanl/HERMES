@@ -17,6 +17,7 @@ _WILDCARD = re.compile(r"^<.*>$")
 _SUMMARY_GLOBS = {
     "unpacker-summary.json": "analysis/logs/unpacking/*_unpacker_summary.json",
     "reconstruction-summary.json": "analysis/logs/photon_reconstruction/*_photon_reconstruction_summary_*.json",
+    "event_reconstruction-summary.json": "analysis/logs/event_reconstruction/*_event_reconstruction_summary.json",
 }
 
 _LOG_RELATIVE_PATH = "logs/HERMES-workflow.jsonl"

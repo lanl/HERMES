@@ -7,6 +7,7 @@
 #include <arrow/builder.h>
 #include <arrow/io/file.h>
 #include <arrow/table.h>
+#include <arrow/util/key_value_metadata.h>
 #include <parquet/arrow/writer.h>
 
 #include "photon_reader.h"
@@ -16,6 +17,30 @@ namespace {
 
 using hermes_event_reconstructor::PhotonEvent;
 using hermes_event_reconstructor::readPhotonEvents;
+using hermes_event_reconstructor::readPhotonFileLayout;
+
+// Writes a minimal photon file whose schema carries a detector_layout entry in
+// its key-value metadata, the way the photon writer records the sensor frame.
+void writePhotonFileWithLayout(const std::string& path,
+                               const std::string& layout) {
+    arrow::UInt64Builder id_builder;
+    (void)id_builder.Append(0);
+    std::shared_ptr<arrow::Array> id_array;
+    (void)id_builder.Finish(&id_array);
+    auto schema = arrow::schema(
+        {arrow::field("photon_id", arrow::uint64())},
+        arrow::key_value_metadata({"detector_layout"}, {layout}));
+    auto table = arrow::Table::Make(schema, {id_array});
+    auto outfile = arrow::io::FileOutputStream::Open(path).ValueOrDie();
+    // store_schema() preserves the Arrow schema metadata, the way the photon
+    // writer does; without it WriteTable drops the detector_layout entry.
+    auto arrow_properties =
+        parquet::ArrowWriterProperties::Builder().store_schema()->build();
+    (void)parquet::arrow::WriteTable(*table, arrow::default_memory_pool(),
+                                     outfile, 2,
+                                     parquet::default_writer_properties(),
+                                     arrow_properties);
+}
 
 // Writes a photon_events Parquet file with the photon writer's column layout,
 // including the tot and quality_flags columns the reader ignores.
@@ -139,6 +164,28 @@ int main() {
     const bool bad_ok = readPhotonEvents(bad_file, bad_rows, bad_errors);
     test.expect(!bad_ok, "a file missing a column fails");
     test.expect(!bad_errors.empty(), "the missing column is reported");
+
+    // readPhotonFileLayout recovers the detector_layout metadata value the
+    // photon writer stored on the file's schema.
+    const auto layout_file = (base / "with-layout.parquet").string();
+    writePhotonFileWithLayout(layout_file, "quad");
+    std::string layout;
+    std::vector<std::string> layout_errors;
+    const bool layout_ok =
+        readPhotonFileLayout(layout_file, layout, layout_errors);
+    test.expect(layout_ok, "reading the layout succeeds");
+    test.expect(layout_errors.empty(), "no errors reading the layout");
+    test.expectEqual(layout, std::string{"quad"}, "layout round-trips as quad");
+
+    // A photon file without the detector_layout key is a read failure.
+    std::string missing_layout{"quad"};
+    std::vector<std::string> missing_layout_errors;
+    const bool missing_layout_ok =
+        readPhotonFileLayout(bad_file, missing_layout, missing_layout_errors);
+    test.expect(!missing_layout_ok, "a file without the layout metadata fails");
+    test.expect(!missing_layout_errors.empty(),
+                "the missing layout metadata is reported");
+    test.expect(missing_layout.empty(), "layout is cleared on failure");
 
     std::filesystem::remove_all(base);
     return test.finish();

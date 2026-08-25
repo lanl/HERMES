@@ -13,9 +13,6 @@ namespace {
 
 using json = nlohmann::json;
 
-// Fixed chip width in pixels. The spatial grid spans one 256 x 256 chip.
-constexpr int kChipWidthPixels = 256;
-
 // Reads an unsigned integer field, rejecting non-integers and negative values.
 template <typename T>
 void overrideUnsigned(const json& document, const char* key, T& target) {
@@ -66,19 +63,6 @@ void validateReconParams(const ReconParams& s) {
     if (s.spatial_cells_per_axis == 0) {
         throw std::runtime_error("spatial_cells_per_axis must be at least 1");
     }
-    if (s.spatial_cells_per_axis > static_cast<std::uint32_t>(kChipWidthPixels)) {
-        throw std::runtime_error(
-            "spatial_cells_per_axis must be at most the 256-pixel field of view");
-    }
-    // A cell narrower than the linking radius would let the fixed 3x3 search
-    // miss genuine neighbors and silently change the clustering result, so
-    // reject grids too fine for the chosen radius.
-    const int cell_width = deriveCellWidth(s.spatial_cells_per_axis);
-    if (static_cast<double>(cell_width) < s.spatial_link_radius_pixels) {
-        throw std::runtime_error(
-            "spatial_cells_per_axis is too large for spatial_link_radius_pixels: "
-            "the derived cell width would be smaller than the linking radius");
-    }
     if (!(s.max_time_difference_ticks > 0.0) ||
         !std::isfinite(s.max_time_difference_ticks)) {
         throw std::runtime_error(
@@ -94,14 +78,30 @@ void validateReconParams(const ReconParams& s) {
     }
 }
 
-int deriveCellWidth(std::uint32_t spatial_cells_per_axis) {
-    if (spatial_cells_per_axis == 0) {
-        return kChipWidthPixels;
+void validateGridForSensor(const ReconParams& s, int sensor_width) {
+    if (s.spatial_cells_per_axis > static_cast<std::uint32_t>(sensor_width)) {
+        throw std::runtime_error(
+            "spatial_cells_per_axis must be at most the sensor width in pixels");
     }
-    // Round up so exactly spatial_cells_per_axis cells span the 256-pixel field
-    // of view; the last cell along each axis may be narrower than the rest.
+    // A cell narrower than the linking radius would let the fixed 3x3 search
+    // miss genuine neighbors and silently change the clustering result, so
+    // reject grids too fine for the chosen radius over this sensor.
+    const int cell_width = deriveCellWidth(s.spatial_cells_per_axis, sensor_width);
+    if (static_cast<double>(cell_width) < s.spatial_link_radius_pixels) {
+        throw std::runtime_error(
+            "spatial_cells_per_axis is too large for spatial_link_radius_pixels: "
+            "the derived cell width would be smaller than the linking radius");
+    }
+}
+
+int deriveCellWidth(std::uint32_t spatial_cells_per_axis, int sensor_width) {
+    if (spatial_cells_per_axis == 0) {
+        return sensor_width;
+    }
+    // Round up so exactly spatial_cells_per_axis cells span the sensor width;
+    // the last cell along each axis may be narrower than the rest.
     const int n = static_cast<int>(spatial_cells_per_axis);
-    return (kChipWidthPixels + n - 1) / n;
+    return (sensor_width + n - 1) / n;
 }
 
 std::string clusteringSettingsJson(const ReconParams& settings,
