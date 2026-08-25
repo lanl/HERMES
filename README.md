@@ -34,7 +34,7 @@ nlohmann_json = ">=3.11"
 pyarrow = ">=18"             # brings the Arrow/Parquet C++ libraries cmake links against
 
 [tool.pixi.pypi-dependencies]
-hermes = { git = "https://github.com/lanl/HERMES.git", tag = "v3.0.0" }
+hermes = { git = "https://github.com/lanl/HERMES.git", tag = "v3.1.0" }
 ```
 
 Then install and use it:
