@@ -1,8 +1,9 @@
 # Stage 1 — Read-only connect and snapshot
 
-**Status:** In progress — client reads and a connect + snapshot example work
-against the live camera (2026-08-25). Still to do: `get_destination`, the
-`run.py` run function, workflow wiring, and saving the snapshot into the record.
+**Status:** Done — verified end-to-end against the live camera (2026-08-26).
+`get_destination`, the `run.py` run function, the workflow wiring, and the
+3-line-`Workflow` example are in place and record the snapshot into the saved
+`HERMES_record.yaml`.
 
 **Goal:** With SERVAL running, read the server and detector state and record it in
 the HERMES record. This is the first stage that talks to the camera, and it only
@@ -86,6 +87,23 @@ path from `config.yaml` to a saved record works against real hardware, safely.
   rule is to keep it simple and not add speculative tolerance. Revisit if a 2.x
   camera or a drifting minor version is ever read; `DetectorConfiguration` stays
   strict regardless (it is user input).
+- **`/server/destination` returns 409 "Destination is not set." on a fresh
+  server.** Nothing has told SERVAL where to write yet on a read-only connect,
+  so the destination read fails with 409. `run_serval_acquisition` catches the
+  `ServalClientError`, logs a warning, and leaves `destination` unrecorded
+  (the field is optional) rather than failing the whole read. The client stays
+  thin (still raises on any non-200); the tolerance lives in the run function.
+- **A fresh server's `/dashboard` has `Measurement: null`.** No measurement has
+  been armed, so there is no measurement object and no status. That is the safe
+  idle state for a read-only connect, so the presence check only warns when a
+  measurement is actually in progress (status not in `None`/`DA_IDLE`), not when
+  it is simply absent. Earlier the test fixture showed `DA_IDLE`; a truly fresh
+  launch shows null.
+- **The camera currently attached reports chipboard `2000188`, chip
+  `W0082_J04` (id 21066)** — a different board/chip than the `2000164` /
+  `W0062_B09` noted earlier. `NumberOfChips` is 1 while `Boards[].Chips` lists
+  four entries (three are placeholders with id 0 and name `W0000_??00`); the
+  models handle this without complaint.
 - **Done so far:** client read methods `get_detector_info/health/layout/config`
   and `get_detector_snapshot` (reads all four into one `DetectorSnapshot`);
   `wait_until_detector_connected`; the example

@@ -3,17 +3,11 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from hermes.logging import configure_logging
-from hermes.runner.acquisition.serval.client import ServalClient
-from hermes.runner.acquisition.serval.server import (
-    start_serval,
-    stop_serval,
-    wait_until_detector_connected,
-    wait_until_ready,
-)
 from hermes.state.models.acquisition.serval import ServalAcquisitionState
 from hermes.state.models.detector import DetectorSnapshot
+from hermes.state.state import HermesRecord
 from hermes.state_service.state_io import load_hermes_record_from_yaml
+from hermes.workflows.workflow import Workflow
 
 DEFAULT_YAML_PATH = Path(__file__).with_name("connect_snapshot_config.yaml")
 
@@ -44,41 +38,28 @@ def print_snapshot(snapshot: DetectorSnapshot) -> None:
         print(f"  Layout: {layout.original.width} x {layout.original.height} pixels")
 
 
-def main(config_path: Path = DEFAULT_YAML_PATH) -> None:
-    # Step 1: Load the HERMES record and read the SERVAL settings from it.
-    record = load_hermes_record_from_yaml(config_path)
+def print_summary(record: HermesRecord) -> None:
     acquisition = record.acquisition
     if not isinstance(acquisition, ServalAcquisitionState):
-        raise SystemExit("config must set acquisition.mode: serval")
-    serval = acquisition.config.serval
+        return
 
-    # Step 2: Send this run's logs to the run's log directory.
-    log_directory = (
-        record.environment.log_directory.resolved_path
-        or record.environment.working_directory.resolved_path
-    )
-    configure_logging(log_directory, level=record.environment.log_level)
+    dashboard = acquisition.dashboard
+    if dashboard is not None:
+        print(f"SERVAL software version: {dashboard.server.software_version}")
 
-    # Step 3: Launch SERVAL, wait until it answers, then wait until it has
-    # connected to the camera. SERVAL answers within a second, but the camera
-    # handshake takes several seconds more; only then can the detector be read.
-    process = start_serval(serval, log_directory)
-    client = ServalClient(serval.url)
-    try:
-        software_version = wait_until_ready(client, timeout_s=60.0)
-        print(f"SERVAL is up. Software version: {software_version}")
-
-        wait_until_detector_connected(client, timeout_s=30.0)
-        print("SERVAL reports a connected detector.")
-
-        snapshot = client.get_detector_snapshot()
+    snapshot = acquisition.initial_detector_snapshot
+    if snapshot is not None:
         print_snapshot(snapshot)
-    finally:
-        exit_code = stop_serval(client, process)
-        client.close()
-        print(f"\nSERVAL stopped (exit code {exit_code}).")
 
-    print(f"Server log and acquisition.serval.jsonl are in: {log_directory}")
+    print(f"\nAcquisition status: {acquisition.status}")
+
+
+def main(config_path: Path = DEFAULT_YAML_PATH) -> None:
+    record = load_hermes_record_from_yaml(config_path)
+    workflow = Workflow(record)
+    updated_record = workflow.run()
+
+    print_summary(updated_record)
 
 
 if __name__ == "__main__":

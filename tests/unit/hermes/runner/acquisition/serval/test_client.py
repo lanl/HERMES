@@ -107,6 +107,25 @@ def test_get_detector_snapshot_reads_all_four_endpoints() -> None:
     assert snapshot.configuration.trigger_mode == "CONTINUOUS"
 
 
+def test_get_destination_parses_server_answer() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/server/destination"
+        return httpx.Response(
+            200,
+            json={
+                "Raw": [{"Base": "file:///data", "FilePattern": "run_%d"}],
+                "Image": [],
+            },
+        )
+
+    with _client_with_handler(handler) as client:
+        destination = client.get_destination()
+
+    assert destination.raw[0].base == "file:///data"
+    assert destination.raw[0].file_pattern == "run_%d"
+    assert destination.image == []
+
+
 def test_get_detector_snapshot_raises_when_not_connected() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(409, text="Not connected. Please connect to a detector.")

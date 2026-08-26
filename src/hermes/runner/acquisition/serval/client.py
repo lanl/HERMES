@@ -6,7 +6,10 @@ from typing import Any
 import httpx
 from loguru import logger
 
-from hermes.state.models.acquisition.serval import ServalDashboard
+from hermes.state.models.acquisition.serval import (
+    DestinationConfiguration,
+    ServalDashboard,
+)
 from hermes.state.models.detector import (
     DetectorConfiguration,
     DetectorHealth,
@@ -111,6 +114,11 @@ class ServalClient:
 
     def get_detector_config(self) -> DetectorConfiguration:
         return DetectorConfiguration.model_validate(self.get_json("/detector/config"))
+
+    def get_destination(self) -> DestinationConfiguration:
+        return DestinationConfiguration.model_validate(
+            self.get_json("/server/destination")
+        )
 
     def get_detector_snapshot(self) -> DetectorSnapshot:
         """Read all four `/detector/*` endpoints into one snapshot.

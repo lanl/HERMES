@@ -14,6 +14,7 @@ from hermes.runner.analysis.hermes.photon_reconstruction import (
 from hermes.runner.analysis.hermes.unpacker import (
     derive_summary_path as derive_unpacker_summary_path,
 )
+from hermes.runner.acquisition.serval.run import run_serval_acquisition
 from hermes.runner.analysis.run import run_analysis
 from hermes.logging import configure_logging
 from hermes.state.models.analysis.hermes_tpx3_spidr import HermesTpx3AnalysisState
@@ -69,15 +70,15 @@ class Workflow:
         )
 
     def run_acquisition(self) -> None:
-        """Reserve the acquisition entry point until acquisition is implemented."""
-        raise NotImplementedError("HERMES acquisition is not implemented")
+        """Run the SERVAL acquisition the record configures."""
+        run_serval_acquisition(self._state_manager)
 
     def run(self) -> HermesRecord:
         """Run the work the record configures and return the updated record.
 
-        Analysis-only records run analysis, save the record, and write the
-        workflow log. Acquisition-only records raise NotImplementedError.
-        A record configuring both, or neither, raises ValueError.
+        Analysis-only records run analysis; acquisition-only records run the
+        SERVAL acquisition. Either way the record is saved and the workflow log
+        written. A record configuring both, or neither, raises ValueError.
         """
         record = self._state_manager.get_state()
         if record.acquisition is None and record.analysis is None:

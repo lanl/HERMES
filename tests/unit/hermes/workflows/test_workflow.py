@@ -17,6 +17,11 @@ from hermes.state.models.analysis.hermes_tpx3_spidr import (
     HermesTpx3UnpackingResult,
     Tpx3Unpacking,
 )
+from hermes.state.models.acquisition.serval import (
+    ServalAcquisitionConfig,
+    ServalAcquisitionState,
+    ServalServer,
+)
 from hermes.state.models.environment import RuntimeEnvironment
 from hermes.state.models.measurement import MeasurementInfo
 from hermes.state.models.shared_models import BinaryProgram, FileReference
@@ -91,16 +96,49 @@ def test_run_analysis_returns_files_and_updates_record(
     assert initial_record.analysis.unpacking.results == []
 
 
-def test_run_acquisition_is_unimplemented_and_leaves_record_unchanged(
+def _acquisition_record(tmp_path: Path) -> HermesRecord:
+    return HermesRecord(
+        measurement_info=MeasurementInfo(
+            measurement_id="workflow-test",
+            run="test-run",
+        ),
+        environment=RuntimeEnvironment(
+            working_directory=tmp_path,
+            analysis_directory=tmp_path / "analysis",
+        ),
+        acquisition=ServalAcquisitionState(
+            config=ServalAcquisitionConfig(
+                serval=ServalServer(url="http://localhost:8080"),
+            ),
+        ),
+    )
+
+
+def test_run_acquisition_dispatches_to_the_serval_acquisition(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    initial_record = _record(tmp_path)
+    initial_record = _acquisition_record(tmp_path)
     workflow = Workflow(initial_record)
 
-    with pytest.raises(NotImplementedError, match="not implemented"):
-        workflow.run_acquisition()
+    def complete_acquisition(state_manager: StateManager) -> None:
+        change = state_manager.propose_change(
+            "acquisition.status",
+            "completed",
+            origin="trusted_workflow",
+            proposer="test_acquisition",
+        )
+        state_manager.apply_change(change.change_id)
 
-    assert workflow.record == initial_record
+    monkeypatch.setattr(
+        "hermes.workflows.workflow.run_serval_acquisition",
+        complete_acquisition,
+    )
+
+    workflow.run_acquisition()
+
+    assert workflow.record.acquisition.status == "completed"
+    assert initial_record.acquisition.status == "planned"
 
 
 def test_run_dispatches_to_analysis_when_only_analysis_is_configured(
@@ -130,6 +168,29 @@ def test_run_dispatches_to_analysis_when_only_analysis_is_configured(
 
     assert calls == ["analysis"]
     assert returned_record == workflow.record
+
+
+def test_run_dispatches_to_acquisition_when_only_acquisition_is_configured(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    initial_record = _acquisition_record(tmp_path)
+    workflow = Workflow(initial_record)
+    calls: list[str] = []
+
+    def complete_acquisition(state_manager: StateManager) -> None:
+        calls.append("acquisition")
+
+    monkeypatch.setattr(
+        "hermes.workflows.workflow.run_serval_acquisition",
+        complete_acquisition,
+    )
+
+    returned_record = workflow.run()
+
+    assert calls == ["acquisition"]
+    assert returned_record == workflow.record
+    assert (tmp_path / "HERMES_record.yaml").exists()
 
 
 def test_run_writes_the_workflow_log(
