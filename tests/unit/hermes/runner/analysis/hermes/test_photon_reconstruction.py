@@ -7,6 +7,7 @@ import pytest
 
 from hermes.runner.analysis.hermes.photon_reconstruction import (
     HermesPhotonReconstructionPreflightError,
+    build_clustering_settings_json,
     check_previous_reconstructed_file,
     derive_output_path,
     derive_reconstruction_command,
@@ -14,6 +15,7 @@ from hermes.runner.analysis.hermes.photon_reconstruction import (
     resolve_pixel_files,
     validate_program_and_algorithm,
 )
+from hermes.shipped_files import default_timewalk_calibration
 from hermes.state.models.analysis.hermes_tpx3_spidr import (
     HermesTpx3AnalysisState,
     HermesTpx3PhotonClustering,
@@ -218,6 +220,44 @@ def test_resolve_requires_reconstruction_config(tmp_path: Path) -> None:
         HermesPhotonReconstructionPreflightError, match="not configured"
     ):
         resolve_pixel_files(analysis, tmp_path / "analysis")
+
+
+# ---- build_clustering_settings_json -------------------------------------
+
+
+def test_settings_json_resolves_default_timewalk_calibration(tmp_path: Path) -> None:
+    analysis = _analysis(
+        tmp_path,
+        "run_000000_chip_0_pixels_00000.parquet",
+        settings=_settings(timewalk_calibration_file="default"),
+    )
+
+    settings_json = build_clustering_settings_json(analysis)
+
+    # The binary needs a real file, never the literal keyword.
+    assert settings_json["timewalk_calibration_file"] == str(
+        default_timewalk_calibration()
+    )
+
+
+def test_settings_json_keeps_explicit_timewalk_path(tmp_path: Path) -> None:
+    analysis = _analysis(
+        tmp_path,
+        "run_000000_chip_0_pixels_00000.parquet",
+        settings=_settings(timewalk_calibration_file="/tmp/my-cal.json"),
+    )
+
+    settings_json = build_clustering_settings_json(analysis)
+
+    assert settings_json["timewalk_calibration_file"] == "/tmp/my-cal.json"
+
+
+def test_settings_json_omits_correction_when_unset(tmp_path: Path) -> None:
+    analysis = _analysis(tmp_path, "run_000000_chip_0_pixels_00000.parquet")
+
+    settings_json = build_clustering_settings_json(analysis)
+
+    assert settings_json["timewalk_calibration_file"] is None
 
 
 # ---- derive_reconstruction_command --------------------------------------

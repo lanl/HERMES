@@ -64,9 +64,12 @@ time-walk calibration file. Edit those YAML values for the detector data being
 analyzed.
 
 The checked-in configuration uses connected components, leading-edge photon
-time, and `calibrations/tpx3/time-walk_example.json`. It also enables
-`save_photon_pixels` so the source pixels for each reconstructed photon are
-written.
+time, and `timewalk_calibration_file: default`. `default` uses the time-walk
+calibration that ships with HERMES, so this example runs whether HERMES is
+installed or run from a git checkout. The three cases for that field are: omit it
+(or `null`) for no time-walk correction, `default` for the shipped calibration,
+or a path to your own calibration file. It also enables `save_photon_pixels` so
+the source pixels for each reconstructed photon are written.
 
 ## Output
 

@@ -25,6 +25,7 @@ from hermes.state.models.analysis.hermes_tpx3_spidr import (
 from hermes.state.models.measurement import MeasurementInfo
 from hermes.state.models.shared_models import FileReference
 from hermes.runner.analysis.executables import resolve_executable
+from hermes.shipped_files import default_timewalk_calibration
 
 _LOG_TEXT_LIMIT = 4_000
 _ANALYSIS_LOGGER = logger.bind(
@@ -193,6 +194,34 @@ def derive_reconstruction_command(
     return command
 
 
+def build_clustering_settings_json(
+    analysis: HermesTpx3AnalysisState,
+) -> dict[str, object]:
+    """Build the settings dictionary the photon-clusterer binary reads.
+
+    The field names match the binary's settings keys. save_photon_pixels and the
+    detector layout live beside the settings in the model, so add them back here;
+    detector_layout tells the binary which sensor coordinate frame to map each
+    chip's photon x/y into. A "default" time-walk calibration is resolved to the
+    real path of the file HERMES ships (the binary needs a file); the saved record
+    keeps the word "default" so it stays portable.
+    """
+    reconstruction = _require_reconstruction(analysis)
+    clustering = reconstruction.clustering_algorithm
+    settings_json = clustering.settings.model_dump(mode="json")
+    settings_json["save_photon_pixels"] = clustering.save_photon_pixels
+    settings_json["detector_layout"] = analysis.detector_layout.kind
+    if settings_json.get("timewalk_calibration_file") == "default":
+        calibration_path = default_timewalk_calibration()
+        settings_json["timewalk_calibration_file"] = str(calibration_path)
+        _ANALYSIS_LOGGER.info(
+            "Using the time-walk calibration that ships with HERMES: {path}",
+            event_type="analysis.tpx3_reconstruction.default_timewalk_calibration",
+            path=str(calibration_path),
+        )
+    return settings_json
+
+
 def execute_reconstruction(
     analysis: HermesTpx3AnalysisState,
     analysis_root: Path,
@@ -211,15 +240,7 @@ def execute_reconstruction(
     summary_path = derive_summary_path(analysis_root, input_file)
     started = perf_counter()
 
-    # The complete clustering settings go to the binary in a temporary JSON
-    # file; the field names match the binary's settings keys. save_photon_pixels
-    # and the detector layout live beside the settings in the model, so add them
-    # back into the JSON the binary reads. detector_layout tells the binary which
-    # sensor coordinate frame to map each chip's photon x/y into.
-    clustering = reconstruction.clustering_algorithm
-    settings_json = clustering.settings.model_dump(mode="json")
-    settings_json["save_photon_pixels"] = clustering.save_photon_pixels
-    settings_json["detector_layout"] = analysis.detector_layout.kind
+    settings_json = build_clustering_settings_json(analysis)
     with tempfile.NamedTemporaryFile(
         mode="w",
         suffix=".json",

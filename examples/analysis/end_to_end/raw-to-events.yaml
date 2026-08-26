@@ -34,7 +34,7 @@ analysis:
         adjacency: 8
         position_averaging: arithmetic
         photon_time_estimator: leading_edge
-        timewalk_calibration_file: calibrations/tpx3/time-walk_example.json
+        timewalk_calibration_file: default
   event_reconstruction:
     program:
       name: event-reconstructor-cpp

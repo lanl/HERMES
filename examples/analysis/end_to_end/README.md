@@ -44,8 +44,10 @@ pixi run python examples/analysis/end_to_end/raw-to-events.py \
 
 - `analysis.unpacking` selects the unpacker and the raw TPX3 file to unpack.
 - `analysis.photon_reconstruction` selects the photon clusterer, its settings,
-  and the time-walk calibration file
-  (`calibrations/tpx3/time-walk_example.json`), using leading-edge photon time.
+  and the time-walk calibration file (`timewalk_calibration_file: default`, the
+  calibration that ships with HERMES), using leading-edge photon time. Set that
+  field to `null` for no correction, `default` for the shipped calibration, or a
+  path to your own file.
 - `analysis.event_reconstruction` selects the event reconstructor and its
   connected-components settings (10-pixel linking radius, 5-cell-per-axis lookup
   grid, 10 µs maximum time difference, 30 µs maximum event duration).

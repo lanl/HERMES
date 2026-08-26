@@ -63,7 +63,7 @@ def test_checked_in_yaml_configures_both_analysis_stages(
     assert reconstruction.pixel_files == "auto"
     assert (
         reconstruction.clustering_algorithm.settings.timewalk_calibration_file
-        == Path("calibrations/tpx3/time-walk_example.json")
+        == "default"
     )
     assert reconstruction.clustering_algorithm.save_photon_pixels is True
 
