@@ -36,3 +36,11 @@ install(
         hermes-event-reconstructor
     RUNTIME DESTINATION ${SKBUILD_SCRIPTS_DIR}
 )
+
+# Ship the bundled calibration data into the environment's share/ so an installed
+# HERMES (not just a git checkout) has defaults to fall back on. share/ is a
+# sibling of bin/ and lib/ under a conda/pixi environment prefix.
+install(
+    DIRECTORY calibrations/
+    DESTINATION ${SKBUILD_DATA_DIR}/share/hermes/calibrations
+)

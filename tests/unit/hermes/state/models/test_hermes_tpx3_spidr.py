@@ -431,6 +431,27 @@ def test_photon_clustering_settings_use_structural_defaults() -> None:
     assert HermesTpx3PhotonClustering(settings=settings).save_photon_pixels is False
 
 
+def test_photon_clustering_settings_keep_default_timewalk_keyword() -> None:
+    data = _clustering_settings_data()
+    data["timewalk_calibration_file"] = "default"
+
+    settings = HermesTpx3PhotonClusteringSettings.model_validate(data)
+
+    # "default" must stay the keyword string, not be coerced into a Path, so the
+    # saved record stays portable across machines.
+    assert settings.timewalk_calibration_file == "default"
+    assert settings.model_dump(mode="json")["timewalk_calibration_file"] == "default"
+
+
+def test_photon_clustering_settings_keep_explicit_timewalk_path() -> None:
+    data = _clustering_settings_data()
+    data["timewalk_calibration_file"] = "/tmp/my-cal.json"
+
+    settings = HermesTpx3PhotonClusteringSettings.model_validate(data)
+
+    assert settings.timewalk_calibration_file == Path("/tmp/my-cal.json")
+
+
 @pytest.mark.parametrize(
     ("field", "value", "error"),
     [

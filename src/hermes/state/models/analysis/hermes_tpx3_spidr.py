@@ -83,7 +83,7 @@ class HermesTpx3PhotonClusteringSettings(StrictBaseModel):
     adjacency: Literal[4, 8] = 8
     position_averaging: Literal["arithmetic"] = "arithmetic"
     photon_time_estimator: PhotonTimeEstimator = "leading_edge"
-    timewalk_calibration_file: Path | None = None
+    timewalk_calibration_file: Literal["default"] | Path | None = None
 
     @field_validator("photon_time_estimator")
     @classmethod

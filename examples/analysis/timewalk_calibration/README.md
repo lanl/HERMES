@@ -81,4 +81,6 @@ data/examples/analysis/timewalk_calibration/
 The correction file (`model`, `parameters`, `high_tot_anchor`, `time_unit`,
 `date_created`, `note`) is the file the photon reconstruction clusterer reads.
 It matches the format of the checked-in
-`calibrations/tpx3/time-walk_example.json`.
+`calibrations/tpx3/time-walk_example.json`, which HERMES ships as its built-in
+default: setting `timewalk_calibration_file: default` in a photon-reconstruction
+config uses that file, so you do not have to fit your own to get started.

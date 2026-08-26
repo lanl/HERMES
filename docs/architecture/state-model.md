@@ -730,7 +730,7 @@ HermesTpx3PhotonClusteringSettings
   adjacency: 4 | 8 = 8
   position_averaging: arithmetic
   photon_time_estimator: leading_edge
-  timewalk_calibration_file: Path | None
+  timewalk_calibration_file: default | Path | None
 
 HermesTpx3EventReconstruction
   program: BinaryProgram
@@ -803,11 +803,16 @@ Cluster-size bounds are positive and ordered. Pixel ToT is within the native
 and at most 1.
 
 `position_averaging="arithmetic"` and
-`photon_time_estimator="leading_edge"` are the only implemented values. When
-`timewalk_calibration_file` is present, the leading-edge estimator applies the
-selected normalized correction saved in that file. When it is absent, the
-estimator applies zero correction and the reconstruction summary records
-`correction_model="none"`. HERMES must not insert guessed timing parameters.
+`photon_time_estimator="leading_edge"` are the only implemented values.
+`timewalk_calibration_file` has three cases: omitted or `null` applies zero
+correction and the reconstruction summary records `correction_model="none"`;
+`default` uses the time-walk calibration that ships with HERMES; an explicit path
+uses that file. The `default` calibration ships into the environment's
+`share/hermes/calibrations/` folder (a sibling of `bin/` and `lib/`), and the
+runner resolves the `default` keyword to that path at run time while the saved
+record keeps the word `default` so it stays portable. When a calibration is
+present the leading-edge estimator applies the selected normalized correction
+saved in that file. HERMES must not insert guessed timing parameters.
 The clustering thresholds remain explicit saved settings because their useful
 values depend on the image intensifier, phosphor, detector threshold, and
 measurement.
