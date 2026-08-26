@@ -1,6 +1,6 @@
 # Stage 0 — HERMES starts and stops SERVAL
 
-**Status:** Not started
+**Status:** Complete — tested against the live camera 2026-08-25.
 
 **Goal:** HERMES can launch the SERVAL server, wait until it answers, and shut it
 down. Add the httpx client skeleton. The SERVAL jar path already lives in the
@@ -27,13 +27,15 @@ readiness poll.
 
 3. **Server process control** — new `src/hermes/runner/acquisition/serval/server.py`:
    - `start_serval(serval, log_dir)` — launch `java -jar <serval.program_path>`
-     with `subprocess.Popen`, sending stdout/stderr to
-     `<log_dir>/serval-server.log`. Return the process handle. Assume `java` is on
-     `PATH` (add a knob only if the camera machine needs one). Build the launch
-     flags from the version: use `--tcpIp`/`--tcpPort` from `serval.tcp_ip`/
-     `tcp_port` only when `serval.major_version >= 3`; older versions take
-     `--spidrNet` instead. When no camera flags are set, launch with none and let
-     SERVAL autodiscover. See the "SERVAL versions" section of the README.
+     with `subprocess.Popen`, appending the server's own stdout/stderr to
+     `<log_dir>/serval-server.log`. Return the process handle. `java` is taken
+     from `PATH`. Camera-address flags: when `serval.tcp_ip` is set, pass
+     `--tcpIp` (and `--tcpPort` when given); when it is unset, launch with no
+     camera flag and let SERVAL autodiscover. `tcp_ip`/`tcp_port` are the SERVAL
+     3.0+ flags, and the state model already rejects them on a declared 2.x
+     version, so nothing here turns them into the older `spidrNet` form; add a
+     `spidr_net` field and flag only if a 2.x camera ever needs an explicit
+     address. See the "SERVAL versions" section of the README.
    - `wait_until_ready(client, timeout_s)` — poll `GET /dashboard` until it
      returns 200 or the timeout elapses; raise on timeout.
    - `stop_serval(client, handle)` — `GET /server/shutdown`, then terminate the
@@ -60,11 +62,32 @@ readiness poll.
 
 ## Open items
 
-- **Jar path on this Mac.** The old path was a Linux box
-  (`/home/ni_user/.../serv-2.1.6.jar`, `settings_installation.py:3`). Need the
-  real jar location here, and confirmation that `java` runs on this machine.
-  Supplied through `config.yaml` at test time, not hardcoded.
+- **Jar path on this Mac — resolved.** The jar is
+  `/Users/alexlong/Programs/tpx3_software/TPX3Cam/Serval/3.3.0/serval-3.3.0.jar`
+  and `java` is Homebrew's openjdk 21 (`/opt/homebrew/opt/openjdk@21/bin/java`).
+  The checked-in example (`examples/acquisition/serval/config.yaml`) keeps a
+  placeholder `program_path`; the live-test config with the real path lives
+  under `.scratch/stage0/` (not tracked).
 
 ## Notes / findings
 
-(update as we build and test)
+- Built `client.py` (`ServalClient`: `get`/`put`, `get_json`/`put_json`,
+  `get_dashboard`; raises `ServalClientError` on transport failure or non-200)
+  and `server.py` (`start_serval`, `wait_until_ready`, `stop_serval`,
+  `_build_launch_command`; raises `ServalServerError`). Added `httpx` via pixi.
+- Ran end to end against the live camera on 2026-08-25: SERVAL launches, is
+  ready ~0.6 s later (software version 3.3.0), and shuts down clean (exit 0).
+  `serval-server.log` and `acquisition.serval.jsonl` are both written and the
+  process is gone afterward.
+- The first readiness poll hits "connection refused" while SERVAL is still
+  starting; that is normal, so the client logs a failed send at **debug**, not
+  error, and `wait_until_ready` retries until 200. Only a readiness **timeout**
+  is an error.
+- `wait_until_ready` reads the version loosely from the dashboard JSON and does
+  not validate the strict `ServalDashboard` model, so readiness never breaks on
+  a server whose dashboard carries extra fields. The typed `get_dashboard()` is
+  there for stage 1, where the read-only models relax to `extra="ignore"`.
+- Unit tests: `tests/unit/hermes/runner/acquisition/serval/` cover the
+  version-aware launch flags, `start_serval` guards, `wait_until_ready` retry
+  and timeout, `stop_serval` shutdown and terminate paths, and the client's
+  dashboard parsing and non-200 handling (via `httpx.MockTransport`).

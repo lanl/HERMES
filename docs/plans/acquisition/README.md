@@ -165,7 +165,7 @@ How HERMES handles it:
 
 | Stage | File | Goal | Status |
 | --- | --- | --- | --- |
-| 0 | `stage-0-serval-control.md` | HERMES starts, readiness-checks, and stops SERVAL from `config.serval.program_path`; httpx client skeleton | Not started |
+| 0 | `stage-0-serval-control.md` | HERMES starts, readiness-checks, and stops SERVAL from `config.serval.program_path`; httpx client skeleton | Complete (tested on live camera 2026-08-25) |
 | 1 | `stage-1-connect-snapshot.md` | Read-only connect + detector/SERVAL snapshot into the record | Not started |
 | 2 | `stage-2-destination-calibration.md` | Configure raw `.tpx3` destination; load `.bpc`/`.dacs`; preflight checks | Not started |
 | 3 | `stage-3-measurement.md` | Apply detector config; take a short real measurement; monitor; record output files | Not started |
