@@ -166,10 +166,10 @@ How HERMES handles it:
 | Stage | File | Goal | Status |
 | --- | --- | --- | --- |
 | 0 | `stage-0-serval-control.md` | HERMES starts, readiness-checks, and stops SERVAL from `config.serval.program_path`; httpx client skeleton | Complete (tested on live camera 2026-08-25) |
-| 1 | `stage-1-connect-snapshot.md` | Read-only connect + detector/SERVAL snapshot into the record | Not started |
-| 2 | `stage-2-destination-calibration.md` | Configure raw `.tpx3` destination; load `.bpc`/`.dacs`; preflight checks | Not started |
-| 3 | `stage-3-measurement.md` | Apply detector config; take a short real measurement; monitor; record output files | Not started |
-| 4 | `stage-4-integration.md` | Hand raw files to unpacking; robustness; clean shutdown on failure | Not started |
+| 1 | `stage-1-connect-snapshot.md` | Read-only connect + detector/SERVAL snapshot into the record | Complete (tested on live camera 2026-08-26) |
+| 2 | `stage-2-destination-calibration.md` | Configure raw `.tpx3` destination; load `.bpc`/`.dacs`; preflight checks | Complete (tested on live camera 2026-08-26) |
+| 3 | `stage-3-measurement.md` | Apply detector config; take a short real measurement; monitor; record output files | Complete (tested on live camera 2026-08-26) |
+| 4 | `stage-4-integration.md` | Unpack raw files while recording; opt-in raw deletion; relax the both-configured gate | Complete (unit-tested + evals green; live verify pending) |
 
 ## SERVAL facts we rely on
 

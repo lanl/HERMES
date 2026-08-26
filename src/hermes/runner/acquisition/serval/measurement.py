@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import time
+from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import NamedTuple
@@ -23,6 +24,7 @@ from hermes.state.models.acquisition.serval import (
     ServalAcquisitionConfig,
     ServalAcquisitionResult,
     ServalDashboard,
+    ServalDashboardMeasurement,
     ServalRunTiming,
 )
 from hermes.state.models.detector import DetectorConfiguration, DetectorSnapshot
@@ -105,6 +107,7 @@ def run_measurement(
     client: ServalClient,
     config: ServalAcquisitionConfig,
     raw_data_directory: Path,
+    on_poll: Callable[[ServalDashboardMeasurement | None], None] | None = None,
 ) -> MeasurementOutcome:
     """Apply the configuration, start the measurement, and record what it made.
 
@@ -114,6 +117,11 @@ def run_measurement(
     measurement and read a final snapshot, even when a step fails, so the record
     reflects what happened. The run's status is decided by the caller from the
     result's `errors` and `stop_reason`.
+
+    ``on_poll``, when given, is called once per dashboard poll with the current
+    measurement (or ``None`` when that poll's read failed). The caller uses this
+    to unpack raw files as new frames land during the recording; it must not
+    raise, and it must be quick since it runs between polls.
     """
     effective = build_effective_detector_config(config)
     warnings: list[str] = []
@@ -132,7 +140,9 @@ def run_measurement(
             n_triggers=effective.n_triggers,
             exposure_time_s=effective.exposure_time_s,
         )
-        stop_reason = _monitor(client, _wait_limit_s(config.run_timing), warnings)
+        stop_reason = _monitor(
+            client, _wait_limit_s(config.run_timing), warnings, on_poll
+        )
     except ServalClientError as error:
         errors.append(str(error))
         stop_reason = "failed"
@@ -229,6 +239,7 @@ def _monitor(
     client: ServalClient,
     wait_limit_s: float,
     warnings: list[str],
+    on_poll: Callable[[ServalDashboardMeasurement | None], None] | None = None,
 ) -> str:
     """Watch the dashboard until the measurement is idle again or times out.
 
@@ -236,7 +247,9 @@ def _monitor(
     "stopped_after_timeout" when the wait limit was reached and HERMES stopped
     the measurement, or "no_activity" when the camera never left idle and made
     no frames within the start window. Transient dashboard read failures are
-    tolerated: the poll simply retries until the deadline.
+    tolerated: the poll simply retries until the deadline. When ``on_poll`` is
+    given it is called with the measurement each poll, before the idle/timeout
+    checks, so the caller can act on new frames as they land.
     """
     start = time.monotonic()
     deadline = start + wait_limit_s
@@ -246,6 +259,8 @@ def _monitor(
 
     while True:
         measurement = _read_measurement(client)
+        if on_poll is not None:
+            on_poll(measurement)
         status = measurement.status if measurement is not None else None
         frames = measurement.frame_count if measurement is not None else None
         if status in _ACTIVE_STATUSES or frames:

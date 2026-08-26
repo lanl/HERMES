@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
 
 from loguru import logger
@@ -29,10 +30,13 @@ from hermes.runner.acquisition.serval.server import (
     wait_until_detector_connected,
     wait_until_ready,
 )
+from hermes.runner.analysis.run import run_analysis
 from hermes.state.models.acquisition.serval import (
     ServalAcquisitionState,
+    ServalDashboardMeasurement,
     ServalServer,
 )
+from hermes.state.models.analysis.hermes_tpx3_spidr import HermesTpx3AnalysisState
 from hermes.state_service.state_manager import StateManager
 
 _ACQUISITION_LOGGER = logger.bind(
@@ -203,7 +207,10 @@ def _run_measurement(
         justification="starting the measurement",
     )
 
-    outcome = run_measurement(client, acquisition.config, raw_data_directory)
+    on_poll = _interleaved_analysis_callback(state_manager, raw_data_directory)
+    outcome = run_measurement(
+        client, acquisition.config, raw_data_directory, on_poll
+    )
 
     _record(
         state_manager,
@@ -234,6 +241,43 @@ def _run_measurement(
         "completed" if succeeded else "failed",
         justification="finished the measurement",
     )
+
+
+def _interleaved_analysis_callback(
+    state_manager: StateManager,
+    raw_data_directory: Path,
+) -> Callable[[ServalDashboardMeasurement | None], None] | None:
+    """Build a poll callback that unpacks raw files as new frames land.
+
+    Returns None when the record has no HERMES analysis to run alongside the
+    recording. The callback runs the analysis only when a new `.tpx3` file has
+    appeared since the last run, so state is not rewritten on every poll, and it
+    never lets an analysis failure stop the recording. Files already unpacked on
+    an earlier poll are skipped by the analysis itself, so it stays incremental.
+    """
+    if not isinstance(
+        state_manager.get_state().analysis, HermesTpx3AnalysisState
+    ):
+        return None
+
+    dispatched: set[Path] = set()
+
+    def on_poll(measurement: ServalDashboardMeasurement | None) -> None:
+        current = set(raw_data_directory.glob("*.tpx3"))
+        if not current - dispatched:
+            return
+        dispatched.update(current)
+        try:
+            run_analysis(state_manager)
+        except Exception as error:
+            _ACQUISITION_LOGGER.warning(
+                "Analysis during recording failed; continuing the "
+                "measurement: {error}",
+                event_type="acquisition.serval.interleaved_analysis_failed",
+                error=str(error),
+            )
+
+    return on_poll
 
 
 def _ensure_serval_running(

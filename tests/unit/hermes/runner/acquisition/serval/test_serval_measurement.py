@@ -210,3 +210,26 @@ def test_run_measurement_reports_no_activity_when_never_recording(
     outcome = run_measurement(client, config, raw)
 
     assert outcome.result.stop_reason == "no_activity"
+
+
+def test_run_measurement_calls_on_poll_each_poll(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _install_fake_clock(monkeypatch)
+    raw = tmp_path / "raw"
+    client = _FakeClient(
+        ["DA_RECORDING", "DA_RECORDING", "DA_IDLE"], raw_dir=raw
+    )
+    config = _config(
+        run_timing=ServalRunTiming(exposure_time_s=0.1, trigger_count=5)
+    )
+
+    seen: list[str | None] = []
+
+    def on_poll(measurement: ServalDashboardMeasurement | None) -> None:
+        seen.append(measurement.status if measurement is not None else None)
+
+    run_measurement(client, config, raw, on_poll)
+
+    # One call per dashboard poll, including the final idle read that ends it.
+    assert seen == ["DA_RECORDING", "DA_RECORDING", "DA_IDLE"]

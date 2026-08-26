@@ -529,11 +529,16 @@ class HermesTpx3EventReconstructionResult(StrictBaseModel):
 class Tpx3UnpackingRuntimeOptions(StrictBaseModel):
     overwrite: bool = False
     time_sort: bool = True
+    # Delete each raw .tpx3 file after it has been successfully unpacked, to
+    # reclaim disk during long runs. Off by default; deletion is irreversible.
+    delete_raw_after_unpack: bool = False
 
 
 class Tpx3Unpacking(StrictBaseModel):
     program: BinaryProgram
-    tpx3_files: list[FileReference] = Field(min_length=1)
+    # "auto" gathers every *.tpx3 in the run's raw data directory; a list names
+    # specific raw files to unpack.
+    tpx3_files: Literal["auto"] | list[FileReference] = "auto"
     runtime_options: Tpx3UnpackingRuntimeOptions = Field(
         default_factory=Tpx3UnpackingRuntimeOptions
     )
@@ -544,8 +549,19 @@ class Tpx3Unpacking(StrictBaseModel):
     def expand_tpx3_file_list(cls, value: object) -> object:
         return _expand_file_list(value)
 
+    @field_validator("tpx3_files", mode="after")
+    @classmethod
+    def require_non_empty_file_list(cls, value: object) -> object:
+        if isinstance(value, list) and not value:
+            raise ValueError(
+                "tpx3_files must be 'auto' or a non-empty file list"
+            )
+        return value
+
     @model_validator(mode="after")
     def require_unique_stems(self) -> Tpx3Unpacking:
+        if not isinstance(self.tpx3_files, list):
+            return self
         stems = [raw_file.path.stem for raw_file in self.tpx3_files]
         duplicate_stems = sorted(
             stem for stem in set(stems) if stems.count(stem) > 1

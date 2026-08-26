@@ -77,23 +77,21 @@ class Workflow:
         """Run the work the record configures and return the updated record.
 
         Analysis-only records run analysis; acquisition-only records run the
-        SERVAL acquisition. Either way the record is saved and the workflow log
-        written. A record configuring both, or neither, raises ValueError.
+        SERVAL acquisition. A record configuring both records while it acquires:
+        the acquisition unpacks each raw file as SERVAL finishes it, then a final
+        analysis pass picks up anything the last frames left. Either way the
+        record is saved and the workflow log written. A record configuring
+        neither raises ValueError.
         """
         record = self._state_manager.get_state()
         if record.acquisition is None and record.analysis is None:
             raise ValueError(
                 "the record configures neither acquisition nor analysis to run"
             )
-        if record.acquisition is not None and record.analysis is None:
+        if record.acquisition is not None:
             self.run_acquisition()
-        if record.analysis is not None and record.acquisition is None:
+        if record.analysis is not None:
             self.run_analysis()
-        if record.acquisition is not None and record.analysis is not None:
-            raise ValueError(
-                "the record configures both acquisition and analysis to run, "
-                "which is not supported"
-            )
         self._save_record()
         self._write_workflow_log()
         return self.record
@@ -151,11 +149,14 @@ class Workflow:
         )
 
     def _configured_stages(self) -> list[str]:
-        """The analysis steps the record asked this run to perform, in order."""
-        analysis = self._state_manager.get_state().analysis
-        if not isinstance(analysis, HermesTpx3AnalysisState):
-            return []
+        """The steps the record asked this run to perform, in order."""
+        record = self._state_manager.get_state()
         stages: list[str] = []
+        if record.acquisition is not None:
+            stages.append("acquisition")
+        analysis = record.analysis
+        if not isinstance(analysis, HermesTpx3AnalysisState):
+            return stages
         if analysis.unpacking is not None:
             stages.append("unpacking")
         if analysis.photon_reconstruction is not None:

@@ -61,6 +61,26 @@ class HermesTpx3OutputError(HermesTpx3PreflightError):
     """Raised when unpacker output is missing, unsafe, or inconsistent."""
 
 
+def resolve_tpx3_files(
+    analysis: HermesTpx3AnalysisState,
+    raw_data_directory: Path | None,
+) -> list[FileReference]:
+    """Return the raw TPX3 files unpacking should run over.
+
+    ``tpx3_files == "auto"`` gathers every ``*.tpx3`` in the run's raw data
+    directory; an explicit list is used as-is.
+    """
+    tpx3_files = analysis.unpacking.tpx3_files
+    if tpx3_files != "auto":
+        return list(tpx3_files)
+    if raw_data_directory is None or not raw_data_directory.is_dir():
+        return []
+    return [
+        FileReference(path=path)
+        for path in sorted(raw_data_directory.glob("*.tpx3"))
+    ]
+
+
 def derive_summary_path(
     analysis_root: Path,
     raw_file: FileReference,
@@ -266,6 +286,7 @@ def log_overall_failure(error: Exception) -> None:
 def validate_program_and_inputs(
     analysis: HermesTpx3AnalysisState,
     analysis_root: Path,
+    raw_files: list[FileReference],
 ) -> None:
     executable = analysis.unpacking.program.executable_path
     try:
@@ -276,7 +297,7 @@ def validate_program_and_inputs(
             "binary (e.g. via pixi) and set unpacking.program.executable_path"
         ) from exc
 
-    for raw_file in analysis.unpacking.tpx3_files:
+    for raw_file in raw_files:
         if not raw_file.path.is_file():
             raise HermesTpx3PreflightError(
                 f"raw TPX3 file does not exist: {raw_file.path}"

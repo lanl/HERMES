@@ -397,6 +397,51 @@ def test_run_logs_a_completed_line_for_every_stage(
     ]
 
 
+def test_run_records_then_analyzes_when_both_are_configured(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    record = _record(tmp_path).model_copy(
+        update={
+            "acquisition": ServalAcquisitionState(
+                config=ServalAcquisitionConfig(
+                    serval=ServalServer(url="http://localhost:8080"),
+                ),
+            )
+        }
+    )
+    workflow = Workflow(record)
+    calls: list[str] = []
+
+    monkeypatch.setattr(
+        "hermes.workflows.workflow.run_serval_acquisition",
+        lambda _state_manager: calls.append("acquisition"),
+    )
+
+    def complete_analysis(
+        state_manager: StateManager,
+        *,
+        overwrite: bool = False,
+    ) -> list[FileReference]:
+        calls.append("analysis")
+        return []
+
+    monkeypatch.setattr(
+        "hermes.workflows.workflow.run_analysis",
+        complete_analysis,
+    )
+
+    workflow.run()
+
+    # Acquisition runs first (unpacking as frames land); then a final catch-up
+    # analysis pass. Configuring both no longer raises.
+    assert calls == ["acquisition", "analysis"]
+
+    log_file = tmp_path / "HERMES-workflow.jsonl"
+    lines = [json.loads(line) for line in log_file.read_text().splitlines()]
+    assert lines[1]["stages"] == ["acquisition", "unpacking"]
+
+
 def test_run_rejects_a_record_with_nothing_to_run(tmp_path: Path) -> None:
     record = HermesRecord(
         measurement_info=MeasurementInfo(

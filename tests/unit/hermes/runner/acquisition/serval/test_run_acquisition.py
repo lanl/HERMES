@@ -32,8 +32,13 @@ from hermes.state.models.detector import (
     DetectorInfo,
     DetectorSnapshot,
 )
+from hermes.state.models.analysis.hermes_tpx3_spidr import (
+    HermesTpx3AnalysisState,
+    Tpx3Unpacking,
+)
 from hermes.state.models.environment import RuntimeEnvironment
 from hermes.state.models.measurement import MeasurementInfo
+from hermes.state.models.shared_models import BinaryProgram
 from hermes.state.state import HermesRecord
 from hermes.state_service.shared_types import StateServiceConfig
 from hermes.state_service.state_manager import StateManager
@@ -394,3 +399,88 @@ def test_raises_when_acquisition_is_not_serval(tmp_path: Path) -> None:
     )
     with pytest.raises(ServalAcquisitionError, match="no valid SERVAL acquisition"):
         run_serval_acquisition(state_manager)
+
+
+def _both_state_manager(tmp_path: Path) -> StateManager:
+    """A record configuring both acquisition and a HERMES analysis (auto)."""
+    record = HermesRecord(
+        measurement_info=MeasurementInfo(measurement_id="run-test", run="test-run"),
+        environment=RuntimeEnvironment(
+            working_directory=tmp_path,
+            analysis_directory=tmp_path / "analysis",
+            raw_data_directory=tmp_path / "raw",
+        ),
+        acquisition=ServalAcquisitionState(
+            config=ServalAcquisitionConfig(
+                serval=ServalServer(url="http://localhost:8080"),
+                run_timing=ServalRunTiming(exposure_time_s=0.1, trigger_count=2),
+            ),
+        ),
+        analysis=HermesTpx3AnalysisState(
+            unpacking=Tpx3Unpacking(
+                program=BinaryProgram(
+                    name="test-unpacker",
+                    executable_path=tmp_path / "test-unpacker",
+                ),
+                tpx3_files="auto",
+            ),
+        ),
+    )
+    return StateManager(
+        record,
+        config=StateServiceConfig(allow_trusted_workflow_bypass=True),
+    )
+
+
+def test_interleaved_analysis_runs_once_per_new_raw_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    manager = _both_state_manager(tmp_path)
+    calls: list[int] = []
+    monkeypatch.setattr(run_module, "run_analysis", lambda _sm: calls.append(1))
+
+    on_poll = run_module._interleaved_analysis_callback(manager, raw_dir)
+    assert on_poll is not None
+
+    on_poll(None)  # no files yet -> nothing to unpack
+    assert calls == []
+
+    (raw_dir / "a.tpx3").write_bytes(b"x")
+    on_poll(None)  # a new file appeared -> one run
+    on_poll(None)  # nothing new -> no extra run
+    assert len(calls) == 1
+
+    (raw_dir / "b.tpx3").write_bytes(b"x")
+    on_poll(None)  # another new file -> one more run
+    assert len(calls) == 2
+
+
+def test_no_interleaved_callback_without_a_hermes_analysis(
+    tmp_path: Path,
+) -> None:
+    manager = _state_manager(tmp_path)  # acquisition only, no analysis
+    assert (
+        run_module._interleaved_analysis_callback(manager, tmp_path / "raw")
+        is None
+    )
+
+
+def test_interleaved_analysis_failure_does_not_propagate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    (raw_dir / "a.tpx3").write_bytes(b"x")
+    manager = _both_state_manager(tmp_path)
+
+    def boom(_sm: StateManager) -> None:
+        raise RuntimeError("analysis blew up")
+
+    monkeypatch.setattr(run_module, "run_analysis", boom)
+
+    on_poll = run_module._interleaved_analysis_callback(manager, raw_dir)
+    assert on_poll is not None
+    # A failed analysis during recording must not stop the measurement.
+    on_poll(None)
