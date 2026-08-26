@@ -5,6 +5,7 @@ from pathlib import Path
 import httpx
 import pytest
 
+from hermes.runner.acquisition.serval import measurement as measurement_module
 from hermes.runner.acquisition.serval import run as run_module
 from hermes.runner.acquisition.serval.client import ServalClientError
 from hermes.runner.acquisition.serval.run import (
@@ -22,9 +23,11 @@ from hermes.state.models.acquisition.serval import (
     ServalDashboardMeasurement,
     ServalDashboardServer,
     ServalRawDestination,
+    ServalRunTiming,
     ServalServer,
 )
 from hermes.state.models.detector import (
+    DetectorConfiguration,
     DetectorHealth,
     DetectorInfo,
     DetectorSnapshot,
@@ -39,12 +42,30 @@ from hermes.state_service.state_manager import StateManager
 class _FakeAcquisitionClient:
     """A SERVAL client that answers reads from fixed in-memory values."""
 
-    def __init__(self, *, server_up: bool, measurement_status: str = "DA_IDLE") -> None:
+    def __init__(
+        self,
+        *,
+        server_up: bool,
+        measurement_status: str = "DA_IDLE",
+        measurement_statuses: list[str] | None = None,
+        frame_count: int = 0,
+        raw_dir: Path | None = None,
+        tpx3_names: tuple[str, ...] = (),
+    ) -> None:
         self.base_url = "http://serval.test"
         self._server_up = server_up
         self._measurement_status = measurement_status
+        self._measurement_statuses = (
+            list(measurement_statuses) if measurement_statuses is not None else None
+        )
+        self._frame_count = frame_count
+        self._raw_dir = raw_dir
+        self._tpx3_names = tpx3_names
         self._put_destination: DestinationConfiguration | None = None
+        self.put_detector_config_arg: DetectorConfiguration | None = None
         self.loaded: list[tuple[str, str]] = []
+        self.started = False
+        self.stopped = False
         self.closed = False
 
     def get(self, path: str):
@@ -53,9 +74,15 @@ class _FakeAcquisitionClient:
         return None
 
     def get_dashboard(self) -> ServalDashboard:
+        if self._measurement_statuses:
+            status = self._measurement_statuses.pop(0)
+        else:
+            status = self._measurement_status
         return ServalDashboard(
             server=ServalDashboardServer(software_version="3.3.0"),
-            measurement=ServalDashboardMeasurement(status=self._measurement_status),
+            measurement=ServalDashboardMeasurement(
+                status=status, frame_count=self._frame_count, dropped_frames=0
+            ),
             detector=ServalDashboardDetector(detector_type="Tpx3"),
         )
 
@@ -64,6 +91,27 @@ class _FakeAcquisitionClient:
             info=DetectorInfo(number_of_chips=1),
             health=DetectorHealth(bias_voltage_v=12.6),
         )
+
+    def put_detector_config(self, config: DetectorConfiguration) -> None:
+        self.put_detector_config_arg = config
+
+    def get_detector_config(self) -> DetectorConfiguration | None:
+        return self.put_detector_config_arg
+
+    def get_detector_health(self) -> DetectorHealth:
+        return DetectorHealth(bias_voltage_v=12.6)
+
+    def measurement_start(self) -> httpx.Response:
+        self.started = True
+        if self._raw_dir is not None:
+            self._raw_dir.mkdir(parents=True, exist_ok=True)
+            for name in self._tpx3_names:
+                (self._raw_dir / name).write_bytes(b"tpx3")
+        return httpx.Response(200, text="OK")
+
+    def measurement_stop(self) -> httpx.Response:
+        self.stopped = True
+        return httpx.Response(200, text="OK")
 
     def put_destination(self, destination: DestinationConfiguration) -> None:
         self._put_destination = destination
@@ -94,6 +142,7 @@ def _state_manager(
     program_path: Path | None = None,
     raw_data_directory: Path | None = None,
     calibration_files: CalibrationFiles | None = None,
+    run_timing: ServalRunTiming | None = None,
 ) -> StateManager:
     environment_kwargs: dict[str, object] = {
         "working_directory": tmp_path,
@@ -111,6 +160,7 @@ def _state_manager(
                     program_path=program_path,
                 ),
                 calibration_files=calibration_files,
+                run_timing=run_timing,
             ),
         ),
     )
@@ -281,6 +331,53 @@ def test_preflight_refuses_to_configure_during_a_measurement(
     # It refused before writing a destination.
     assert client._put_destination is None
     assert client.closed is True
+
+
+def test_takes_a_measurement_when_run_timing_is_set(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    raw_dir = tmp_path / "raw"
+    # DA_IDLE at connect, then recording, then idle again so the measurement
+    # completes on its own.
+    client = _FakeAcquisitionClient(
+        server_up=True,
+        measurement_statuses=["DA_IDLE", "DA_RECORDING", "DA_IDLE"],
+        frame_count=5,
+        raw_dir=raw_dir,
+        tpx3_names=("run_0.tpx3",),
+    )
+    _patch_client(monkeypatch, client)
+    monkeypatch.setattr(run_module, "start_serval", lambda *_a, **_k: None)
+    monkeypatch.setattr(run_module, "stop_serval", lambda *_a, **_k: None)
+    # Don't wait between dashboard polls.
+    monkeypatch.setattr(measurement_module.time, "sleep", lambda _s: None)
+
+    state_manager = _state_manager(
+        tmp_path,
+        raw_data_directory=raw_dir,
+        run_timing=ServalRunTiming(
+            trigger_mode="AUTOTRIGSTART_TIMERSTOP",
+            exposure_time_s=0.1,
+            trigger_period_s=0.2,
+            trigger_count=5,
+        ),
+    )
+    run_serval_acquisition(state_manager)
+
+    acquisition = state_manager.get_state().acquisition
+    assert acquisition.status == "completed"
+    assert acquisition.result is not None
+    assert acquisition.result.stop_reason == "completed"
+    assert acquisition.result.frames == 5
+    assert acquisition.result.errors == []
+    assert len(acquisition.result.output_files) == 1
+    assert acquisition.result.output_files[0].path.name == "run_0.tpx3"
+    # The final snapshot was recorded and the trigger count reached SERVAL.
+    assert acquisition.final_detector_snapshot is not None
+    assert client.started is True
+    assert client.put_detector_config_arg is not None
+    assert client.put_detector_config_arg.n_triggers == 5
 
 
 def test_raises_when_acquisition_is_not_serval(tmp_path: Path) -> None:

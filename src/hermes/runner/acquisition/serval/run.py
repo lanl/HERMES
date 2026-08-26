@@ -1,10 +1,12 @@
-"""SERVAL acquisition: connect, read the detector, then configure it.
+"""SERVAL acquisition: connect, read the detector, configure it, then measure.
 
 The run makes sure SERVAL is running (launching it when a program path is set
 and no server answers), waits for the camera to connect, and reads the
 dashboard and detector snapshot into the record. When the config names a raw
 data directory it then tells SERVAL where to write, and when it names SoPhy
-calibration files it saves and loads them. No measurement is taken here: the
+calibration files it saves and loads them. Finally, when the config includes a
+`run_timing` section it applies the detector configuration, takes one
+measurement, and records the raw files it produced; without `run_timing` the
 run stops once the detector is configured.
 """
 
@@ -19,6 +21,7 @@ from loguru import logger
 from hermes.runner.acquisition.serval.calibration import load_calibration
 from hermes.runner.acquisition.serval.client import ServalClient, ServalClientError
 from hermes.runner.acquisition.serval.destination import configure_raw_destination
+from hermes.runner.acquisition.serval.measurement import run_measurement
 from hermes.runner.acquisition.serval.server import (
     ServalServerError,
     start_serval,
@@ -147,7 +150,10 @@ def run_serval_acquisition(state_manager: StateManager) -> None:
                 justification="recorded the saved and loaded SoPhy calibration files",
             )
 
-        if will_configure:
+        run_timing = acquisition.config.run_timing
+        if run_timing is not None:
+            _run_measurement(state_manager, client, acquisition, raw_data_directory)
+        elif will_configure:
             _record(
                 state_manager,
                 "acquisition.status",
@@ -165,6 +171,69 @@ def run_serval_acquisition(state_manager: StateManager) -> None:
         if process is not None:
             stop_serval(client, process)
         client.close()
+
+
+def _run_measurement(
+    state_manager: StateManager,
+    client: ServalClient,
+    acquisition: ServalAcquisitionState,
+    raw_data_directory: Path | None,
+) -> None:
+    """Take one measurement and record its result and final detector state.
+
+    A measurement needs somewhere to write, so a run that asks for one without a
+    raw data directory is a configuration error. The measurement itself records
+    its own outcome; the run status is `completed` only when the camera finished
+    on its own with no errors, and `failed` otherwise.
+    """
+    if raw_data_directory is None:
+        msg = (
+            "config.run_timing is set but no raw_data_directory is configured; "
+            "SERVAL would have nowhere to write the measurement"
+        )
+        _ACQUISITION_LOGGER.error(
+            msg, event_type="acquisition.serval.no_raw_directory"
+        )
+        raise ServalAcquisitionError(msg)
+
+    _record(
+        state_manager,
+        "acquisition.status",
+        "running",
+        justification="starting the measurement",
+    )
+
+    outcome = run_measurement(client, acquisition.config, raw_data_directory)
+
+    _record(
+        state_manager,
+        "acquisition.final_detector_snapshot",
+        outcome.final_snapshot,
+        justification="recorded the detector snapshot read after the measurement",
+    )
+    if outcome.final_dashboard is not None:
+        _record(
+            state_manager,
+            "acquisition.dashboard",
+            outcome.final_dashboard,
+            justification="recorded the SERVAL dashboard read after the measurement",
+        )
+    _record(
+        state_manager,
+        "acquisition.result",
+        outcome.result,
+        justification="recorded the measurement result",
+    )
+
+    succeeded = (
+        not outcome.result.errors and outcome.result.stop_reason == "completed"
+    )
+    _record(
+        state_manager,
+        "acquisition.status",
+        "completed" if succeeded else "failed",
+        justification="finished the measurement",
+    )
 
 
 def _ensure_serval_running(

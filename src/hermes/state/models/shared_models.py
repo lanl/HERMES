@@ -37,6 +37,7 @@ class FileReference(StrictBaseModel):
     path: Path
     media_type: str | None = Field(default=None, min_length=1)
     created_at: datetime | None = None
+    size_bytes: int | None = Field(default=None, ge=0)
     description: str | None = None
 
 class BinaryProgram(StrictBaseModel):

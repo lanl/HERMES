@@ -122,6 +122,21 @@ class ServalClient:
     def get_detector_config(self) -> DetectorConfiguration:
         return DetectorConfiguration.model_validate(self.get_json("/detector/config"))
 
+    def put_detector_config(self, config: DetectorConfiguration) -> None:
+        """Send the detector configuration to SERVAL as SERVAL JSON."""
+        self.put(
+            "/detector/config",
+            config.model_dump(by_alias=True, exclude_none=True),
+        )
+
+    def measurement_start(self) -> httpx.Response:
+        """Start a measurement (`GET /measurement/start`)."""
+        return self.get("/measurement/start")
+
+    def measurement_stop(self) -> httpx.Response:
+        """Stop the running measurement (`GET /measurement/stop`)."""
+        return self.get("/measurement/stop")
+
     def get_destination(self) -> DestinationConfiguration:
         return DestinationConfiguration.model_validate(
             self.get_json("/server/destination")

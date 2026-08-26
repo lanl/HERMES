@@ -8,6 +8,7 @@ from hermes.state.models.acquisition.serval import (
     DestinationConfiguration,
     ServalRawDestination,
 )
+from hermes.state.models.detector import DetectorConfiguration
 
 
 def _client_with_handler(handler) -> ServalClient:
@@ -182,6 +183,45 @@ def test_load_pixel_config_and_dacs_hit_config_load() -> None:
         ("/config/load", "pixelconfig", "/abs/settings.bpc"),
         ("/config/load", "dacs", "/abs/settings.bpc.dacs"),
     ]
+
+
+def test_put_detector_config_sends_serval_json() -> None:
+    seen: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["method"] = request.method
+        seen["path"] = request.url.path
+        seen["content"] = request.content
+        return httpx.Response(200, text="OK")
+
+    config = DetectorConfiguration(
+        bias_voltage_v=12.0,
+        trigger_mode="AUTOTRIGSTART_TIMERSTOP",
+        n_triggers=5,
+    )
+    with _client_with_handler(handler) as client:
+        client.put_detector_config(config)
+
+    assert seen["method"] == "PUT"
+    assert seen["path"] == "/detector/config"
+    body = seen["content"]
+    assert b'"BiasVoltage"' in body  # type: ignore[operator]
+    assert b'"TriggerMode"' in body  # type: ignore[operator]
+    assert b'"nTriggers"' in body  # type: ignore[operator]
+
+
+def test_measurement_start_and_stop_hit_their_endpoints() -> None:
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.url.path)
+        return httpx.Response(200, text="OK")
+
+    with _client_with_handler(handler) as client:
+        client.measurement_start()
+        client.measurement_stop()
+
+    assert seen == ["/measurement/start", "/measurement/stop"]
 
 
 def test_get_detector_snapshot_raises_when_not_connected() -> None:
