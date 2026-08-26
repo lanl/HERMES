@@ -8,13 +8,16 @@ import pyarrow.parquet as pq
 import pytest
 from loguru import logger
 
+from hermes.runner.analysis.hermes import run as run_module
 from hermes.runner.analysis.hermes.run import HermesAnalysisError, run_hermes_analysis
 from hermes.runner.analysis.hermes.unpacker import (
     HermesTpx3Error,
+    HermesTpx3ExecutionError,
     HermesTpx3PreflightError,
     check_previous_unpacked_file,
     derive_summary_path,
     derive_unpacker_command,
+    resolve_tpx3_files,
     validate_program_and_inputs,
 )
 from hermes.state.models.analysis.empir import EmpirAnalysisState
@@ -22,6 +25,7 @@ from hermes.state.models.analysis.hermes_tpx3_spidr import (
     HermesTpx3AnalysisState,
     Tpx3SpidrSummary,
     Tpx3Unpacking,
+    Tpx3UnpackingRuntimeOptions,
 )
 from hermes.state.models.environment import RuntimeEnvironment
 from hermes.state.models.measurement import MeasurementInfo
@@ -291,7 +295,9 @@ def test_validate_rejects_missing_required_files(
     path.unlink()
 
     with pytest.raises(HermesTpx3PreflightError, match="does not exist"):
-        validate_program_and_inputs(analysis, analysis_root)
+        validate_program_and_inputs(
+            analysis, analysis_root, list(analysis.unpacking.tpx3_files)
+        )
 
 
 def test_plan_rejects_duplicate_raw_filename_stems(tmp_path: Path) -> None:
@@ -535,3 +541,92 @@ def test_resource_limit_percent_rejects_zero_and_above_100(tmp_path: Path) -> No
                     tpx3_files=[FileReference(path=raw_file)],
                 ),
             )
+
+
+def _auto_analysis(tmp_path: Path) -> HermesTpx3AnalysisState:
+    return HermesTpx3AnalysisState(
+        unpacking=Tpx3Unpacking(
+            program=BinaryProgram(
+                name="tpx3-spidr-cpp",
+                executable_path=tmp_path / "hermes-tpx3-spidr",
+            ),
+            tpx3_files="auto",
+        ),
+    )
+
+
+def test_resolve_tpx3_files_returns_explicit_list_unchanged(tmp_path: Path) -> None:
+    analysis = _analysis(tmp_path, "first.tpx3", "second.tpx3")
+
+    resolved = resolve_tpx3_files(analysis, tmp_path / "rawTpx3")
+
+    assert [f.path for f in resolved] == [
+        f.path for f in analysis.unpacking.tpx3_files
+    ]
+
+
+def test_resolve_tpx3_files_globs_raw_directory_for_auto(tmp_path: Path) -> None:
+    raw_dir = tmp_path / "rawTpx3"
+    raw_dir.mkdir(parents=True)
+    (raw_dir / "b.tpx3").touch()
+    (raw_dir / "a.tpx3").touch()
+    (raw_dir / "notes.txt").touch()
+
+    resolved = resolve_tpx3_files(_auto_analysis(tmp_path), raw_dir)
+
+    # Sorted, and only *.tpx3 files.
+    assert [f.path.name for f in resolved] == ["a.tpx3", "b.tpx3"]
+
+
+def test_resolve_tpx3_files_empty_when_directory_unset_or_missing(
+    tmp_path: Path,
+) -> None:
+    analysis = _auto_analysis(tmp_path)
+
+    assert resolve_tpx3_files(analysis, None) == []
+    assert resolve_tpx3_files(analysis, tmp_path / "missing") == []
+
+
+def test_delete_raw_after_unpack_removes_only_successful_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    base = _analysis(tmp_path, "good.tpx3", "done.tpx3", "bad.tpx3")
+    analysis = HermesTpx3AnalysisState(
+        unpacking=Tpx3Unpacking(
+            program=base.unpacking.program,
+            tpx3_files=base.unpacking.tpx3_files,
+            runtime_options=Tpx3UnpackingRuntimeOptions(
+                delete_raw_after_unpack=True
+            ),
+        ),
+    )
+    analysis_root = _analysis_root(tmp_path)
+    good, done, bad = analysis.unpacking.tpx3_files
+    # "done" already has valid outputs, so it is skipped, not re-unpacked here.
+    _save_completed_files(analysis_root, done, pixel_rows=1)
+
+    def fake_execute_unpacker(
+        analysis_arg,
+        analysis_root_arg,
+        raw_file,
+        measurement_info,
+        *,
+        overwrite=False,
+    ):
+        if raw_file.path == bad.path:
+            raise HermesTpx3ExecutionError("boom")
+        return _summary(analysis_root_arg, raw_file.path.stem)
+
+    monkeypatch.setattr(run_module, "execute_unpacker", fake_execute_unpacker)
+
+    manager = StateManager(
+        _record(tmp_path, analysis),
+        config=StateServiceConfig(allow_trusted_workflow_bypass=True),
+    )
+    run_hermes_analysis(manager)
+
+    # Only the file this run unpacked without error is deleted; the skipped and
+    # the failed raw files stay on disk.
+    assert not good.path.exists()
+    assert done.path.exists()
+    assert bad.path.exists()

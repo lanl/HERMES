@@ -1,0 +1,22 @@
+measurement_info:
+  measurement_id: example-serval-connect-snapshot
+  run: connect-snapshot
+
+environment:
+  working_directory: data/examples/acquisition/serval/connect-snapshot
+  log_directory: logs
+
+acquisition:
+  mode: serval
+  config:
+    serval:
+      url: http://localhost:8080
+      # Set this to the SERVAL .jar on your machine.
+      program_path: /path/to/serval-3.3.0.jar
+      version: "3.3.0"
+      # Point SERVAL at your camera by TCP address (SERVAL 3.0+). The default
+      # SPIDR port is 50000. Set tcp_ip to your camera's address (on the 10 GB
+      # link this is typically 192.168.100.10). Leave both unset only if your
+      # network lets SERVAL autodiscover the camera.
+      tcp_ip: 192.168.100.10
+      tcp_port: 50000

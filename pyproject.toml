@@ -2,7 +2,7 @@
 authors = [{name = "Alexander M. Long", email = "alexlong@lanl.gov"}]
 name = "hermes"
 requires-python = ">= 3.11"
-version = "3.1.1"
+version = "3.2.0"
 dependencies = [
   "pydantic>=2.13,<3",
   "loguru",
@@ -12,6 +12,7 @@ dependencies = [
   "pandas>=2.2,<3",
   "matplotlib>=3.9,<4",
   "psutil>=6",
+  "httpx>=0.28,<0.29",
 ]
 
 [build-system]
@@ -69,3 +70,4 @@ ffmpeg = ">=6.0"
 cxx-compiler = "*"
 cmake = ">=3.20"
 ninja = "*"
+httpx = ">=0.28.1,<0.29"

@@ -54,6 +54,7 @@ from hermes.runner.analysis.hermes.unpacker import (
     log_overall_completion,
     log_overall_failure,
     log_skipped_input,
+    resolve_tpx3_files,
     validate_program_and_inputs,
 )
 from hermes.state.models.analysis.hermes_tpx3_spidr import (
@@ -201,11 +202,14 @@ def run_hermes_analysis(
     unpacking_results: list[HermesTpx3UnpackingResult] = []
     try:
         if analysis.unpacking is not None:
-            validate_program_and_inputs(analysis, analysis_root)
+            raw_data_directory = (
+                state.environment.raw_data_directory.resolved_path
+            )
+            raw_files = resolve_tpx3_files(analysis, raw_data_directory)
+            validate_program_and_inputs(analysis, analysis_root, raw_files)
             unpack_overwrite = (
                 overwrite or analysis.unpacking.runtime_options.overwrite
             )
-            raw_files = analysis.unpacking.tpx3_files
             files_to_run: list[FileReference] = []
             # For each file submitted to the pool, remember where its result
             # sits in unpacking_results so a failure can flip it to "failed".
@@ -257,6 +261,8 @@ def run_hermes_analysis(
                     )
                 failed_count = len(errors)
                 unpacked_files = [files_to_run[i] for i in sorted(completed)]
+                if analysis.unpacking.runtime_options.delete_raw_after_unpack:
+                    _delete_raw_files(unpacked_files)
 
             _apply_unpacking_results(
                 state_manager,
@@ -321,14 +327,41 @@ def run_hermes_analysis(
         raise
 
 
+def _delete_raw_files(raw_files: list[FileReference]) -> None:
+    """Delete each raw file after a successful unpack (best-effort, never raises).
+
+    Only called for files this run unpacked without error, when the run opted in
+    with ``delete_raw_after_unpack``. A file that cannot be deleted is logged and
+    left in place.
+    """
+    for raw_file in raw_files:
+        try:
+            raw_file.path.unlink()
+        except OSError as exc:
+            _ANALYSIS_LOGGER.warning(
+                "Could not delete raw file {raw_tpx3_file} after unpacking: {error}",
+                event_type="analysis.tpx3_unpacking.raw_delete_failed",
+                raw_tpx3_file=str(raw_file.path),
+                error=str(exc),
+            )
+        else:
+            _ANALYSIS_LOGGER.info(
+                "Deleted raw file {raw_tpx3_file} after successful unpacking",
+                event_type="analysis.tpx3_unpacking.raw_deleted",
+                raw_tpx3_file=str(raw_file.path),
+            )
+
+
 def _unpacking_inputs(state_manager: StateManager) -> list[FileReference]:
     """Best-effort raw-file list for failure reporting (never raises)."""
-    current_analysis = state_manager.get_state().analysis
+    state = state_manager.get_state()
+    current_analysis = state.analysis
     if (
         isinstance(current_analysis, HermesTpx3AnalysisState)
         and current_analysis.unpacking is not None
     ):
-        return list(current_analysis.unpacking.tpx3_files)
+        raw_data_directory = state.environment.raw_data_directory.resolved_path
+        return resolve_tpx3_files(current_analysis, raw_data_directory)
     return []
 
 

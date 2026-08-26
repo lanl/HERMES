@@ -233,8 +233,10 @@ def test_hermes_analysis_state_serializes_batch_fields(
     assert dumped["photon_reconstruction"] is None
 
 
-def test_hermes_analysis_state_requires_a_raw_tpx3_file(tmp_path: Path) -> None:
-    with pytest.raises(ValidationError, match="at least 1 item"):
+def test_hermes_analysis_state_rejects_an_empty_raw_tpx3_file_list(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(ValidationError, match="non-empty file list"):
         _analysis_state(tmp_path)
 
 
@@ -254,6 +256,35 @@ def test_hermes_analysis_state_rejects_duplicate_raw_filename_stems(
                 ],
             ),
         )
+
+
+def test_unpacking_defaults_to_auto_with_deletion_off(tmp_path: Path) -> None:
+    unpacking = Tpx3Unpacking(
+        program=BinaryProgram(
+            name="tpx3-spidr-cpp",
+            executable_path=tmp_path / "hermes-tpx3-spidr",
+        ),
+    )
+
+    assert unpacking.tpx3_files == "auto"
+    assert unpacking.runtime_options.delete_raw_after_unpack is False
+
+
+def test_unpacking_accepts_auto_and_skips_the_unique_stem_check(
+    tmp_path: Path,
+) -> None:
+    # "auto" is not a list, so the duplicate-stem guard must not run against it.
+    unpacking = Tpx3Unpacking(
+        program=BinaryProgram(
+            name="tpx3-spidr-cpp",
+            executable_path=tmp_path / "hermes-tpx3-spidr",
+        ),
+        tpx3_files="auto",
+        runtime_options={"delete_raw_after_unpack": True},
+    )
+
+    assert unpacking.tpx3_files == "auto"
+    assert unpacking.runtime_options.delete_raw_after_unpack is True
 
 
 def test_hermes_analysis_state_expands_raw_tpx3_file_list(

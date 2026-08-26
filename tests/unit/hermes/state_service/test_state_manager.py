@@ -8,7 +8,6 @@ import pytest
 from hermes.state.models.acquisition.serval import (
     ServalAcquisitionResult,
     ServalAcquisitionState,
-    ServalEnvironment,
 )
 from hermes.state.models.environment import RuntimeEnvironment
 from hermes.state.models.measurement import MeasurementInfo
@@ -63,10 +62,9 @@ def _record(tmp_path: Path, *, acquisition: bool = True) -> HermesRecord:
         environment=RuntimeEnvironment(working_directory=tmp_path / "run-001"),
         acquisition=(
             ServalAcquisitionState(
-                serval_environment=ServalEnvironment(
-                    serval_url="http://localhost:8080"
-                ),
-                result=ServalAcquisitionResult(status="planned", frames=0)
+                config={"serval": {"url": "http://localhost:8080"}},
+                status="planned",
+                result=ServalAcquisitionResult(frames=0),
             )
             if acquisition
             else None
@@ -87,11 +85,11 @@ def test_state_manager_get_value_returns_defensive_copy(tmp_path: Path) -> None:
     manager = StateManager(_record(tmp_path), state_logger=CapturingStateLogger())
 
     result = manager.get_value("acquisition.result")
-    result.status = "failed"
+    result.frames = 999
 
     current_result = manager.get_value("acquisition.result")
-    assert current_result.status == "planned"
-    assert manager.get_value("acquisition.result.status") == "planned"
+    assert current_result.frames == 0
+    assert manager.get_value("acquisition.result.frames") == 0
 
 
 def test_state_manager_proposes_valid_change_without_mutating_record(
@@ -101,7 +99,7 @@ def test_state_manager_proposes_valid_change_without_mutating_record(
     manager = StateManager(_record(tmp_path), state_logger=state_logger)
 
     change = manager.propose_change(
-        "acquisition.result.status",
+        "acquisition.status",
         "completed",
         origin="trusted_workflow",
         proposer="serval_workflow",
@@ -111,7 +109,7 @@ def test_state_manager_proposes_valid_change_without_mutating_record(
     assert change.status == "pending"
     assert change.previous_value == "planned"
     assert change.proposed_value == "completed"
-    assert manager.get_value("acquisition.result.status") == "planned"
+    assert manager.get_value("acquisition.status") == "planned"
     assert manager.list_pending_changes()[0].change_id == change.change_id
     assert state_logger.changes[-1].change_id == change.change_id
 
@@ -120,7 +118,7 @@ def test_state_manager_approve_and_apply_user_change(tmp_path: Path) -> None:
     state_logger = CapturingStateLogger()
     manager = StateManager(_record(tmp_path), state_logger=state_logger)
     change = manager.propose_change(
-        "acquisition.result.status",
+        "acquisition.status",
         "completed",
         origin="user",
         proposer="operator",
@@ -137,7 +135,7 @@ def test_state_manager_approve_and_apply_user_change(tmp_path: Path) -> None:
     assert applied.status == "applied"
     assert applied.approved_by == "lead_operator"
     assert applied.approval_bypassed is False
-    assert manager.get_value("acquisition.result.status") == "completed"
+    assert manager.get_value("acquisition.status") == "completed"
     assert manager.list_pending_changes() == []
     assert [change.status for change in state_logger.changes[-3:]] == [
         "pending",
@@ -149,7 +147,7 @@ def test_state_manager_approve_and_apply_user_change(tmp_path: Path) -> None:
 def test_state_manager_rejects_pending_ai_change(tmp_path: Path) -> None:
     manager = StateManager(_record(tmp_path), state_logger=CapturingStateLogger())
     change = manager.propose_change(
-        "acquisition.result.status",
+        "acquisition.status",
         "failed",
         origin="ai",
         proposer="agent",
@@ -174,7 +172,7 @@ def test_state_manager_trusted_workflow_bypass_is_disabled_by_default(
 ) -> None:
     manager = StateManager(_record(tmp_path), state_logger=CapturingStateLogger())
     change = manager.propose_change(
-        "acquisition.result.status",
+        "acquisition.status",
         "completed",
         origin="trusted_workflow",
         proposer="serval_workflow",
@@ -193,7 +191,7 @@ def test_state_manager_applies_trusted_workflow_change_when_bypass_is_enabled(
         state_logger=CapturingStateLogger(),
     )
     change = manager.propose_change(
-        "acquisition.result.status",
+        "acquisition.status",
         "completed",
         origin="trusted_workflow",
         proposer="serval_workflow",
@@ -204,7 +202,7 @@ def test_state_manager_applies_trusted_workflow_change_when_bypass_is_enabled(
     assert applied.status == "applied"
     assert applied.approval_bypassed is True
     assert applied.approved_by is None
-    assert manager.get_value("acquisition.result.status") == "completed"
+    assert manager.get_value("acquisition.status") == "completed"
 
 
 def test_state_manager_can_initialize_optional_top_level_acquisition(
@@ -219,8 +217,8 @@ def test_state_manager_can_initialize_optional_top_level_acquisition(
         "acquisition",
         {
             "mode": "serval",
-            "serval_environment": {"serval_url": "http://localhost:8080"},
-            "result": {"status": "planned"},
+            "config": {"serval": {"url": "http://localhost:8080"}},
+            "status": "planned",
         },
         origin="trusted_workflow",
         proposer="serval_workflow",
@@ -231,7 +229,7 @@ def test_state_manager_can_initialize_optional_top_level_acquisition(
     acquisition = manager.get_value("acquisition")
     assert acquisition is not None
     assert acquisition.mode == "serval"
-    assert acquisition.result.status == "planned"
+    assert acquisition.status == "planned"
 
 
 def test_state_manager_rejects_invalid_paths(tmp_path: Path) -> None:
@@ -248,7 +246,7 @@ def test_state_manager_rejects_invalid_paths(tmp_path: Path) -> None:
             _record(tmp_path, acquisition=False),
             state_logger=CapturingStateLogger(),
         ).propose_change(
-            "acquisition.result.status",
+            "acquisition.status",
             "completed",
             origin="trusted_workflow",
             proposer="serval_workflow",
@@ -351,7 +349,7 @@ def test_state_manager_change_accessors_return_defensive_copies(
 ) -> None:
     manager = StateManager(_record(tmp_path), state_logger=CapturingStateLogger())
     change = manager.propose_change(
-        "acquisition.result.status",
+        "acquisition.status",
         "completed",
         origin="user",
         proposer="operator",

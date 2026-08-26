@@ -31,8 +31,8 @@ Whether a field is optional or required depends on what the user has selected:
   the environment.
 - Once a mode model is created (such as `HermesTpx3AnalysisState` or
   `ServalAcquisitionState`), the fields that mode needs to run are required on
-  that model. Fields filled in progressively during a run — applied
-  configuration, detector snapshots, and results — stay optional.
+  that model. Fields filled in progressively during a run — the latest
+  dashboard, detector snapshots, and results — stay optional.
 
 ## How model is used to keep a record of acquisition and analysis
 The initial `HermesRecord` is recorded by the state logger. Every later durable
@@ -189,8 +189,9 @@ Expected model groups and their responsibilities include:
 - MeasurementInfo: metadata about the measurement, including measurement ID, run number, beamline, proposal ID, image intensifier serial number, scintillator serial number, sample name, operator name, log notes, and any other relevant metadata fields that are important for provenance and record-keeping.
 - RuntimeEnvironment: information about the runtime environment used for the measurement, including directory state for the working directory, run directory, raw data directory, analysis directory, log directory, preview directory, and config file, plus tool versions and the log level. Binary paths live on the analysis stage that needs them, not here.
 - DetectorSnapshot: TPX3Cam hardware identity, chip identity, layout, health, and applied detector configuration read from detector-specific endpoints.
-- AcquisitionState: optional requested settings, applied settings, status, and
-  output files for SERVAL, PyMEPix, or MCP2Hist acquisition.
+- AcquisitionState: the loaded acquisition config plus run status, dashboard and
+  detector snapshots, destination, calibration, and output files. Only SERVAL is
+  modeled today.
 - AnalysisState: optional input files, settings, status, output directories, and
   summary files for EMPIR or `hermes_tpx3_spidr` analysis.
 
@@ -466,29 +467,61 @@ AcquisitionState
 ```
 
 Depending on the mode, the AcquisitionState may include different fields. For
-example, if the mode is `serval`, it may include fields for the SERVAL backend
-session, requested and applied acquisition configuration, detector snapshots, and
-measurement results:
+`serval`, the state holds one `config` loaded from the config file plus the
+fields HERMES fills in as the run progresses: the latest dashboard, the detector
+snapshots taken before and after, the destination that was configured, the
+calibration files that were saved and loaded, and the measurement result.
 
 ##### ServalAcquisitionState ####
-```python 
+```python
 serval
-  serval_environment: ServalEnvironment
-  requested_plan: ServalAcquisitionPlan | None
-  requested_detector_config: DetectorConfiguration | None
-  requested_destination_configuration: DestinationConfiguration | None
-  applied_detector_config: DetectorConfiguration | None
-  applied_destination_configuration: DestinationConfiguration | None
+  config: ServalAcquisitionConfig
+  status: planned | configured | running | completed | failed | stopped | unknown
+  dashboard: ServalDashboard | None
   initial_detector_snapshot: DetectorSnapshot | None
   final_detector_snapshot: DetectorSnapshot | None
+  destination: DestinationConfiguration | None
   calibration: CalibrationState | None
   result: ServalAcquisitionResult | None
 
-ServalEnvironment
-  serval_url: str
+ServalAcquisitionConfig
+  serval: ServalServer
+  calibration_files: CalibrationFiles | None
+  detector_config: DetectorConfiguration | None
+  detector_config_file: Path | None
+  run_timing: ServalRunTiming | None
+
+ServalServer
+  url: str
+  program_path: Path | None   # the SERVAL .jar HERMES launches with `java -jar`
   version: str | None
-  dashboard: ServalDashboard | None
+
+CalibrationFiles
+  pixel_config_file: Path   # source .bpc
+  dacs_file: Path           # source .dacs
+
+ServalRunTiming
+  trigger_mode: DetectorTriggerMode | None
+  exposure_time_s: float | None
+  trigger_period_s: float | None
+  trigger_count: int | None   # maps to the detector config's n_triggers
+
+ServalAcquisitionResult
+  started_at: datetime | None
+  completed_at: datetime | None
+  stop_reason: str | None
+  frames: int | None
+  dropped_frames: int | None
+  warnings: list[str]
+  errors: list[str]
+  output_files: list[FileReference]
 ```
+
+The detector configuration comes either inline as `detector_config` or from a
+JSON file named by `detector_config_file`; when both are given the file wins.
+`run_timing` then overrides the matching detector-config fields. There is no
+separate "requested" and "applied" configuration: `config` is what HERMES sends,
+and the detector snapshots record what SERVAL reports back.
 
 CalibrationState should capture the HERMES-side calibration files and the
 SERVAL-side `/config/load` results. SERVAL loads TPX3Cam
@@ -620,8 +653,8 @@ round-tripping and validation. Destination `Base` values should remain URI-like
 strings because SERVAL accepts `file:`, `http:`, and `tcp:` destinations that are
 not all local HERMES filesystem paths.
 
-NOTE: for `ServalEnvironment` fields and submodels please reference
-`20231023_ASIServer_TPX3_manual_V3.3.pdf`.
+NOTE: for `ServalServer`, dashboard, and destination fields and submodels please
+reference `20231023_ASIServer_TPX3_manual_V3.3.pdf`.
 
 #### AnalysisState ####
 AnalysisState should record the files, configuration, status, and results for the

@@ -1,0 +1,30 @@
+measurement_info:
+  measurement_id: example-serval-destination-calibration
+  run: destination-calibration
+
+environment:
+  working_directory: data/examples/acquisition/serval/destination-calibration
+  # Raw .tpx3 files SERVAL writes go here (under the working directory). The
+  # SoPhy calibration files are copied into a "config" folder alongside it.
+  raw_data_directory: raw
+  log_directory: logs
+
+acquisition:
+  mode: serval
+  config:
+    serval:
+      url: http://localhost:8080
+      # Set this to the SERVAL .jar on your machine.
+      program_path: /path/to/serval-3.3.0.jar
+      version: "3.3.0"
+      # Point SERVAL at your camera by TCP address (SERVAL 3.0+). The default
+      # SPIDR port is 50000. Set tcp_ip to your camera's address (on the 10 GB
+      # link this is typically 192.168.100.10).
+      tcp_ip: 192.168.100.10
+      tcp_port: 50000
+    # SoPhy-generated calibration for the connected chip. HERMES copies these
+    # into the run's config folder, records their SHA-256, and loads them into
+    # SERVAL. Point these at your own SoPhy output.
+    calibration_files:
+      pixel_config_file: /path/to/settings.bpc
+      dacs_file: /path/to/settings.bpc.dacs
