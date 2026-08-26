@@ -19,6 +19,11 @@ no prebuilt binaries: the install compiles them with the compiler and libraries
 your environment provides and places them on `PATH`, so the Python workflow
 finds them by name.
 
+HERMES also ships a default time-walk calibration into the environment's
+`share/hermes/` folder, so an installed HERMES has one to fall back on. In a
+photon-reconstruction config, set `timewalk_calibration_file: default` to use it,
+a path to use your own, or leave it unset for no correction.
+
 ## Use HERMES in your own pixi project
 
 Add HERMES as a git dependency. Your project must also provide the C++ build
