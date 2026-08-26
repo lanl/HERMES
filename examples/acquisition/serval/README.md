@@ -1,65 +1,26 @@
-# SERVAL server control example (stage 0)
+# SERVAL acquisition examples
 
-This example launches the SERVAL server from the jar named in the config, waits
-until it answers, prints its software version, and shuts it back down. HERMES
-talks only to SERVAL over HTTP; SERVAL talks to the camera. No detector reads or
-measurements happen yet — that is later stages.
+These examples drive a TPX3Cam through the ASI SERVAL server. HERMES launches
+and talks to SERVAL over HTTP; SERVAL talks to the camera. Each example builds on
+the one before it, from just starting the server up to taking a real measurement.
 
-## Set the jar path
+Each example lives in its own folder with a runnable script, a YAML config, and
+its own README:
 
-SERVAL is a `.jar` that runs on this machine. Edit `config.yaml` and set
-`acquisition.config.serval.program_path` to the SERVAL jar on your machine
-(and confirm `java` is on your `PATH`):
+| Example | What it does |
+| --- | --- |
+| [`server_control/`](server_control/) | Launch SERVAL, wait until it answers, print its version, and shut it down. No camera reads yet. |
+| [`connect_snapshot/`](connect_snapshot/) | Also wait for the camera to connect, then read and print the detector's info, health, and layout. Still read-only. |
+| [`destination_calibration/`](destination_calibration/) | Choose where SERVAL writes raw `.tpx3` files, then load the SoPhy calibration files into SERVAL. |
+| [`measurement/`](measurement/) | Take a real measurement: run short exposures and write raw `.tpx3` files to disk. |
 
-```yaml
-acquisition:
-  mode: serval
-  config:
-    serval:
-      url: http://localhost:8080
-      program_path: /path/to/serval-3.3.0.jar
-      version: "3.3.0"
-```
+Start with `server_control/` and work down the list.
 
-## Run it
+## Before you run any example
 
-```bash
-pixi run python examples/acquisition/serval/run_serval_control.py
-```
-
-Pass another HERMES YAML file as the optional argument to use your own config:
-
-```bash
-pixi run python examples/acquisition/serval/run_serval_control.py /path/to/config.yaml
-```
-
-## Output
-
-The run writes ignored development output under the configured working
-directory:
-
-```text
-data/examples/acquisition/serval/stage0/
-└── logs/
-    ├── serval-server.log        # SERVAL's own stdout and stderr
-    └── acquisition.serval.jsonl # HERMES launch / ready / shutdown events
-```
-
-Confirm after a run: the version prints, both log files exist, and the SERVAL
-process is gone.
-
-# Connect + detector snapshot example (stage 1)
-
-`run_connect_snapshot.py` goes one step further: it launches SERVAL, waits until
-it answers, waits until SERVAL has connected to the camera, then reads the
-detector's info, health, layout, and configuration and prints a short summary
-before shutting SERVAL down. This is still read-only — no measurement is taken.
-
-## Point SERVAL at your camera
-
-Launching SERVAL alone does not connect the camera; SERVAL must be told the
-camera's address. Edit `connect_snapshot_config.yaml` and set both the jar path
-and the camera's TCP address:
+Every config points at a SERVAL `.jar` on your machine, and every example past
+`server_control/` also needs the camera's address. Set these in each folder's
+YAML config:
 
 ```yaml
 acquisition:
@@ -67,29 +28,19 @@ acquisition:
   config:
     serval:
       url: http://localhost:8080
-      program_path: /path/to/serval-3.3.0.jar
+      program_path: /path/to/serval-3.3.0.jar   # the SERVAL .jar on your machine
       version: "3.3.0"
-      tcp_ip: 192.168.100.10   # your camera's address (default SPIDR port 50000)
-      tcp_port: 50000
+      tcp_ip: 192.168.100.10                     # your camera's address
+      tcp_port: 50000                            # default SPIDR port
 ```
 
-On the 10 GB link the camera is typically at `192.168.100.10`; confirm it is
-reachable first with `ping 192.168.100.10`. SERVAL answers within a second, but
-the camera handshake takes a few seconds more, so the example waits for a
-connected detector before reading it.
-
-## Run it
-
-```bash
-pixi run python examples/acquisition/serval/run_connect_snapshot.py
-```
-
-Pass another HERMES YAML file as the optional argument to use your own config.
+Confirm `java` is on your `PATH`, and that the camera answers `ping 192.168.100.10`
+before running the examples that read or measure. SERVAL answers within a second,
+but the camera handshake takes a few seconds more.
 
 ## Output
 
-Prints the software version, then a snapshot: interface, chip board and chip
-names, temperatures, bias voltage, humidity, and detector size. The same
-`serval-server.log` and `acquisition.serval.jsonl` are written under the
-configured working directory, now also recording the detector-connected event
-and each `/detector/*` read.
+Every example writes ignored development output under the `working_directory` set
+in its config, always including a `logs/` folder with SERVAL's own
+`serval-server.log` and HERMES's `acquisition.serval.jsonl` event log. See each
+folder's README for the exact output it produces.
