@@ -29,12 +29,16 @@ def _build_launch_command(serval: ServalServer) -> list[str]:
     autodiscovers the camera. HERMES has no field for the older `spidrNet`
     address form yet; add one here if a 2.x camera ever needs an explicit
     address.
+
+    SERVAL parses these flags in the `--flag=value` form only; the space-
+    separated form (`--tcpIp 192.168.100.10`) makes SERVAL report the argument
+    as missing and refuse to open its HTTP port.
     """
     command = ["java", "-jar", str(serval.program_path)]
     if serval.tcp_ip is not None:
-        command += ["--tcpIp", serval.tcp_ip]
+        command.append(f"--tcpIp={serval.tcp_ip}")
         if serval.tcp_port is not None:
-            command += ["--tcpPort", str(serval.tcp_port)]
+            command.append(f"--tcpPort={serval.tcp_port}")
     return command
 
 
@@ -121,6 +125,52 @@ def wait_until_ready(client: ServalClient, *, timeout_s: float = 30.0) -> str | 
             _SERVER_LOGGER.error(
                 msg,
                 event_type="acquisition.serval.server_ready_timeout",
+                url=client.base_url,
+                timeout_s=timeout_s,
+            )
+            raise ServalServerError(msg)
+
+        time.sleep(_POLL_INTERVAL_S)
+
+
+def wait_until_detector_connected(
+    client: ServalClient,
+    *,
+    timeout_s: float = 30.0,
+) -> None:
+    """Poll `GET /dashboard` until SERVAL reports a connected detector.
+
+    A running SERVAL answers `/dashboard` within a second, but the camera
+    handshake over the SPIDR link takes several seconds more. Until it
+    finishes the dashboard's `Detector` is null and every `/detector/*` read
+    returns 409 "Not connected". This waits for `Detector` to appear so callers
+    read the detector only once the camera is actually connected. Raises on
+    timeout.
+    """
+    deadline = time.monotonic() + timeout_s
+    while True:
+        try:
+            detector = client.get_json("/dashboard").get("Detector")
+        except ServalClientError:
+            detector = None
+
+        if detector is not None:
+            _SERVER_LOGGER.info(
+                "SERVAL reports a connected detector ({detector_type})",
+                event_type="acquisition.serval.detector_connected",
+                detector_type=detector.get("DetectorType"),
+                url=client.base_url,
+            )
+            return
+
+        if time.monotonic() >= deadline:
+            msg = (
+                f"SERVAL did not report a connected detector within "
+                f"{timeout_s} s at {client.base_url}"
+            )
+            _SERVER_LOGGER.error(
+                msg,
+                event_type="acquisition.serval.detector_connect_timeout",
                 url=client.base_url,
                 timeout_s=timeout_s,
             )

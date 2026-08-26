@@ -1,6 +1,8 @@
 # Stage 1 — Read-only connect and snapshot
 
-**Status:** Not started (needs stage 0)
+**Status:** In progress — client reads and a connect + snapshot example work
+against the live camera (2026-08-25). Still to do: `get_destination`, the
+`run.py` run function, workflow wiring, and saving the snapshot into the record.
 
 **Goal:** With SERVAL running, read the server and detector state and record it in
 the HERMES record. This is the first stage that talks to the camera, and it only
@@ -58,4 +60,39 @@ path from `config.yaml` to a saved record works against real hardware, safely.
 
 ## Notes / findings
 
-(update as we build and test)
+- **Launching SERVAL alone does not connect the camera.** With no camera-address
+  flag, `/dashboard` reports `Detector: null` and every `/detector/*` read
+  returns 409 "Not connected. Please connect to a detector." SERVAL must be told
+  the camera address at launch (or autodiscover it over a correctly-configured
+  interface). On this Mac autodiscovery did not find the camera, so we pass the
+  address explicitly.
+- **Launch flags must use the `--flag=value` form.** `--tcpIp=192.168.100.10`
+  works; the space-separated `--tcpIp 192.168.100.10` makes SERVAL log
+  "Argument to 'tcpIp' is not provided." and never open its HTTP port. Fixed
+  `_build_launch_command` (stage 0) to emit the equals form; tests updated.
+- **The camera handshake takes several seconds after the HTTP server is up.**
+  SERVAL answers `/dashboard` within ~1 s, but `Detector` stays null for ~6 s
+  while the SPIDR link comes up. Added `wait_until_detector_connected` (polls
+  `/dashboard` until `Detector` is non-null) so reads only run once the camera
+  is connected. A "Connection to …:50001 failed" INFO line in SERVAL's own log
+  during startup is non-fatal — the detector still enumerates over port 50000.
+- **This machine's camera:** en10 is `192.168.100.1/24` (10 GB link, mtu 9000),
+  the SPIDR/camera is at `192.168.100.10:50000`. `/detector/info` reports
+  chipboard `2000164`, one active chip `W0062_B09`.
+- **Read models validated cleanly under the strict schema on the real 3.3.0
+  server** — `/dashboard` and all four `/detector/*` responses parsed with no
+  extra fields. So the planned `extra="ignore"` relaxation was **deferred**: on
+  this target it would guard against drift that does not exist, and the global
+  rule is to keep it simple and not add speculative tolerance. Revisit if a 2.x
+  camera or a drifting minor version is ever read; `DetectorConfiguration` stays
+  strict regardless (it is user input).
+- **Done so far:** client read methods `get_detector_info/health/layout/config`
+  and `get_detector_snapshot` (reads all four into one `DetectorSnapshot`);
+  `wait_until_detector_connected`; the example
+  `examples/acquisition/serval/run_connect_snapshot.py` (+
+  `connect_snapshot_config.yaml`) which launches SERVAL, waits for the detector,
+  prints a snapshot, and shuts down. Verified live: connects, prints the
+  snapshot, clean shutdown (exit 0); `acquisition.serval.jsonl` records the
+  detector-connected event and one read per `/detector/*` endpoint. Unit tests
+  cover the new client methods (incl. the 409 not-connected case) and the
+  detector-connected poll (retry + timeout).

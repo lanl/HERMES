@@ -35,6 +35,87 @@ def test_get_dashboard_parses_server_answer() -> None:
     assert dashboard.measurement.status == "DA_IDLE"
 
 
+# Real /detector/* answers from a connected SERVAL 3.3.0 server, trimmed to
+# the fields the models read. Kept together so the snapshot test can serve all
+# four endpoints from one place.
+_DETECTOR_INFO = {
+    "IfaceName": "Spidr",
+    "NumberOfChips": 1,
+    "Boards": [
+        {
+            "ChipboardId": "2000164",
+            "IpAddress": "192.168.100.10",
+            "Chips": [{"Index": 0, "Id": 16018, "Name": "W0062_B09"}],
+        }
+    ],
+}
+_DETECTOR_HEALTH = {
+    "LocalTemperature": 33.0,
+    "FPGATemperature": 41.5,
+    "ChipTemperatures": [56, 0, 0, 0],
+    "BiasVoltage": 12.6,
+    "Humidity": 21,
+}
+_DETECTOR_LAYOUT = {
+    "DetectorOrientation": "UP",
+    "Original": {
+        "Width": 256,
+        "Height": 256,
+        "Chips": [{"Chip": 0, "X": 0, "Y": 0, "Orientation": "LtRBtT"}],
+    },
+}
+_DETECTOR_CONFIG = {"BiasVoltage": 13, "BiasEnabled": True, "TriggerMode": "CONTINUOUS"}
+
+
+def test_get_detector_info_parses_boards_and_chips() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/detector/info"
+        return httpx.Response(200, json=_DETECTOR_INFO)
+
+    with _client_with_handler(handler) as client:
+        info = client.get_detector_info()
+
+    assert info.iface_name == "Spidr"
+    assert info.boards[0].chipboard_id == "2000164"
+    assert info.boards[0].chips[0].name == "W0062_B09"
+
+
+def test_get_detector_snapshot_reads_all_four_endpoints() -> None:
+    bodies = {
+        "/detector/info": _DETECTOR_INFO,
+        "/detector/health": _DETECTOR_HEALTH,
+        "/detector/layout": _DETECTOR_LAYOUT,
+        "/detector/config": _DETECTOR_CONFIG,
+    }
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.url.path)
+        return httpx.Response(200, json=bodies[request.url.path])
+
+    with _client_with_handler(handler) as client:
+        snapshot = client.get_detector_snapshot()
+
+    assert sorted(seen) == sorted(bodies)
+    assert snapshot.info is not None
+    assert snapshot.health is not None
+    assert snapshot.health.bias_voltage_v == 12.6
+    assert snapshot.layout is not None
+    assert snapshot.layout.original is not None
+    assert snapshot.layout.original.width == 256
+    assert snapshot.configuration is not None
+    assert snapshot.configuration.trigger_mode == "CONTINUOUS"
+
+
+def test_get_detector_snapshot_raises_when_not_connected() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(409, text="Not connected. Please connect to a detector.")
+
+    with _client_with_handler(handler) as client:  # noqa: SIM117
+        with pytest.raises(ServalClientError, match="409"):
+            client.get_detector_snapshot()
+
+
 def test_get_json_returns_decoded_body() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={"ok": True})

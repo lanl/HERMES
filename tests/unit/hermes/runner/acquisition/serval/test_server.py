@@ -12,6 +12,7 @@ from hermes.runner.acquisition.serval.server import (
     _build_launch_command,
     start_serval,
     stop_serval,
+    wait_until_detector_connected,
     wait_until_ready,
 )
 from hermes.state.models.acquisition.serval import ServalServer
@@ -31,7 +32,7 @@ JAR = "/opt/serval/serv.jar"
                 tcp_ip="192.168.100.1",
                 tcp_port=50000,
             ),
-            ["--tcpIp", "192.168.100.1", "--tcpPort", "50000"],
+            ["--tcpIp=192.168.100.1", "--tcpPort=50000"],
         ),
         (
             ServalServer(
@@ -40,7 +41,7 @@ JAR = "/opt/serval/serv.jar"
                 version="3.3.0",
                 tcp_ip="192.168.100.1",
             ),
-            ["--tcpIp", "192.168.100.1"],
+            ["--tcpIp=192.168.100.1"],
         ),
         (
             ServalServer(
@@ -56,7 +57,7 @@ JAR = "/opt/serval/serv.jar"
                 program_path=JAR,
                 tcp_ip="10.0.0.5",
             ),
-            ["--tcpIp", "10.0.0.5"],
+            ["--tcpIp=10.0.0.5"],
         ),
     ],
 )
@@ -149,6 +150,42 @@ def test_wait_until_ready_raises_on_timeout() -> None:
     client = _FakeReadyClient(ready_after=1_000_000)
     with pytest.raises(ServalServerError, match="did not become ready"):
         wait_until_ready(client, timeout_s=0.0)
+
+
+class _FakeDetectorClient:
+    """Answers /dashboard with a null Detector until it has connected."""
+
+    def __init__(self, connected_after: int) -> None:
+        self.base_url = "http://serval.test"
+        self._attempts = 0
+        self._connected_after = connected_after
+
+    def get_json(self, path: str) -> dict:
+        assert path == "/dashboard"
+        self._attempts += 1
+        detector = (
+            {"DetectorType": "Tpx3"}
+            if self._attempts > self._connected_after
+            else None
+        )
+        return {"Server": {"SoftwareVersion": "3.3.0"}, "Detector": detector}
+
+
+def test_wait_until_detector_connected_returns_after_handshake(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(server_module.time, "sleep", lambda _seconds: None)
+    client = _FakeDetectorClient(connected_after=3)
+
+    wait_until_detector_connected(client, timeout_s=5.0)
+
+    assert client._attempts == 4
+
+
+def test_wait_until_detector_connected_raises_on_timeout() -> None:
+    client = _FakeDetectorClient(connected_after=1_000_000)
+    with pytest.raises(ServalServerError, match="did not report a connected detector"):
+        wait_until_detector_connected(client, timeout_s=0.0)
 
 
 class _FakeProcess:
