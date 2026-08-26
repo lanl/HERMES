@@ -4,6 +4,10 @@ import httpx
 import pytest
 
 from hermes.runner.acquisition.serval.client import ServalClient, ServalClientError
+from hermes.state.models.acquisition.serval import (
+    DestinationConfiguration,
+    ServalRawDestination,
+)
 
 
 def _client_with_handler(handler) -> ServalClient:
@@ -124,6 +128,60 @@ def test_get_destination_parses_server_answer() -> None:
     assert destination.raw[0].base == "file:///data"
     assert destination.raw[0].file_pattern == "run_%d"
     assert destination.image == []
+
+
+def test_put_destination_sends_serval_json() -> None:
+    seen: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["method"] = request.method
+        seen["path"] = request.url.path
+        seen["content"] = request.content
+        return httpx.Response(200, text="OK")
+
+    destination = DestinationConfiguration(
+        raw=[
+            ServalRawDestination(
+                base="file:///data/raw",
+                file_pattern="run_",
+                split_strategy="FRAME",
+            )
+        ]
+    )
+    with _client_with_handler(handler) as client:
+        client.put_destination(destination)
+
+    assert seen["method"] == "PUT"
+    assert seen["path"] == "/server/destination"
+    body = seen["content"]
+    assert b'"Raw"' in body  # type: ignore[operator]
+    assert b'"Base"' in body  # type: ignore[operator]
+    assert b'"SplitStrategy"' in body  # type: ignore[operator]
+
+
+def test_load_pixel_config_and_dacs_hit_config_load() -> None:
+    seen: list[tuple[str, str, str]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(
+            (
+                request.url.path,
+                request.url.params["format"],
+                request.url.params["file"],
+            )
+        )
+        return httpx.Response(200, text="Config loaded")
+
+    with _client_with_handler(handler) as client:
+        pixel = client.load_pixel_config("/abs/settings.bpc")
+        dacs = client.load_dacs("/abs/settings.bpc.dacs")
+
+    assert pixel.status_code == 200
+    assert dacs.text == "Config loaded"
+    assert seen == [
+        ("/config/load", "pixelconfig", "/abs/settings.bpc"),
+        ("/config/load", "dacs", "/abs/settings.bpc.dacs"),
+    ]
 
 
 def test_get_detector_snapshot_raises_when_not_connected() -> None:

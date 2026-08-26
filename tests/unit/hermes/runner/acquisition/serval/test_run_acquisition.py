@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import httpx
 import pytest
 
 from hermes.runner.acquisition.serval import run as run_module
@@ -12,6 +13,7 @@ from hermes.runner.acquisition.serval.run import (
 )
 from hermes.runner.acquisition.serval.server import ServalServerError
 from hermes.state.models.acquisition.serval import (
+    CalibrationFiles,
     DestinationConfiguration,
     ServalAcquisitionConfig,
     ServalAcquisitionState,
@@ -37,9 +39,12 @@ from hermes.state_service.state_manager import StateManager
 class _FakeAcquisitionClient:
     """A SERVAL client that answers reads from fixed in-memory values."""
 
-    def __init__(self, *, server_up: bool) -> None:
+    def __init__(self, *, server_up: bool, measurement_status: str = "DA_IDLE") -> None:
         self.base_url = "http://serval.test"
         self._server_up = server_up
+        self._measurement_status = measurement_status
+        self._put_destination: DestinationConfiguration | None = None
+        self.loaded: list[tuple[str, str]] = []
         self.closed = False
 
     def get(self, path: str):
@@ -50,7 +55,7 @@ class _FakeAcquisitionClient:
     def get_dashboard(self) -> ServalDashboard:
         return ServalDashboard(
             server=ServalDashboardServer(software_version="3.3.0"),
-            measurement=ServalDashboardMeasurement(status="DA_IDLE"),
+            measurement=ServalDashboardMeasurement(status=self._measurement_status),
             detector=ServalDashboardDetector(detector_type="Tpx3"),
         )
 
@@ -60,28 +65,52 @@ class _FakeAcquisitionClient:
             health=DetectorHealth(bias_voltage_v=12.6),
         )
 
+    def put_destination(self, destination: DestinationConfiguration) -> None:
+        self._put_destination = destination
+
     def get_destination(self) -> DestinationConfiguration:
+        # Echo a destination that was set; otherwise a fixed pre-existing one.
+        if self._put_destination is not None:
+            return self._put_destination
         return DestinationConfiguration(
             raw=[ServalRawDestination(base="file:///data")]
         )
+
+    def load_pixel_config(self, server_file_path: str) -> httpx.Response:
+        self.loaded.append(("pixelconfig", server_file_path))
+        return httpx.Response(200, text="Config loaded")
+
+    def load_dacs(self, server_file_path: str) -> httpx.Response:
+        self.loaded.append(("dacs", server_file_path))
+        return httpx.Response(200, text="Config loaded")
 
     def close(self) -> None:
         self.closed = True
 
 
-def _state_manager(tmp_path: Path, *, program_path: Path | None = None) -> StateManager:
+def _state_manager(
+    tmp_path: Path,
+    *,
+    program_path: Path | None = None,
+    raw_data_directory: Path | None = None,
+    calibration_files: CalibrationFiles | None = None,
+) -> StateManager:
+    environment_kwargs: dict[str, object] = {
+        "working_directory": tmp_path,
+        "analysis_directory": tmp_path / "analysis",
+    }
+    if raw_data_directory is not None:
+        environment_kwargs["raw_data_directory"] = raw_data_directory
     record = HermesRecord(
         measurement_info=MeasurementInfo(measurement_id="run-test", run="test-run"),
-        environment=RuntimeEnvironment(
-            working_directory=tmp_path,
-            analysis_directory=tmp_path / "analysis",
-        ),
+        environment=RuntimeEnvironment(**environment_kwargs),
         acquisition=ServalAcquisitionState(
             config=ServalAcquisitionConfig(
                 serval=ServalServer(
                     url="http://localhost:8080",
                     program_path=program_path,
                 ),
+                calibration_files=calibration_files,
             ),
         ),
     )
@@ -89,6 +118,15 @@ def _state_manager(tmp_path: Path, *, program_path: Path | None = None) -> State
         record,
         config=StateServiceConfig(allow_trusted_workflow_bypass=True),
     )
+
+
+def _write_calibration_files(source_dir: Path) -> CalibrationFiles:
+    source_dir.mkdir(parents=True, exist_ok=True)
+    bpc = source_dir / "settings.bpc"
+    dacs = source_dir / "settings.bpc.dacs"
+    bpc.write_bytes(b"pixel-config-bytes")
+    dacs.write_text("dac-values")
+    return CalibrationFiles(pixel_config_file=bpc, dacs_file=dacs)
 
 
 def _patch_client(monkeypatch: pytest.MonkeyPatch, client: _FakeAcquisitionClient) -> None:
@@ -191,6 +229,57 @@ def test_raises_when_server_down_and_no_program_path(
     with pytest.raises(ServalServerError, match="no SERVAL server answers"):
         run_serval_acquisition(state_manager)
 
+    assert client.closed is True
+
+
+def test_configures_destination_and_calibration(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _FakeAcquisitionClient(server_up=True)
+    _patch_client(monkeypatch, client)
+    monkeypatch.setattr(run_module, "start_serval", lambda *_a, **_k: None)
+    monkeypatch.setattr(run_module, "stop_serval", lambda *_a, **_k: None)
+
+    raw_dir = tmp_path / "raw"
+    calibration_files = _write_calibration_files(tmp_path / "sophy")
+    state_manager = _state_manager(
+        tmp_path,
+        raw_data_directory=raw_dir,
+        calibration_files=calibration_files,
+    )
+    run_serval_acquisition(state_manager)
+
+    acquisition = state_manager.get_state().acquisition
+    # The destination we PUT points at the raw data directory.
+    assert acquisition.destination.raw[0].base == raw_dir.as_uri()
+    # Calibration files were saved under the run's config directory and loaded.
+    assert (tmp_path / "config" / "settings.bpc").is_file()
+    assert acquisition.calibration.pixel_config_file.path == Path("config/settings.bpc")
+    assert acquisition.calibration.dacs_load.http_status_code == 200
+    assert client.loaded == [
+        ("pixelconfig", str(tmp_path / "config" / "settings.bpc")),
+        ("dacs", str(tmp_path / "config" / "settings.bpc.dacs")),
+    ]
+    # Configured, not completed: no measurement was taken.
+    assert acquisition.status == "configured"
+
+
+def test_preflight_refuses_to_configure_during_a_measurement(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _FakeAcquisitionClient(server_up=True, measurement_status="DA_RECORDING")
+    _patch_client(monkeypatch, client)
+    monkeypatch.setattr(run_module, "start_serval", lambda *_a, **_k: None)
+    monkeypatch.setattr(run_module, "stop_serval", lambda *_a, **_k: None)
+
+    state_manager = _state_manager(tmp_path, raw_data_directory=tmp_path / "raw")
+    with pytest.raises(ServalAcquisitionError, match="measurement is in progress"):
+        run_serval_acquisition(state_manager)
+
+    # It refused before writing a destination.
+    assert client._put_destination is None
     assert client.closed is True
 
 

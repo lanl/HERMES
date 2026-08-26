@@ -51,10 +51,17 @@ class ServalClient:
     def close(self) -> None:
         self._client.close()
 
-    def _send(self, method: str, path: str, *, json: Any | None = None) -> httpx.Response:
+    def _send(
+        self,
+        method: str,
+        path: str,
+        *,
+        json: Any | None = None,
+        params: dict[str, Any] | None = None,
+    ) -> httpx.Response:
         start = time.monotonic()
         try:
-            response = self._client.request(method, path, json=json)
+            response = self._client.request(method, path, json=json, params=params)
         except httpx.HTTPError as error:
             elapsed_ms = round((time.monotonic() - start) * 1000, 1)
             # Logged at debug, not error: a caller that expects the server to be
@@ -88,8 +95,8 @@ class ServalClient:
             )
         return response
 
-    def get(self, path: str) -> httpx.Response:
-        return self._send("GET", path)
+    def get(self, path: str, *, params: dict[str, Any] | None = None) -> httpx.Response:
+        return self._send("GET", path, params=params)
 
     def put(self, path: str, body: Any) -> httpx.Response:
         return self._send("PUT", path, json=body)
@@ -118,6 +125,30 @@ class ServalClient:
     def get_destination(self) -> DestinationConfiguration:
         return DestinationConfiguration.model_validate(
             self.get_json("/server/destination")
+        )
+
+    def put_destination(self, destination: DestinationConfiguration) -> None:
+        """Tell SERVAL where to write, sending the destination as SERVAL JSON."""
+        self.put(
+            "/server/destination",
+            destination.model_dump(by_alias=True, exclude_none=True),
+        )
+
+    def load_pixel_config(self, server_file_path: str) -> httpx.Response:
+        """Ask SERVAL to load a `.bpc` pixel-configuration file it can reach."""
+        return self._load_config("pixelconfig", server_file_path)
+
+    def load_dacs(self, server_file_path: str) -> httpx.Response:
+        """Ask SERVAL to load a `.dacs` DAC-settings file it can reach."""
+        return self._load_config("dacs", server_file_path)
+
+    def _load_config(self, config_format: str, server_file_path: str) -> httpx.Response:
+        # Load is a GET, and the file path is resolved by the SERVAL host (here,
+        # the local machine). The response body is short free text, so callers
+        # read the raw response rather than parsed JSON.
+        return self.get(
+            "/config/load",
+            params={"format": config_format, "file": server_file_path},
         )
 
     def get_detector_snapshot(self) -> DetectorSnapshot:
