@@ -23,6 +23,44 @@ from hermes.state.state import HermesRecord
 HASH = "a" * 64
 
 
+def test_run_directory_defaults_to_run_name_when_omitted(tmp_path: Path) -> None:
+    record = HermesRecord.model_validate(
+        {
+            "measurement_info": {"measurement_id": "LC-1", "run": "ambe-run"},
+            "environment": {
+                "working_directory": str(tmp_path),
+                "raw_data_directory": "raw",
+            },
+        }
+    )
+
+    run_directory = record.environment.run_directory
+    assert run_directory.path == Path("ambe-run")
+    assert run_directory.resolved_path == (tmp_path / "ambe-run").resolve()
+    # Sub-directories nest under the derived run directory.
+    assert record.environment.raw_data_directory.resolved_path == (
+        tmp_path / "ambe-run" / "raw"
+    ).resolve()
+
+
+def test_explicit_run_directory_overrides_run_name(tmp_path: Path) -> None:
+    record = HermesRecord.model_validate(
+        {
+            "measurement_info": {"measurement_id": "LC-1", "run": "ambe-run"},
+            "environment": {
+                "working_directory": str(tmp_path),
+                "run_directory": "explicit-dir",
+                "raw_data_directory": "raw",
+            },
+        }
+    )
+
+    assert record.environment.run_directory.path == Path("explicit-dir")
+    assert record.environment.raw_data_directory.resolved_path == (
+        tmp_path / "explicit-dir" / "raw"
+    ).resolve()
+
+
 def test_record_without_analysis_needs_no_analysis_directory(
     tmp_path: Path,
 ) -> None:

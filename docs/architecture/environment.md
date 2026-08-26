@@ -87,6 +87,12 @@ If a user provides any field explicitly, that value should be used instead of th
 default. For example, a run may use the default `run_directory` but send preview
 images to a separate fast disk by setting only `preview_directory`.
 
+When `run_directory` is omitted, it defaults to `measurement_info.run`, so the
+run name becomes a directory level under the working directory and a config need
+not repeat the name. An explicitly set `run_directory` still wins. The run name
+is used as written, so set `run_directory` yourself when the run name would make
+an awkward directory name.
+
 The model should save concrete resolved paths for every directory used by the
 run so the record is unambiguous later. The model may also record which paths
 were user-specified versus defaulted, but the first requirement is that every

@@ -136,9 +136,13 @@ environment: {}
     assert (
         loaded.environment.working_directory.resolved_path == Path.cwd().resolve()
     )
-    assert loaded.environment.run_directory.path is None
+    # With run_directory omitted it defaults to measurement_info.run, so the run
+    # name becomes a directory level under the working directory.
+    assert loaded.environment.run_directory.path == Path("test-run")
     assert loaded.environment.run_directory.required is False
-    assert loaded.environment.run_directory.resolved_path is None
+    assert loaded.environment.run_directory.resolved_path == (
+        Path.cwd() / "test-run"
+    ).resolve()
     assert loaded.environment.allow_overlapping_output_dirs is False
 
 
