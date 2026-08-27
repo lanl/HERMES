@@ -6,7 +6,9 @@ import pytest
 
 from hermes.mcp.server import (
     AnalysisConfigRequest,
+    ConfigValidationRequest,
     create_analysis_config,
+    validate_config,
 )
 from hermes.state.models.analysis.hermes_tpx3_spidr import (
     HermesTpx3AnalysisState,
@@ -166,3 +168,87 @@ def test_run_script_loads_the_config_and_runs_the_workflow(tmp_path: Path) -> No
     assert "load_hermes_record_from_yaml" in script
     assert "Workflow(record).run()" in script
     assert "hermes-config.yaml" in script
+
+
+_VALID_MINIMAL_CONFIG = """\
+measurement_info:
+  measurement_id: demo
+  run: run-1
+environment:
+  analysis_directory: analysis
+"""
+
+
+def test_validate_config_accepts_a_generated_config(tmp_path: Path) -> None:
+    _write_raw_files(tmp_path, ["only.tpx3"])
+    created = create_analysis_config(
+        AnalysisConfigRequest(
+            working_directory=tmp_path,
+            measurement_id="demo",
+            run="run-1",
+            furthest_stage="photon_reconstruction",
+        )
+    )
+
+    result = validate_config(ConfigValidationRequest(config_file=created.config_file))
+
+    assert result.valid
+    assert result.problems == []
+    assert result.stages == ["unpacking", "photon_reconstruction"]
+
+
+def test_validate_config_reports_a_schema_problem(tmp_path: Path) -> None:
+    config = tmp_path / "hermes-config.yaml"
+    config.write_text(
+        "measurement_info:\n"
+        "  measurement_id: demo\n"
+        "  run: ''\n"
+        "environment:\n"
+        "  analysis_directory: analysis\n",
+        encoding="utf-8",
+    )
+
+    result = validate_config(ConfigValidationRequest(config_file=config))
+
+    assert not result.valid
+    assert result.stages == []
+    assert any("run" in problem for problem in result.problems)
+
+
+def test_validate_config_reports_an_unknown_field(tmp_path: Path) -> None:
+    config = tmp_path / "hermes-config.yaml"
+    config.write_text(_VALID_MINIMAL_CONFIG + "bogus_field: 1\n", encoding="utf-8")
+
+    result = validate_config(ConfigValidationRequest(config_file=config))
+
+    assert not result.valid
+    assert any("bogus_field" in problem for problem in result.problems)
+
+
+def test_validate_config_reports_unparseable_yaml(tmp_path: Path) -> None:
+    config = tmp_path / "hermes-config.yaml"
+    config.write_text("foo: [1, 2", encoding="utf-8")
+
+    result = validate_config(ConfigValidationRequest(config_file=config))
+
+    assert not result.valid
+    assert any("parse" in problem.lower() for problem in result.problems)
+
+
+def test_validate_config_reports_a_non_mapping_top_level(tmp_path: Path) -> None:
+    config = tmp_path / "hermes-config.yaml"
+    config.write_text("- one\n- two\n", encoding="utf-8")
+
+    result = validate_config(ConfigValidationRequest(config_file=config))
+
+    assert not result.valid
+    assert any("top-level mapping" in problem for problem in result.problems)
+
+
+def test_validate_config_reports_a_missing_file(tmp_path: Path) -> None:
+    result = validate_config(
+        ConfigValidationRequest(config_file=tmp_path / "nope.yaml")
+    )
+
+    assert not result.valid
+    assert "config file not found" in result.problems[0]

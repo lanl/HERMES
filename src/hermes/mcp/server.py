@@ -14,9 +14,11 @@ from typing import Literal
 import yaml
 from loguru import logger
 from mcp.server.mcpserver import MCPServer
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from hermes.state.state import HermesRecord
+from hermes.state_service.shared_types import StateIOError
+from hermes.state_service.state_io import load_hermes_record_from_yaml
 
 mcp_server = MCPServer("hermes")
 
@@ -187,6 +189,96 @@ def create_analysis_config(request: AnalysisConfigRequest) -> AnalysisConfigResu
             f"{len(raw_files)} .tpx3 file(s). Run it with: "
             f"pixi run python {script_path.name}"
         ),
+    )
+
+
+class ConfigValidationRequest(BaseModel):
+    config_file: Path = Field(
+        description="Path to the HERMES config YAML to check, for example the "
+        "hermes-config.yaml written by create_analysis_config.",
+    )
+
+
+class ConfigValidationResult(BaseModel):
+    valid: bool
+    config_file: Path
+    stages: list[str]
+    problems: list[str]
+    message: str
+
+
+def _format_validation_problems(error: ValidationError) -> list[str]:
+    problems: list[str] = []
+    for item in error.errors():
+        location = ".".join(str(part) for part in item["loc"]) or "(top level)"
+        problems.append(f"{location}: {item['msg']}")
+    return problems
+
+
+def _configured_stages(record: HermesRecord) -> list[str]:
+    analysis = record.analysis
+    if analysis is None or analysis.mode != "hermes":
+        return []
+    named = (
+        ("unpacking", analysis.unpacking),
+        ("photon_reconstruction", analysis.photon_reconstruction),
+        ("event_reconstruction", analysis.event_reconstruction),
+    )
+    return [name for name, value in named if value is not None]
+
+
+@mcp_server.tool()
+def validate_config(request: ConfigValidationRequest) -> ConfigValidationResult:
+    """Check whether a HERMES config YAML loads and validates against the
+    installed HERMES's rules, reporting each problem when it does not."""
+    path = request.config_file.expanduser().resolve()
+
+    if not path.is_file():
+        problem = f"config file not found: {path}"
+        return ConfigValidationResult(
+            valid=False,
+            config_file=path,
+            stages=[],
+            problems=[problem],
+            message=problem,
+        )
+
+    try:
+        record = load_hermes_record_from_yaml(path)
+    except StateIOError as exc:
+        cause = exc.__cause__
+        if isinstance(cause, ValidationError):
+            problems = _format_validation_problems(cause)
+        else:
+            problems = [str(exc)]
+            if cause is not None:
+                problems.append(str(cause))
+        logger.bind(domain="analysis").info(
+            "config {path} is not valid: {count} problem(s)",
+            path=str(path),
+            count=len(problems),
+        )
+        return ConfigValidationResult(
+            valid=False,
+            config_file=path,
+            stages=[],
+            problems=problems,
+            message=f"Config is not valid: {len(problems)} problem(s).",
+        )
+
+    stages = _configured_stages(record)
+    logger.bind(domain="analysis").info(
+        "config {path} is valid; stages: {stages}",
+        path=str(path),
+        stages=stages or ["none"],
+    )
+    stage_text = ", ".join(stages) if stages else "no HERMES analysis stages"
+    return ConfigValidationResult(
+        valid=True,
+        config_file=path,
+        stages=stages,
+        problems=[],
+        message=f"Config is valid ({stage_text}).",
     )
 
 

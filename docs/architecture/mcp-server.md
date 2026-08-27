@@ -88,11 +88,15 @@ gold-plated.
   reconstruction, or event reconstruction — and the tool writes a `HermesRecord`
   YAML for the `.tpx3` files in the folder plus a short runnable script, filling in
   HERMES's standard defaults for the chosen stages.
-- **Later:** the rest of the analysis group (validate a config, report progress,
-  diagnose a failure) and the shared core, then the acquisition group, then the
-  setup group. The ordered "usual steps" for each area, and a short "if this
-  breaks, check that" list, ship as MCP prompts and resources so the assistant can
-  map a request onto the workflow without hard-coding it.
+- **Phase 2: validate a config.** `validate_config` loads a config YAML through
+  the installed HERMES's real rules and reports either that it is valid, with the
+  stages it would run, or a clear per-field list of what is wrong. It pairs with
+  `create_analysis_config`: generate, then check.
+- **Later:** the rest of the analysis group (report progress, diagnose a failure)
+  and the shared core, then the acquisition group, then the setup group. The
+  ordered "usual steps" for each area, and a short "if this breaks, check that"
+  list, ship as MCP prompts and resources so the assistant can map a request onto
+  the workflow without hard-coding it.
 
 ## Package structure
 

@@ -58,3 +58,13 @@ pixi run python run_hermes.py
 Each stage writes one Parquet file per signal so times from different signals
 stay on one comparable clock. For what each stage produces, see the analysis
 examples under [`examples/analysis/`](../analysis/).
+
+## Check a config
+
+You can also ask the assistant to check an existing config before you run it:
+
+> Validate my HERMES config.
+
+It reports whether the config is valid — and, when it is, the stages it would run
+— or, when it is not, a clear list of exactly what to fix (a missing field, a bad
+value, an unknown key, or unparseable YAML).
