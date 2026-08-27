@@ -169,9 +169,8 @@ def test_run_measurement_records_files_and_completes(
     # The effective config we applied carried the trigger count.
     assert client.put_config is not None
     assert client.put_config.n_triggers == 5
-    # Both raw files were gathered with sizes and the final health was read.
+    # Both raw files were gathered and the final health was read.
     assert len(outcome.result.output_files) == 2
-    assert outcome.result.output_files[0].size_bytes == 4
     assert outcome.result.output_files[0].path.name == "a.tpx3"
     assert outcome.final_snapshot.health.bias_voltage_v == 12.6
 

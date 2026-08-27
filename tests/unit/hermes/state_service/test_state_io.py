@@ -45,11 +45,7 @@ analysis:
 
 
 def _example_record(tmp_path: Path) -> HermesRecord:
-    raw_file = FileReference(
-        path=tmp_path / "run-001/data/raw.tpx3",
-        media_type="application/octet-stream",
-        created_at=NOW,
-    )
+    raw_file = FileReference(path=tmp_path / "run-001/data/raw.tpx3")
     return HermesRecord(
         measurement_info=MeasurementInfo(
             measurement_id="LC-20260505",
@@ -87,7 +83,6 @@ def test_save_and_load_hermes_record_yaml_round_trip(tmp_path: Path) -> None:
     assert loaded.acquisition.status == "completed"
     assert loaded.acquisition.result is not None
     assert loaded.acquisition.result.started_at == NOW
-    assert loaded.acquisition.result.output_files[0].created_at == NOW
     assert loaded.analysis is None
 
 
@@ -105,7 +100,9 @@ def test_save_hermes_record_yaml_is_readable_and_uses_pythonic_names(
         "resolved_path"
     ].endswith("run-001")
     assert loaded_yaml["acquisition"]["mode"] == "serval"
-    assert loaded_yaml["analysis"] is None
+    # Fields with no value are left out entirely, so an unset analysis section
+    # is absent rather than written as null.
+    assert "analysis" not in loaded_yaml
     assert "measurement_info:" in content
     assert "acquisition:" in content
     assert "&id" not in content
@@ -162,9 +159,7 @@ def test_load_partial_hermes_analysis_yaml_applies_nested_defaults(
     assert loaded.analysis.unpacking.results == []
 
     raw_file = loaded.analysis.unpacking.tpx3_files[0]
-    assert raw_file.media_type is None
-    assert raw_file.created_at is None
-    assert raw_file.description is None
+    assert raw_file.path == Path("tests/data/tpx3/Example_1kHz_5frames.tpx3")
 
 
 def test_save_partial_loaded_record_writes_defaults_and_round_trips(
@@ -179,14 +174,13 @@ def test_save_partial_loaded_record_writes_defaults_and_round_trips(
     saved_yaml = yaml.safe_load(saved_path.read_text(encoding="utf-8"))
     reloaded = load_hermes_record_from_yaml(saved_path)
 
-    assert saved_yaml["acquisition"] is None
+    # Unset fields are left out of the saved record entirely.
+    assert "acquisition" not in saved_yaml
     assert saved_yaml["analysis"]["resource_limit_percent"] == 90
-    assert saved_yaml["analysis"]["unpacking"]["program"]["version"] is None
+    assert "version" not in saved_yaml["analysis"]["unpacking"]["program"]
     assert saved_yaml["analysis"]["unpacking"]["results"] == []
-    assert (
-        saved_yaml["analysis"]["unpacking"]["tpx3_files"][0]["media_type"]
-        is None
-    )
+    raw_file = saved_yaml["analysis"]["unpacking"]["tpx3_files"][0]
+    assert set(raw_file) == {"path"}
     assert reloaded == loaded
 
 
@@ -239,6 +233,52 @@ analysis:
         (file_list_path.parent / "first.tpx3").resolve(),
         (file_list_path.parent / "second.tpx3").resolve(),
     ]
+    assert reloaded == loaded
+
+
+def test_save_writes_file_list_when_more_than_ten_inputs(
+    tmp_path: Path,
+) -> None:
+    file_list_path = tmp_path / "inputs/raw_tpx3_files.txt"
+    file_list_path.parent.mkdir()
+    raw_names = [f"raw_{index:02d}.tpx3" for index in range(11)]
+    file_list_path.write_text("\n".join(raw_names) + "\n", encoding="utf-8")
+    input_yaml_path = tmp_path / "many-files-record.yaml"
+    record_directory = tmp_path / "run"
+    final_record_path = record_directory / "HERMES_record.yaml"
+    input_yaml_path.write_text(
+        f"""
+measurement_info:
+  measurement_id: many-files-run
+  run: test-run
+environment:
+  working_directory: {tmp_path}
+  analysis_directory: analysis
+analysis:
+  mode: hermes
+  unpacking:
+    program:
+      name: tpx3-spidr-cpp
+      executable_path: hermes-tpx3-spidr
+    tpx3_files:
+      file_list: {file_list_path}
+""",
+        encoding="utf-8",
+    )
+
+    loaded = load_hermes_record_from_yaml(input_yaml_path)
+    save_hermes_record_to_yaml(loaded, final_record_path)
+    saved_yaml = yaml.safe_load(final_record_path.read_text(encoding="utf-8"))
+    reloaded = load_hermes_record_from_yaml(final_record_path)
+
+    # More than ten inputs are written to a sibling text file, referenced by the
+    # file-list form rather than listed inline in the record.
+    written_list_path = record_directory / "tpx3_files.txt"
+    assert saved_yaml["analysis"]["unpacking"]["tpx3_files"] == {
+        "file_list": str(written_list_path)
+    }
+    written_lines = written_list_path.read_text(encoding="utf-8").splitlines()
+    assert len(written_lines) == 11
     assert reloaded == loaded
 
 

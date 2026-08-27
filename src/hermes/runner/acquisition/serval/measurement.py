@@ -13,7 +13,6 @@ from __future__ import annotations
 import json
 import time
 from collections.abc import Callable
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import NamedTuple
 
@@ -344,21 +343,13 @@ def _read_final_state(
 
 
 def _collect_output_files(raw_data_directory: Path) -> list[FileReference]:
-    """Gather the raw `.tpx3` files SERVAL wrote, with sizes and timestamps."""
+    """Gather the raw `.tpx3` files SERVAL wrote."""
     if not raw_data_directory.is_dir():
         return []
-    files: list[FileReference] = []
-    for path in sorted(raw_data_directory.glob("*.tpx3")):
-        stat = path.stat()
-        files.append(
-            FileReference(
-                path=path.resolve(),
-                media_type="application/x-tpx3",
-                created_at=datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc),
-                size_bytes=stat.st_size,
-            )
-        )
-    return files
+    return [
+        FileReference(path=path.resolve())
+        for path in sorted(raw_data_directory.glob("*.tpx3"))
+    ]
 
 
 def _safe_stop(client: ServalClient, warnings: list[str]) -> None:

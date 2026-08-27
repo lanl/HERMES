@@ -151,9 +151,15 @@ from the text file's directory.
 
 Pydantic expands the text file into the existing `list[FileReference]` before
 the rest of `Tpx3Unpacking` is validated. Missing, unreadable, and empty text
-files fail validation. Duplicate raw TPX3 filename stems remain rejected. Saving
-the HERMES record always writes the expanded explicit `tpx3_files` list and does
-not save `file_list`.
+files fail validation. Duplicate raw TPX3 filename stems remain rejected.
+
+Saving the HERMES record keeps it short in two ways. Fields with no value are
+left out of the file entirely, so an unset section or optional field is absent
+rather than written as null. Any input-file list (`tpx3_files`, `pixel_files`,
+`photon_parquet_files`) with more than ten entries is written to a text file
+next to the record, one path per line, and referenced with the same
+`file_list` form; shorter lists stay inline. Loading either form gives back the
+same explicit list.
 
 ### Current required/default review
 
@@ -173,8 +179,7 @@ not save `file_list`.
   stems. A file with no recorded result has not run yet.
 - `BinaryProgram.name` and `executable_path` are required; `version` defaults to
   `None`.
-- `FileReference.path` is required; its file information fields default to
-  `None`.
+- `FileReference` holds a single required `path`.
 
 There is one current difference between the intended mode rule and the source
 models. `analysis` is a discriminated union, so a supplied analysis section
@@ -223,16 +228,13 @@ analysis state instead of creating fake acquisition state. A full
 acquisition-to-analysis workflow may populate both fields.
 
 #### FileReference ####
-When the record needs more than a file path, use a `FileReference` to store
-basic file metadata. This model is for files, not directories. Output directories
-should use a clearly named `Path` field, such as `analysis_directory`.
+Use a `FileReference` to name a file the record depends on. This model is for
+files, not directories. Output directories should use a clearly named `Path`
+field, such as `analysis_directory`.
 
 ```python
 FileReference
   path: Path
-  media_type: str | None
-  created_at: datetime | None
-  description: str | None
 ```
 
 #### Saved calibration files ####
