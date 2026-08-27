@@ -25,8 +25,7 @@ def print_summary(record: HermesRecord) -> None:
         print(f"  frames:   {result.frames} ({result.dropped_frames} dropped)")
         print(f"  raw files: {len(result.output_files)}")
         for file in result.output_files:
-            size_mb = (file.size_bytes or 0) / 1024 / 1024
-            print(f"    {file.path} ({size_mb:.1f} MiB)")
+            print(f"    {file.path}")
         for warning in result.warnings:
             print(f"  warning: {warning}")
         for error in result.errors:

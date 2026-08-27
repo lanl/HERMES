@@ -50,11 +50,6 @@ def test_checked_in_partial_yaml_loads_with_expected_defaults(
     assert initial_record.analysis.photon_reconstruction is None
     assert initial_record.analysis.unpacking.results == []
 
-    raw_tpx3_file = initial_record.analysis.unpacking.tpx3_files[0]
-    assert raw_tpx3_file.media_type is None
-    assert raw_tpx3_file.created_at is None
-    assert raw_tpx3_file.description is None
-
 
 def test_invalid_yaml_stops_before_analysis(
     tmp_path: Path,

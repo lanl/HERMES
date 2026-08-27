@@ -75,10 +75,7 @@ def test_record_without_analysis_needs_no_analysis_directory(
 
 
 def test_hermes_record_serializes_paths_datetimes_and_mode_tags(tmp_path: Path) -> None:
-    raw_file = FileReference(
-        path=tmp_path / "run-001/data/tpx3/raw.tpx3",
-        media_type="application/octet-stream",
-    )
+    raw_file = FileReference(path=tmp_path / "run-001/data/tpx3/raw.tpx3")
     record = HermesRecord(
         measurement_info=MeasurementInfo(
             measurement_id=" LC-20231023 ",

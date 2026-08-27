@@ -32,13 +32,10 @@ class StrictBaseModel(BaseModel):
 
 
 class FileReference(StrictBaseModel):
-    """Path and optional verification details for a file used by HERMES."""
+    """The path to a file used by HERMES."""
 
     path: Path
-    media_type: str | None = Field(default=None, min_length=1)
-    created_at: datetime | None = None
-    size_bytes: int | None = Field(default=None, ge=0)
-    description: str | None = None
+
 
 class BinaryProgram(StrictBaseModel):
     name: str = Field(min_length=1)
