@@ -2265,8 +2265,8 @@ packages:
   timestamp: 1782800588874
 - pypi: ./
   name: hermes
-  version: 3.3.1
-  sha256: 9bc54bffa9cbff17fed48dd373f3a2d950fae3651ef3b8d017a0f9b2856a1407
+  version: 3.3.2
+  sha256: 79f8ed81ff478695c5396e4c938cfd37d5c3ad16c9689da95d8ff68f22283c18
   requires_dist:
   - pydantic>=2.13,<3
   - loguru
