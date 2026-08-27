@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "hermes": {
+      "command": "pixi",
+      "args": ["run", "hermes-mcp"]
+    }
+  }
+}

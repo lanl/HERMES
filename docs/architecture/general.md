@@ -23,6 +23,7 @@ for each major boundary live in separate files:
 - [State Services](state-service.md)
 - [Workflows](workflows.md)
 - [Logging](logging_instructions.md)
+- [MCP Server](mcp-server.md)
 - [Open Questions](open-questions.md)
 
 ## Design Principles
