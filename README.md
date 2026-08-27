@@ -68,6 +68,38 @@ HERMES can run an EMPIR workflow if EMPIR is installed and its programs are on
 `PATH`. HERMES does not install EMPIR. If a config names an EMPIR program that
 is not on `PATH`, HERMES warns and exits instead of failing with a traceback.
 
+## Set up and run HERMES with an LLM assistant
+
+HERMES ships one small MCP server so an LLM assistant that speaks MCP — Claude
+Code, Claude Desktop, Cursor, and others — can help you configure and run an
+analysis in your own project. Installing HERMES installs it too: the `hermes-mcp`
+command lands on `PATH` in your environment, so there is nothing extra to
+install.
+
+Point your assistant at it by copying the template
+[`examples/mcp/mcp.json`](examples/mcp/mcp.json) into your project. For Claude
+Code, save it as `.mcp.json` at your project root; for Claude Desktop, add the
+same block to its config file:
+
+```json
+{ "mcpServers": { "hermes": { "command": "pixi", "args": ["run", "hermes-mcp"] } } }
+```
+
+Your assistant launches `pixi run hermes-mcp` from your project, so it uses the
+HERMES you installed rather than guessing. Then in chat you can say:
+
+> Configure a HERMES analysis run for the data I have.
+
+The assistant asks how far to run — unpacking, photon reconstruction, or event
+reconstruction — and writes a ready-to-run `hermes-config.yaml` and
+`run_hermes.py` into your data folder. Run it with:
+
+```bash
+pixi run python run_hermes.py
+```
+
+See [`examples/mcp/README.md`](examples/mcp/README.md) for a full walkthrough.
+
 ## Develop HERMES from a clone
 
 Install [pixi](https://pixi.sh):

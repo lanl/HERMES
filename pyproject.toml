@@ -13,7 +13,11 @@ dependencies = [
   "matplotlib>=3.9,<4",
   "psutil>=6",
   "httpx>=0.28,<0.29",
+  "mcp>=2,<3",
 ]
+
+[project.scripts]
+hermes-mcp = "hermes.mcp.server:main"
 
 [build-system]
 build-backend = "scikit_build_core.build"
@@ -46,6 +50,7 @@ extra-index-urls = ["https://pypi.org/simple"]
 hermes = { path = ".", editable = true }
 
 [tool.pixi.tasks]
+hermes-mcp = "hermes-mcp"
 build-cpp-unpacker = "cmake -S src/backends/unpackers/tpx3-spidr/cpp -B build/backends/tpx3-spidr -DCMAKE_BUILD_TYPE=Release && cmake --build build/backends/tpx3-spidr"
 test-cpp-unpacker = { cmd = "ctest --test-dir build/backends/tpx3-spidr --output-on-failure", depends-on = ["build-cpp-unpacker"] }
 build-cpp-photon-clusterer = "cmake -S src/backends/reconstruction/photons/cpp -B build/backends/photon-clusterer -DCMAKE_BUILD_TYPE=Release && cmake --build build/backends/photon-clusterer"

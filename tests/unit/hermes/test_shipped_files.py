@@ -10,7 +10,14 @@ from hermes.shipped_files import default_timewalk_calibration, shipped_file
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
-def test_shipped_file_falls_back_to_the_repository_copy() -> None:
+def test_shipped_file_falls_back_to_the_repository_copy(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Point the environment prefix at an empty folder so there is no installed
+    # copy and the lookup has to fall back to the repository root.
+    monkeypatch.setattr(shipped_files.sys, "prefix", str(tmp_path))
+
     found = shipped_file("calibrations/tpx3/time-walk_example.json")
 
     assert found == _REPO_ROOT / "calibrations" / "tpx3" / "time-walk_example.json"
