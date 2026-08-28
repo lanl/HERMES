@@ -58,6 +58,33 @@ def test_unpacking_writes_a_loadable_unpack_only_config(tmp_path: Path) -> None:
     assert record.analysis.event_reconstruction is None
 
 
+def test_generated_config_is_quiet_and_uses_the_default_timewalk(
+    tmp_path: Path,
+) -> None:
+    _write_raw_files(tmp_path, ["only.tpx3"])
+
+    result = create_analysis_config(
+        AnalysisConfigRequest(
+            working_directory=tmp_path,
+            measurement_id="demo",
+            run="run-1",
+            furthest_stage="photon_reconstruction",
+        )
+    )
+
+    record = load_hermes_record_from_yaml(result.config_file)
+    # Runs print only errors and worse to the terminal; the JSON-lines log files
+    # still keep the full record.
+    assert record.environment.log_level == "ERROR"
+    assert isinstance(record.analysis, HermesTpx3AnalysisState)
+    reconstruction = record.analysis.photon_reconstruction
+    assert reconstruction is not None
+    assert (
+        reconstruction.clustering_algorithm.settings.timewalk_calibration_file
+        == "default"
+    )
+
+
 def test_photon_stage_adds_default_clustering_settings(tmp_path: Path) -> None:
     _write_raw_files(tmp_path, ["only.tpx3"])
 

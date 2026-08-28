@@ -72,21 +72,35 @@ is not on `PATH`, HERMES warns and exits instead of failing with a traceback.
 
 HERMES ships one small MCP server so an LLM assistant that speaks MCP — Claude
 Code, Claude Desktop, Cursor, and others — can help you configure and run an
-analysis in your own project. Installing HERMES installs it too: the `hermes-mcp`
-command lands on `PATH` in your environment, so there is nothing extra to
-install.
+analysis in your own project. Set it up in four steps.
 
-Point your assistant at it by copying the template
-[`examples/mcp/mcp.json`](examples/mcp/mcp.json) into your project. For Claude
-Code, save it as `.mcp.json` at your project root; for Claude Desktop, add the
-same block to its config file:
+**1. Install HERMES in your project.** Follow "Use HERMES in your own pixi
+project" above. This puts both the `hermes-mcp` server command and the
+`hermes-mcp-setup` command on `PATH`, so there is nothing extra to install.
+
+**2. Wire your assistant to HERMES.** From your analysis folder, run:
+
+```bash
+pixi run hermes-mcp-setup
+```
+
+That writes a `.mcp.json` there wiring the assistant to HERMES. If the folder
+already has a `.mcp.json`, it keeps the servers already listed and just adds the
+HERMES one. The file it writes is:
 
 ```json
 { "mcpServers": { "hermes": { "command": "pixi", "args": ["run", "hermes-mcp"] } } }
 ```
 
-Your assistant launches `pixi run hermes-mcp` from your project, so it uses the
-HERMES you installed rather than guessing. Then in chat you can say:
+Claude Code and other tools that read a project `.mcp.json` are ready after
+this. Claude Desktop has no project `.mcp.json`, so add the same block to its
+own config file by hand.
+
+**3. Restart your assistant** so it picks up the new `.mcp.json`. It now launches
+`pixi run hermes-mcp` from your project, so it uses the HERMES you installed
+rather than guessing.
+
+**4. Ask it to configure a run.** In chat, say:
 
 > Configure a HERMES analysis run for the data I have.
 

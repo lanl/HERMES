@@ -2266,7 +2266,7 @@ packages:
 - pypi: ./
   name: hermes
   version: 3.3.2
-  sha256: 79f8ed81ff478695c5396e4c938cfd37d5c3ad16c9689da95d8ff68f22283c18
+  sha256: c20bdc4c4ac754cd2ce017d8ce1be32c43030c1f05b9e7d292b308cc36e741b6
   requires_dist:
   - pydantic>=2.13,<3
   - loguru
