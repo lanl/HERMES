@@ -257,9 +257,13 @@ every existing summary, and confirms that every Parquet file its summary lists
 exists before launching any unpacker. It does not open those Parquet files: the
 summary is written only after every Parquet file closes, so its presence already
 means the outputs are complete, and its row counts are trusted rather than
-re-read. Reading and validating one file's summary is independent of every other
-file's, so this scan runs across the same worker pool used for unpacking. Files
-are handled according to these rules:
+re-read. This validation is pure-Python work — path and filename checks plus
+parsing each summary JSON — and Python runs that kind of work one thread at a
+time, so HERMES runs the scan in a single thread. Spreading it across the worker
+pool only adds thread contention; a large resume scan runs about twice as fast
+serially. The worker pool is still used for the unpacking itself, where each
+worker waits on a separate subprocess. Files are handled according to these
+rules:
 
 1. Skip the raw file when its summary is valid and every listed Parquet file
    exists.
