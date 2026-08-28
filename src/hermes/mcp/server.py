@@ -80,6 +80,11 @@ _EVENT_RECONSTRUCTION: dict = {
     },
 }
 
+# HERMES always writes its full, structured logs to JSON-lines files on disk.
+# This level only sets how much a run prints to the terminal, so keep runs quiet
+# by showing errors and worse on screen while the log files keep everything.
+_QUIET_LOG_LEVEL = "ERROR"
+
 _RUN_SCRIPT = '''from pathlib import Path
 
 from hermes.state_service.state_io import load_hermes_record_from_yaml
@@ -150,7 +155,10 @@ def create_analysis_config(request: AnalysisConfigRequest) -> AnalysisConfigResu
             "measurement_id": request.measurement_id,
             "run": request.run,
         },
-        "environment": {"analysis_directory": "analysis"},
+        "environment": {
+            "analysis_directory": "analysis",
+            "log_level": _QUIET_LOG_LEVEL,
+        },
         "analysis": analysis,
     }
 
@@ -164,6 +172,7 @@ def create_analysis_config(request: AnalysisConfigRequest) -> AnalysisConfigResu
             "environment": {
                 "working_directory": str(directory),
                 "analysis_directory": "analysis",
+                "log_level": _QUIET_LOG_LEVEL,
             },
         }
     )

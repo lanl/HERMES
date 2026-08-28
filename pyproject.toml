@@ -2,7 +2,7 @@
 authors = [{name = "Alexander M. Long", email = "alexlong@lanl.gov"}]
 name = "hermes"
 requires-python = ">= 3.11"
-version = "3.3.2"
+version = "3.3.3"
 dependencies = [
   "pydantic>=2.13,<3",
   "loguru",
@@ -18,6 +18,7 @@ dependencies = [
 
 [project.scripts]
 hermes-mcp = "hermes.mcp.server:main"
+hermes-mcp-setup = "hermes.mcp.setup:main"
 
 [build-system]
 build-backend = "scikit_build_core.build"
@@ -51,6 +52,7 @@ hermes = { path = ".", editable = true }
 
 [tool.pixi.tasks]
 hermes-mcp = "hermes-mcp"
+hermes-mcp-setup = "hermes-mcp-setup"
 build-cpp-unpacker = "cmake -S src/backends/unpackers/tpx3-spidr/cpp -B build/backends/tpx3-spidr -DCMAKE_BUILD_TYPE=Release && cmake --build build/backends/tpx3-spidr"
 test-cpp-unpacker = { cmd = "ctest --test-dir build/backends/tpx3-spidr --output-on-failure", depends-on = ["build-cpp-unpacker"] }
 build-cpp-photon-clusterer = "cmake -S src/backends/reconstruction/photons/cpp -B build/backends/photon-clusterer -DCMAKE_BUILD_TYPE=Release && cmake --build build/backends/photon-clusterer"

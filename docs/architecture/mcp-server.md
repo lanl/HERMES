@@ -70,12 +70,18 @@ code:
 
 ## Distribution and setup
 
-- One console command, `hermes-mcp`, is installed with the package
-  (`[project.scripts]` in `pyproject.toml`).
-- One pixi task runs it, so a user starts the server with `pixi run hermes-mcp`.
-- One template config, `examples/mcp/mcp.json`, is the single per-user setup step:
-  the user copies it next to their analysis script and points their LLM tool at
-  `pixi run hermes-mcp`.
+- Two console commands are installed with the package (`[project.scripts]` in
+  `pyproject.toml`): `hermes-mcp` runs the server, and `hermes-mcp-setup` writes
+  the per-user config.
+- A pixi task runs each, so a user starts the server with `pixi run hermes-mcp`
+  and wires up their assistant with `pixi run hermes-mcp-setup`.
+- The single per-user setup step is `pixi run hermes-mcp-setup`, run from the
+  analysis folder. It writes a `.mcp.json` there pointing the LLM tool at
+  `pixi run hermes-mcp`, keeping any servers the file already lists. The content
+  travels in the installed package (`src/hermes/mcp/setup.py`), so a user who
+  installed HERMES has it without checking out the repository;
+  `examples/mcp/mcp.json` stays as the reference for that content and for Claude
+  Desktop, whose config the user edits by hand.
 
 ## Phased build
 
