@@ -4,8 +4,6 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-import pyarrow as pa
-import pyarrow.parquet as pq
 import pytest
 from loguru import logger
 
@@ -211,7 +209,9 @@ def _save_completed_files(
     summary = _summary(analysis_root, raw_file.path.stem, pixel_rows=pixel_rows)
     for parquet_path in summary.output_parquet.pixel_data.files:
         parquet_path.parent.mkdir(parents=True, exist_ok=True)
-        pq.write_table(pa.table({"value": [1]}), parquet_path)
+        # Validation confirms the listed file exists but never opens it, so the
+        # placeholder does not need to be a real Parquet file.
+        parquet_path.write_bytes(b"placeholder, not a real parquet file")
     summary_path = derive_summary_path(analysis_root, raw_file)
     summary_path.parent.mkdir(parents=True, exist_ok=True)
     summary_path.write_text(summary.model_dump_json(), encoding="utf-8")
@@ -350,6 +350,24 @@ def test_extra_unlisted_parquet_file_does_not_fail_validation(
         / f"{raw_file.path.stem}_chip_0_pixels_00001.parquet"
     )
     orphan.touch()
+
+    assert check_previous_unpacked_file(analysis_root, raw_file)
+
+
+def test_resume_validation_does_not_open_parquet_footer(tmp_path: Path) -> None:
+    analysis = _analysis(tmp_path, "completed.tpx3")
+    analysis_root = _analysis_root(tmp_path)
+    raw_file = analysis.unpacking.tpx3_files[0]
+    _save_completed_files(analysis_root, raw_file, pixel_rows=1)
+
+    # The listed pixel file exists but is not a real Parquet file: it lacks the
+    # "PAR1" magic bytes, so opening its footer would fail. Validation trusts the
+    # summary and only checks existence, so the raw file still counts as unpacked.
+    listed_file = _summary(
+        analysis_root, raw_file.path.stem, pixel_rows=1
+    ).output_parquet.pixel_data.files[0]
+    assert listed_file.is_file()
+    assert not listed_file.read_bytes().startswith(b"PAR1")
 
     assert check_previous_unpacked_file(analysis_root, raw_file)
 

@@ -7,8 +7,6 @@ import tempfile
 from time import perf_counter
 from pathlib import Path
 
-import pyarrow as pa
-import pyarrow.parquet as pq
 from loguru import logger
 from pydantic import ValidationError
 
@@ -22,13 +20,6 @@ from hermes.runner.analysis.executables import (
     resolve_executable,
     single_thread_environment,
 )
-
-# Reading Parquet metadata during validation is footer-only work, so keep
-# PyArrow's process-wide thread pools at one thread. Otherwise every worker's
-# validation would size an Arrow pool to the whole machine and many concurrent
-# workers would oversubscribe the cores.
-pa.set_cpu_count(1)
-pa.set_io_thread_count(1)
 
 # Each Parquet category directory and the filename label the unpacker uses in it.
 # Pixel files are named "<stem>_chip_<chip>_pixels_<part>.parquet"; every other
@@ -48,6 +39,23 @@ _TDC_TRIGGER_LABELS = (
     "tdc2_rising_triggers",
     "tdc2_falling_triggers",
 )
+# Filename patterns matched against the part of each Parquet filename that
+# follows the "<stem>_" prefix. The raw file stem varies from file to file, so
+# it is checked as a literal prefix and stripped off, which lets these patterns
+# be compiled once here instead of once per file. Validation runs over tens of
+# thousands of files, and recompiling these patterns per file otherwise
+# dominated its cost.
+_PIXEL_SUFFIX_PATTERN = re.compile(r"^chip_(\d+)_pixels_(\d{5})\.parquet$")
+_TDC_SUFFIX_PATTERN = re.compile(
+    r"^("
+    + "|".join(re.escape(label) for label in _TDC_TRIGGER_LABELS)
+    + r")_(\d{5})\.parquet$"
+)
+_LABEL_SUFFIX_PATTERNS = {
+    directory: re.compile(rf"^{re.escape(label)}_(\d{{5}})\.parquet$")
+    for directory, label in _PARQUET_DIRECTORY_LABELS.items()
+    if label is not None and directory != "tdc_triggers"
+}
 _LOG_TEXT_LIMIT = 4_000
 _ANALYSIS_LOGGER = logger.bind(
     domain="analysis",
@@ -530,6 +538,16 @@ def _validate_completed_files(
     analysis_directory: Path,
     raw_file_stem: str,
 ) -> None:
+    """Confirm a summary's listed Parquet files are present and well formed.
+
+    Checks that every Parquet file the summary lists exists inside the analysis
+    directory, has the filename the unpacker gives it, is listed only once, and
+    that each group's part numbers form a gap-free sequence. The files are not
+    opened: the summary is written only after every Parquet file closes, so its
+    presence already means the outputs are complete, and its row counts are
+    trusted rather than re-read. Skipping the per-file footer read keeps this
+    validation fast on runs with tens of thousands of files.
+    """
     if summary.unpacking.errors or summary.output_parquet.errors:
         raise HermesTpx3OutputError(
             f"summary reports unpacking or Parquet errors: {summary_path}"
@@ -545,38 +563,30 @@ def _validate_completed_files(
     )
     listed_files: set[Path] = set()
     # The binary names pixel files "<stem>_chip_<chip>_pixels_<part>.parquet"
-    # and every other category "<stem>_<label>_<part>.parquet". TDC triggers
-    # use one of several per-channel/edge labels within the tdc_triggers
-    # directory, so they match any of _TDC_TRIGGER_LABELS.
-    filename_pattern_with_chip = re.compile(
-        rf"^{re.escape(raw_file_stem)}_chip_(\d+)_pixels_(\d{{5}})\.parquet$"
-    )
-    tdc_label_alternatives = "|".join(
-        re.escape(label) for label in _TDC_TRIGGER_LABELS
-    )
-    filename_pattern_tdc = re.compile(
-        rf"^{re.escape(raw_file_stem)}_({tdc_label_alternatives})_"
-        rf"(\d{{5}})\.parquet$"
-    )
+    # and every other category "<stem>_<label>_<part>.parquet". TDC triggers use
+    # one of several per-channel/edge labels within the tdc_triggers directory.
+    # The stem is a literal prefix here; the module-level patterns match the
+    # rest of the filename after it.
+    stem_prefix = f"{raw_file_stem}_"
     for expected_directory, category, has_chip_id in categories:
-        observed_rows = 0
         parts_by_group: dict[int | str, list[int]] = {}
         if has_chip_id:
-            filename_pattern = filename_pattern_with_chip
+            suffix_pattern = _PIXEL_SUFFIX_PATTERN
         elif expected_directory == "tdc_triggers":
-            filename_pattern = filename_pattern_tdc
+            suffix_pattern = _TDC_SUFFIX_PATTERN
         else:
-            label = _PARQUET_DIRECTORY_LABELS[expected_directory]
-            filename_pattern = re.compile(
-                rf"^{re.escape(raw_file_stem)}_{re.escape(label)}_"
-                rf"(\d{{5}})\.parquet$"
-            )
+            suffix_pattern = _LABEL_SUFFIX_PATTERNS[expected_directory]
 
         for parquet_path in category.files:
-            filename_match = filename_pattern.fullmatch(parquet_path.name)
+            filename = parquet_path.name
+            suffix_match = (
+                suffix_pattern.fullmatch(filename[len(stem_prefix):])
+                if filename.startswith(stem_prefix)
+                else None
+            )
             if (
                 parquet_path.parent.name != expected_directory
-                or filename_match is None
+                or suffix_match is None
             ):
                 raise HermesTpx3OutputError(
                     f"unexpected Parquet filename for {raw_file_stem}: "
@@ -589,15 +599,15 @@ def _validate_completed_files(
                 )
 
             if has_chip_id:
-                group_key: object = int(filename_match.group(1))
-                part_index = int(filename_match.group(2))
+                group_key: object = int(suffix_match.group(1))
+                part_index = int(suffix_match.group(2))
             elif expected_directory == "tdc_triggers":
                 # Each channel+edge label has its own part sequence.
-                group_key = filename_match.group(1)
-                part_index = int(filename_match.group(2))
+                group_key = suffix_match.group(1)
+                part_index = int(suffix_match.group(2))
             else:
                 group_key = 0  # Single label; one part sequence.
-                part_index = int(filename_match.group(1))
+                part_index = int(suffix_match.group(1))
 
             parts_by_group.setdefault(group_key, []).append(part_index)
             resolved_path = parquet_path.resolve()
@@ -610,12 +620,6 @@ def _validate_completed_files(
                 raise HermesTpx3OutputError(
                     f"summary lists a missing Parquet file: {resolved_path}"
                 )
-            try:
-                observed_rows += pq.read_metadata(resolved_path).num_rows
-            except Exception as exc:
-                raise HermesTpx3OutputError(
-                    f"cannot read Parquet metadata: {resolved_path}"
-                ) from exc
             listed_files.add(parquet_path)
 
         for group_key, part_indexes in parts_by_group.items():
@@ -630,12 +634,6 @@ def _validate_completed_files(
                     f"unexpected Parquet part numbers for {expected_directory}"
                     f"{group_info}: {sorted(part_indexes)}"
                 )
-
-        if observed_rows != category.row_count:
-            raise HermesTpx3OutputError(
-                f"Parquet row count mismatch for {expected_directory}: "
-                f"summary={category.row_count}, files={observed_rows}"
-            )
 
 
 def _bounded_text(text: str) -> str:
