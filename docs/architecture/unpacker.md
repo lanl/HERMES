@@ -29,10 +29,21 @@ shared analysis directory:
 <executable> --input <input.tpx3> --output <analysis_directory> --measurement-id <measurement-id> --run <run> [--overwrite] [--time-sort <true|false>]
 ```
 
-The unpacker accepts exactly these options and no others:
+The unpacker accepts exactly these options and no others (with the one internal
+batched-input exception described after the list):
 
-- `--input <input.tpx3>` — the raw TPX3 file to unpack. Required; the unpacker
-  raises an error if it is missing. Implemented.
+- `--input <input.tpx3>` — the raw TPX3 file to unpack. Required unless
+  `--input-list` is given; the unpacker raises an error if neither is set.
+  Implemented.
+- `--input-list <file>` — unpack every raw TPX3 file named in `<file>` (one path
+  per line) in one process, instead of one file with `--input`. This exists only
+  to make large runs fast: a run has tens of thousands of tiny raw files, and
+  starting a fresh process for each one is dominated by the fixed cost of loading
+  the Arrow/Parquet libraries. Running a group of files in one process pays that
+  cost once for the whole group. It is not a user-facing option — the Python
+  runner forms the list itself — and it changes nothing about how any single file
+  is unpacked or what it produces. Requires `--output`, `--measurement-id`, and
+  `--run`; use instead of `--input`, not with it. Implemented.
 - `--output <analysis_directory>` — the shared analysis directory. The unpacker
   creates all category directories and output filenames from it. Optional; when
   omitted, the unpacker prints summary statistics only and writes no files. The
@@ -53,14 +64,25 @@ The unpacker accepts exactly these options and no others:
 The unpacker also accepts `-h`/`--help` to print usage and `-v`/`--version` to
 print version information; both print and exit without unpacking.
 
-Do not add any option outside this list. The measurement identifier and run
-label are the only run-identity inputs; in particular, do not add separate
-command options for category directories, a filename prefix, or a summary
-filename; the unpacker creates those from `--output`.
+Do not add any option outside this list, apart from `--input-list`. The
+measurement identifier and run label are the only run-identity inputs; in
+particular, do not add separate command options for category directories, a
+filename prefix, or a summary filename; the unpacker creates those from
+`--output`. `--input-list` only changes where the raw file paths come from; it
+adds no new run-identity input and no new output control.
 
-The Python runner should keep this simple and clean: confirm the input file is
-set, then call the binary with the flags. Do not add helper functions or a
-builder abstraction for assembling the command.
+The Python runner should keep this simple and clean: confirm the inputs are set,
+then call the binary with the flags. It groups the raw files and passes each
+group with `--input-list`, so a small helper that writes the group's list file
+and assembles that one command is fine; do not build a general command-builder
+abstraction beyond that.
+
+When run with `--input-list`, the unpacker unpacks each listed file exactly as
+`--input` would, in sequence, writing that file's summary JSON before moving to
+the next. A file that fails does not stop the others, and the process exit code
+is not the per-file result: the Python runner decides each file's success from
+its own summary JSON, so a file the process never reached (for example if it
+died partway) simply has no valid summary and is treated as not yet unpacked.
 
 The HERMES state should save the raw TPX3 input files, shared analysis
 directory, unpacker program, and per-file unpacking status. Each

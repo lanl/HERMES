@@ -298,33 +298,18 @@ constexpr std::array<const char*, 5> parquet_directories = {
     "unrecognized_packets",
 };
 
-void findExistingOutputFiles(const std::filesystem::path& analysis_directory,
-                             const std::string& raw_file_stem,
-                             const std::filesystem::path& summary_path,
-                             std::vector<std::string>& errors) {
+// When not overwriting, the summary JSON is the completion marker: it is written
+// last, only after every Parquet file for this raw file is already on disk, so
+// checking for it is O(1). We deliberately do not scan the Parquet directories
+// for orphaned files here. That scan is O(directory size) per raw file, and over
+// a run that fills the shared output directories with tens of thousands of files
+// it dominates the runtime. The Python runner validates the summary-listed
+// Parquet files after unpacking, so an orphan without a summary is still caught.
+void refuseIfSummaryExists(const std::filesystem::path& summary_path,
+                           std::vector<std::string>& errors) {
     if (std::filesystem::exists(summary_path)) {
         errors.push_back("Refusing to overwrite existing summary JSON file " +
                          summary_path.string());
-    }
-
-    const std::string parquet_prefix = raw_file_stem + "_";
-    for (const char* directory_name : parquet_directories) {
-        const auto directory = analysis_directory / directory_name;
-        if (!std::filesystem::exists(directory)) {
-            continue;
-        }
-
-        for (const auto& entry : std::filesystem::directory_iterator(directory)) {
-            if (!entry.is_regular_file()) {
-                continue;
-            }
-            const auto filename = entry.path().filename().string();
-            if (entry.path().extension() == ".parquet" &&
-                filename.rfind(parquet_prefix, 0) == 0) {
-                errors.push_back("Refusing to overwrite existing Parquet file " +
-                                 entry.path().string());
-            }
-        }
     }
 }
 
@@ -559,8 +544,7 @@ WorkflowResult runTwoPassWorkflow(std::istream& input,
                 }
             }
         } else {
-            findExistingOutputFiles(analysis_directory, raw_file_stem, summary_path,
-                                    workflow_result.errors);
+            refuseIfSummaryExists(summary_path, workflow_result.errors);
         }
     } catch (const std::exception& error) {
         workflow_result.errors.push_back(

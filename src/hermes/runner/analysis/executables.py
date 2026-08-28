@@ -48,3 +48,17 @@ def resolve_executable(configured_path: Path) -> Path:
         )
 
     return resolved_path
+
+
+def single_thread_environment() -> dict[str, str]:
+    """Copy the current environment with common thread-count variables set to 1.
+
+    Each analysis subprocess is Arrow/Parquet-linked; left unset, its internal
+    thread pools size themselves to every core, so many concurrent workers
+    oversubscribe the machine. Pinning them to one thread keeps one worker to
+    roughly one core, which is what the worker-count formula assumes.
+    """
+    environment = dict(os.environ)
+    for name in ("OMP_NUM_THREADS", "ARROW_NUM_THREADS", "ARROW_IO_THREADS"):
+        environment[name] = "1"
+    return environment

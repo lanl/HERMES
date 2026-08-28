@@ -253,8 +253,12 @@ declared budget is not enforced as a process memory limit. The 1 GiB minimum and
 and other allocations beyond the sorting budget alone.
 
 When HERMES runs the same analysis again, it validates every raw TPX3 file,
-every existing summary, and every existing Parquet file before launching any
-unpacker. Files are handled according to these rules:
+every existing summary, and every Parquet file its summary lists before
+launching any unpacker. Reading and validating one file's summary is independent
+of every other file's, so this scan runs across the same worker pool used for
+unpacking. On a resume that scan covers every already-finished file and is
+otherwise the slowest part of the stage. Files are handled according to these
+rules:
 
 1. Skip the raw file when its summary is valid and every listed Parquet file
    exists.
@@ -266,21 +270,40 @@ unpacker. Files are handled according to these rules:
    its unpacker did not finish successfully.
 
 Skipped inputs are logged but never submitted to the worker pool. Files whose
-planned action is `run` are submitted to a `ThreadPoolExecutor` with the
-calculated worker count. Each worker waits for an independent C++ subprocess.
+planned action is `run` are grouped into small chunks, and the chunks are
+submitted to a `ThreadPoolExecutor` with the calculated worker count. Each worker
+waits for one C++ subprocess that unpacks its chunk's files in sequence. A run
+has tens of thousands of tiny raw files, and starting a fresh process for each
+one is dominated by the fixed cost of loading the Arrow/Parquet libraries;
+unpacking a chunk of files in one process pays that cost once for the whole
+chunk. Reconstruction still runs one process per file — its inputs are larger, so
+the fixed startup cost is a small fraction of each file's work and grouping would
+not help. The chunk size is capped so a subprocess that dies partway loses only
+that chunk's not-yet-finished files, which a later resume re-runs.
+
+Each subprocess, and HERMES's own Parquet-metadata reads, run with their
+internal thread pools limited to a single thread. Left unconstrained, the
+Arrow/Parquet thread pool inside each worker sizes itself to the whole machine,
+so many concurrent workers would spawn far more runnable threads than cores and
+oversubscribe the CPU. Pinning them to one thread keeps roughly one worker per
+core, which is the assumption behind the worker-count formula.
 
 The runner returns completed files in the original `tpx3_files` order,
 regardless of completion order. All HERMES state changes remain on the main
-thread. Worker threads may launch and validate one unpacker process but must not
+thread. Worker threads may launch and validate unpacker processes but must not
 modify HERMES state directly.
 
-If one unpacker fails, the runner logs that file's failure, records it
-`failed`, and keeps unpacking the remaining files. Valid summaries and Parquet
-files written by successful processes are retained, and a later run skips them.
-A whole-stage problem still stops the run and raises a `HermesTpx3Error`: a
-missing or unbuilt executable, a missing raw file, or a prior summary that is
-invalid or has partial Parquet output (rules 3 and 4 above). Those mean the
-stage cannot safely proceed; a single file failing to unpack does not.
+Each file's result is decided from its own summary, not the shared exit code of
+the process that unpacked its chunk: a file is `completed` only when its summary
+is present and every listed Parquet file passes validation, and `failed`
+otherwise — including a file whose process died before reaching it, which simply
+has no valid summary and is re-run on a later resume. Valid summaries and Parquet
+files already written are retained, so one file (or one chunk) failing never
+discards another file's finished output. A whole-stage problem still stops the
+run and raises a `HermesTpx3Error`: a missing or unbuilt executable, a missing
+raw file, or a prior summary that is invalid or has partial Parquet output
+(rules 3 and 4 above). Those mean the stage cannot safely proceed; a single file
+failing to unpack does not.
 
 No resume flag is needed.
 

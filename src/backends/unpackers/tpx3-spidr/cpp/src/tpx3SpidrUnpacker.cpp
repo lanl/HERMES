@@ -14,6 +14,11 @@ void printHelp(const char* program_name) {
                  " [--overwrite] [--time-sort <true|false>]\n\n";
     std::cout << "Options:\n";
     std::cout << "  --input <input.tpx3>          Input TPX3 raw data file (required)\n";
+    std::cout << "  --input-list <file>           Unpack every raw file listed in <file>\n";
+    std::cout << "                                (one path per line) in this one process,\n";
+    std::cout << "                                paying the startup cost once for the whole\n";
+    std::cout << "                                list. Use instead of --input; requires\n";
+    std::cout << "                                --output, --measurement-id, and --run\n";
     std::cout << "  --output <analysis_directory> Shared analysis directory (optional)\n";
     std::cout << "  --measurement-id <id>         Measurement identifier copied into the\n";
     std::cout << "                                summary JSON (required with --output)\n";
@@ -48,16 +53,68 @@ void printVersion() {
     std::cout << "HERMES TPX3 SPIDR Unpacker v0.1.0\n";
     std::cout << "C++17 implementation with Arrow/Parquet output\n";
 }
+
+// Unpack every raw file named in list_path (one path per line) in a single
+// process, so the one-time cost of loading Arrow/Parquet is paid once for the
+// whole list instead of once per file. Each file is unpacked in its own scope
+// so its decoded packets and output rows are freed before the next file starts.
+// A file that cannot be opened, or whose workflow reports errors or throws, is
+// logged and skipped so the rest of the list still runs. The exit code only
+// reports whether the list itself could be read; the Python runner decides each
+// file's success from its summary JSON, not from this process's exit code.
+int runBatch(const std::string& list_path, const std::string& output_dir,
+             const std::string& measurement_id, const std::string& run,
+             const bool overwrite, const bool time_sort) {
+    std::ifstream list_file(list_path);
+    if (!list_file) {
+        std::cerr << "Unable to open input list file: " << list_path << '\n';
+        return 2;
+    }
+
+    std::string raw_path;
+    while (std::getline(list_file, raw_path)) {
+        if (!raw_path.empty() && raw_path.back() == '\r') {
+            raw_path.pop_back();
+        }
+        if (raw_path.empty()) {
+            continue;
+        }
+        try {
+            std::ifstream input(raw_path, std::ios::binary);
+            if (!input) {
+                std::cerr << "Unable to open TPX3 input file: " << raw_path
+                          << '\n';
+                continue;
+            }
+            const auto result = hermes_tpx3_spidr::runTwoPassWorkflow(
+                input, raw_path, output_dir, measurement_id, run, overwrite,
+                time_sort);
+            if (result.success) {
+                std::cout << "Unpacked: " << raw_path << '\n';
+            } else {
+                std::cerr << "Failed: " << raw_path << '\n';
+                for (const auto& error : result.errors) {
+                    std::cerr << "  " << error << '\n';
+                }
+            }
+        } catch (const std::exception& error) {
+            std::cerr << "Failed: " << raw_path << " (" << error.what() << ")\n";
+        }
+    }
+    return 0;
+}
 }  // namespace
 
 int main(const int argc, char* argv[]) {
     bool overwrite = false;
     bool time_sort = true;
     std::string input_path;
+    std::string input_list_path;
     std::string output_dir;
     std::string measurement_id;
     std::string run;
     bool have_input = false;
+    bool have_input_list = false;
     bool have_output = false;
     bool have_measurement_id = false;
     bool have_run = false;
@@ -94,6 +151,15 @@ int main(const int argc, char* argv[]) {
             have_input = true;
             continue;
         }
+        if (arg == "--input-list") {
+            if (i + 1 >= argc) {
+                std::cerr << "Error: --input-list requires a file path\n";
+                return 2;
+            }
+            input_list_path = argv[++i];
+            have_input_list = true;
+            continue;
+        }
         if (arg == "--output") {
             if (i + 1 >= argc) {
                 std::cerr << "Error: --output requires a directory path\n";
@@ -126,8 +192,26 @@ int main(const int argc, char* argv[]) {
         return 2;
     }
 
+    if (have_input_list) {
+        // Batched mode: unpack every file in the list in one process, always
+        // writing output. It shares the single-file options but reads its
+        // inputs from the list file instead of --input.
+        if (have_input) {
+            std::cerr << "Error: use either --input or --input-list, not both\n";
+            return 2;
+        }
+        if (!have_output || !have_measurement_id || !have_run) {
+            std::cerr << "Error: --input-list requires --output, "
+                         "--measurement-id, and --run\n";
+            return 2;
+        }
+        return runBatch(input_list_path, output_dir, measurement_id, run,
+                        overwrite, time_sort);
+    }
+
     if (!have_input) {
-        std::cerr << "Error: --input <input.tpx3> is required\n";
+        std::cerr << "Error: --input <input.tpx3> or --input-list <file> is "
+                     "required\n";
         return 2;
     }
 

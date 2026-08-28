@@ -20,7 +20,7 @@ from hermes.state.state import HermesRecord
 from hermes.state_service.shared_types import StateServiceConfig
 from hermes.state_service.state_manager import StateManager
 
-_REPOSITORY_ROOT = Path(__file__).resolve().parents[5]
+_REPOSITORY_ROOT = Path(__file__).resolve().parents[6]
 _TPX3_FIXTURE = _REPOSITORY_ROOT / "tests/data/tpx3/Example_1kHz_5frames.tpx3"
 _UNPACKER_EXECUTABLE = (
     _REPOSITORY_ROOT
@@ -131,6 +131,7 @@ def test_real_cpp_unpacker_handles_two_inputs_and_skips_completed_files(
     saved_analysis = completed_state.analysis.model_dump(mode="json")
     assert set(saved_analysis) == {
         "mode",
+        "detector_layout",
         "resource_limit_percent",
         "unpacking",
         "photon_reconstruction",
@@ -160,13 +161,17 @@ def test_real_cpp_unpacker_handles_two_inputs_and_skips_completed_files(
         },
     )
 
-    first_event_inputs = [
+    # Files are unpacked in chunks, so there is no per-file "started" event; each
+    # file instead gets a per-file "completed" event carrying its raw path. The
+    # overall-completion event has no raw_tpx3_file and is filtered out.
+    first_completed_inputs = [
         Path(record["extra"]["raw_tpx3_file"]).name
         for record in log_records
         if record["extra"].get("event_type")
-        == "analysis.tpx3_unpacking.started"
+        == "analysis.tpx3_unpacking.completed"
+        and "raw_tpx3_file" in record["extra"]
     ]
-    assert sorted(first_event_inputs) == [
+    assert sorted(first_completed_inputs) == [
         "example-first.tpx3",
         "example-second.tpx3",
     ]

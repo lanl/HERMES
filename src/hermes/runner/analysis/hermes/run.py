@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from math import floor
+from math import ceil, floor
 from pathlib import Path
 
 import psutil
@@ -50,7 +50,7 @@ from hermes.runner.analysis.hermes.photon_reconstruction import (
 from hermes.runner.analysis.hermes.unpacker import (
     HermesTpx3Error,
     check_previous_unpacked_file,
-    execute_unpacker,
+    execute_unpacker_batch,
     log_overall_completion,
     log_overall_failure,
     log_skipped_input,
@@ -214,11 +214,45 @@ def run_hermes_analysis(
             # For each file submitted to the pool, remember where its result
             # sits in unpacking_results so a failure can flip it to "failed".
             run_result_positions: list[int] = []
-            for raw_file in raw_files:
-                already_unpacked = check_previous_unpacked_file(
-                    analysis_root, raw_file
+
+            if unpack_overwrite:
+                # Overwrite reruns every raw file; nothing is skipped and there
+                # is no prior output to scan.
+                already_unpacked: dict = {}
+            else:
+                # Reading each raw file's summary and revalidating its listed
+                # Parquet files is independent per file, so scan them across
+                # workers. On a resume this scan covers every already-unpacked
+                # file and is otherwise the slowest part of the stage.
+                scan_workers = _calculate_worker_count(
+                    analysis, len(raw_files), _largest_file_bytes(raw_files)
                 )
-                if not unpack_overwrite and already_unpacked:
+                already_unpacked, scan_errors = _run_parallel(
+                    lambda raw_file: check_previous_unpacked_file(
+                        analysis_root, raw_file
+                    ),
+                    raw_files,
+                    scan_workers,
+                )
+                if scan_errors:
+                    # A corrupt or partial prior summary stops the whole stage,
+                    # matching the single-file scan this replaces. Files
+                    # confirmed already done stay "skipped"; every other file is
+                    # recorded "failed". Re-raise the lowest-index error so the
+                    # stop is deterministic regardless of scan completion order.
+                    for index, raw_file in enumerate(raw_files):
+                        unpacking_results.append(
+                            HermesTpx3UnpackingResult(
+                                input_file=raw_file,
+                                status="skipped"
+                                if already_unpacked.get(index) is True
+                                else "failed",
+                            )
+                        )
+                    raise scan_errors[min(scan_errors)]
+
+            for index, raw_file in enumerate(raw_files):
+                if already_unpacked.get(index):
                     log_skipped_input(analysis_root, raw_file)
                     unpacking_results.append(
                         HermesTpx3UnpackingResult(
@@ -241,26 +275,51 @@ def run_hermes_analysis(
                 worker_count = _calculate_worker_count(
                     analysis, len(files_to_run), _largest_file_bytes(files_to_run)
                 )
-                completed, errors = _run_parallel(
-                    lambda raw_file: execute_unpacker(
+                # Unpack in chunks: one subprocess per chunk unpacks its files in
+                # sequence, so the process startup cost (loading Arrow/Parquet) is
+                # paid once per chunk instead of once per tiny file. The size is
+                # capped so a subprocess that dies partway loses at most that many
+                # not-yet-finished files, which a later resume re-runs, and so
+                # there are enough chunks to keep every worker busy.
+                chunk_size = max(
+                    1, min(100, ceil(len(files_to_run) / worker_count))
+                )
+                chunks = [
+                    files_to_run[start:start + chunk_size]
+                    for start in range(0, len(files_to_run), chunk_size)
+                ]
+                chunk_summaries, chunk_errors = _run_parallel(
+                    lambda chunk: execute_unpacker_batch(
                         analysis,
                         analysis_root,
-                        raw_file,
+                        chunk,
                         measurement_info,
                         overwrite=unpack_overwrite,
                     ),
-                    files_to_run,
+                    chunks,
                     worker_count,
                 )
-                for run_index in errors:
-                    unpacking_results[run_result_positions[run_index]] = (
-                        HermesTpx3UnpackingResult(
-                            input_file=files_to_run[run_index],
-                            status="failed",
+                # Each chunk returns one entry per file (its summary, or None when
+                # that file failed); a chunk missing from the results raised and
+                # its whole chunk failed. Files stay "completed" unless flipped.
+                for chunk_index, chunk in enumerate(chunks):
+                    offset = chunk_index * chunk_size
+                    summaries = chunk_summaries.get(chunk_index)
+                    for position_in_chunk, raw_file in enumerate(chunk):
+                        unpacked = (
+                            summaries is not None
+                            and summaries[position_in_chunk] is not None
                         )
-                    )
-                failed_count = len(errors)
-                unpacked_files = [files_to_run[i] for i in sorted(completed)]
+                        if unpacked:
+                            unpacked_files.append(raw_file)
+                        else:
+                            unpacking_results[
+                                run_result_positions[offset + position_in_chunk]
+                            ] = HermesTpx3UnpackingResult(
+                                input_file=raw_file,
+                                status="failed",
+                            )
+                            failed_count += 1
                 if analysis.unpacking.runtime_options.delete_raw_after_unpack:
                     _delete_raw_files(unpacked_files)
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pyarrow as pa
@@ -8,15 +9,18 @@ import pyarrow.parquet as pq
 import pytest
 from loguru import logger
 
+from hermes.runner.analysis.executables import single_thread_environment
 from hermes.runner.analysis.hermes import run as run_module
 from hermes.runner.analysis.hermes.run import HermesAnalysisError, run_hermes_analysis
 from hermes.runner.analysis.hermes.unpacker import (
     HermesTpx3Error,
-    HermesTpx3ExecutionError,
     HermesTpx3PreflightError,
     check_previous_unpacked_file,
+    derive_batch_unpacker_command,
     derive_summary_path,
     derive_unpacker_command,
+    execute_unpacker,
+    execute_unpacker_batch,
     resolve_tpx3_files,
     validate_program_and_inputs,
 )
@@ -261,6 +265,56 @@ def test_command_includes_time_sort_false_when_time_sort_disabled(
     ]
 
 
+def test_derives_batch_command_uses_input_list(tmp_path: Path) -> None:
+    analysis = _analysis(tmp_path, "first.tpx3", "second.tpx3")
+    analysis_root = _analysis_root(tmp_path)
+    list_path = tmp_path / "batch.txt"
+
+    # A batch run passes the shared list file with --input-list; every other
+    # option is per-run, so it matches the single-file command.
+    assert derive_batch_unpacker_command(
+        analysis, analysis_root, list_path, _measurement_info()
+    ) == [
+        str(analysis.unpacking.program.executable_path),
+        "--input-list",
+        str(list_path),
+        "--output",
+        str(analysis_root),
+        "--measurement-id",
+        "stage-3",
+        "--run",
+        "test-run",
+    ]
+
+
+def test_execute_unpacker_batch_reports_per_file_result_from_summary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    analysis = _analysis(tmp_path, "kept.tpx3", "gone.tpx3")
+    analysis_root = _analysis_root(tmp_path)
+    kept, gone = analysis.unpacking.tpx3_files
+    # Only "kept" ends up with a valid summary and Parquet output on disk; "gone"
+    # is a file the process never finished, so it has no summary.
+    _save_completed_files(analysis_root, kept, pixel_rows=1)
+
+    def fake_run(command: list[str], **kwargs: Any) -> SimpleNamespace:
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(
+        "hermes.runner.analysis.hermes.unpacker.subprocess.run", fake_run
+    )
+
+    # Each file's result comes from its own summary, not the shared exit code:
+    # "kept" is unpacked, "gone" is failed, in the given order.
+    results = execute_unpacker_batch(
+        analysis, analysis_root, [kept, gone], _measurement_info()
+    )
+
+    assert results[0] is not None
+    assert results[1] is None
+
+
 def test_fresh_files_are_not_previously_unpacked(tmp_path: Path) -> None:
     analysis = _analysis(tmp_path, "first.tpx3", "second.tpx3")
     analysis_root = _analysis_root(tmp_path)
@@ -278,6 +332,72 @@ def test_completed_file_is_detected_as_previously_unpacked(tmp_path: Path) -> No
     _save_completed_files(analysis_root, raw_file, pixel_rows=1)
 
     assert check_previous_unpacked_file(analysis_root, raw_file)
+
+
+def test_extra_unlisted_parquet_file_does_not_fail_validation(
+    tmp_path: Path,
+) -> None:
+    analysis = _analysis(tmp_path, "completed.tpx3")
+    analysis_root = _analysis_root(tmp_path)
+    raw_file = analysis.unpacking.tpx3_files[0]
+    _save_completed_files(analysis_root, raw_file, pixel_rows=1)
+    # A leftover Parquet file the summary does not list (for example from an
+    # earlier partial run) no longer fails validation: HERMES checks only the
+    # files its summary lists, not the whole output directory.
+    orphan = (
+        analysis_root
+        / "pixel_hits"
+        / f"{raw_file.path.stem}_chip_0_pixels_00001.parquet"
+    )
+    orphan.touch()
+
+    assert check_previous_unpacked_file(analysis_root, raw_file)
+
+
+def test_unpacker_subprocess_runs_with_single_thread_environment(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    analysis = _analysis(tmp_path, "completed.tpx3")
+    analysis_root = _analysis_root(tmp_path)
+    raw_file = analysis.unpacking.tpx3_files[0]
+    # A valid completed state lets validation succeed after the faked process.
+    _save_completed_files(analysis_root, raw_file, pixel_rows=1)
+    monkeypatch.setenv("HERMES_TEST_MARKER", "present")
+
+    captured: dict[str, Any] = {}
+
+    def fake_run(command: list[str], **kwargs: Any) -> SimpleNamespace:
+        captured["env"] = kwargs.get("env")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(
+        "hermes.runner.analysis.hermes.unpacker.subprocess.run", fake_run
+    )
+
+    execute_unpacker(analysis, analysis_root, raw_file, _measurement_info())
+
+    env = captured["env"]
+    assert env is not None
+    assert env["OMP_NUM_THREADS"] == "1"
+    assert env["ARROW_NUM_THREADS"] == "1"
+    assert env["ARROW_IO_THREADS"] == "1"
+    # The child still inherits the parent environment.
+    assert env["HERMES_TEST_MARKER"] == "present"
+
+
+def test_single_thread_environment_pins_threads_and_inherits(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("HERMES_TEST_MARKER", "present")
+    monkeypatch.delenv("OMP_NUM_THREADS", raising=False)
+
+    environment = single_thread_environment()
+
+    assert environment["OMP_NUM_THREADS"] == "1"
+    assert environment["ARROW_NUM_THREADS"] == "1"
+    assert environment["ARROW_IO_THREADS"] == "1"
+    assert environment["HERMES_TEST_MARKER"] == "present"
 
 
 @pytest.mark.parametrize("missing_file", ["executable", "raw_tpx3"])
@@ -324,11 +444,13 @@ def test_run_marks_analysis_only_state_running_through_state_manager(
         config=StateServiceConfig(allow_trusted_workflow_bypass=True),
         state_logger=state_logger,
     )
+    # The runner unpacks in chunks: each call receives a list of raw files and
+    # returns one summary per file, in order.
     monkeypatch.setattr(
-        "hermes.runner.analysis.hermes.run.execute_unpacker",
-        lambda analysis, analysis_root, raw_file, measurement_info, **kwargs: (
-            _summary(analysis_root, raw_file.path.stem)
-        ),
+        "hermes.runner.analysis.hermes.run.execute_unpacker_batch",
+        lambda analysis, analysis_root, raw_files, measurement_info, **kwargs: [
+            _summary(analysis_root, raw_file.path.stem) for raw_file in raw_files
+        ],
     )
 
     files_to_run = run_hermes_analysis(manager)
@@ -378,17 +500,19 @@ def test_run_failure_keeps_skipped_and_marks_only_attempted_failed(
         state_logger=CapturingStateLogger(),
     )
 
-    def failing_unpacker(
+    def failing_batch(
         analysis: Any,
         analysis_root: Path,
-        raw_file: FileReference,
+        raw_files: list[FileReference],
         measurement_info: MeasurementInfo,
         **kwargs: Any,
-    ) -> Tpx3SpidrSummary:
-        raise HermesTpx3Error(f"unpacking crashed for {raw_file.path.name}")
+    ) -> list[Tpx3SpidrSummary | None]:
+        # Batch reports a failed file as a None entry, one per input file,
+        # rather than raising; here every attempted file fails.
+        return [None for _ in raw_files]
 
     monkeypatch.setattr(
-        "hermes.runner.analysis.hermes.run.execute_unpacker", failing_unpacker
+        "hermes.runner.analysis.hermes.run.execute_unpacker_batch", failing_batch
     )
 
     # One file failing to unpack no longer aborts the run: the failure is
@@ -414,19 +538,24 @@ def test_run_continues_unpacking_remaining_files_after_one_fails(
         state_logger=CapturingStateLogger(),
     )
 
-    def unpacker(
+    def batch_unpacker(
         analysis: Any,
         analysis_root: Path,
-        raw_file: FileReference,
+        raw_files: list[FileReference],
         measurement_info: MeasurementInfo,
         **kwargs: Any,
-    ) -> Tpx3SpidrSummary:
-        if raw_file.path.name == "boom.tpx3":
-            raise HermesTpx3Error(f"unpacking crashed for {raw_file.path.name}")
-        return _summary(analysis_root, raw_file.path.stem)
+    ) -> list[Tpx3SpidrSummary | None]:
+        # "boom.tpx3" fails (None); the others unpack. This holds however the
+        # files are split across chunks.
+        return [
+            None
+            if raw_file.path.name == "boom.tpx3"
+            else _summary(analysis_root, raw_file.path.stem)
+            for raw_file in raw_files
+        ]
 
     monkeypatch.setattr(
-        "hermes.runner.analysis.hermes.run.execute_unpacker", unpacker
+        "hermes.runner.analysis.hermes.run.execute_unpacker_batch", batch_unpacker
     )
 
     unpacked = run_hermes_analysis(manager)
@@ -443,6 +572,38 @@ def test_run_continues_unpacking_remaining_files_after_one_fails(
         "boom.tpx3": "failed",
         "good2.tpx3": "completed",
     }
+
+
+def test_scan_failure_stops_stage_and_records_results(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    analysis = _analysis(tmp_path, "done.tpx3", "boom.tpx3")
+    manager = StateManager(
+        _record(tmp_path, analysis),
+        config=StateServiceConfig(allow_trusted_workflow_bypass=True),
+        state_logger=CapturingStateLogger(),
+    )
+
+    def scanning(analysis_root: Path, raw_file: FileReference) -> bool:
+        # A corrupt or partial prior summary found during the resume scan stops
+        # the whole stage, just as the single-file scan it replaced did.
+        if raw_file.path.name == "boom.tpx3":
+            raise HermesTpx3PreflightError("invalid prior summary")
+        return True
+
+    monkeypatch.setattr(run_module, "check_previous_unpacked_file", scanning)
+
+    with pytest.raises(HermesTpx3Error):
+        run_hermes_analysis(manager)
+
+    # Files confirmed already done stay skipped; the file that failed to scan is
+    # recorded failed.
+    results = {
+        result.input_file.path.name: result.status
+        for result in manager.get_state().analysis.unpacking.results
+    }
+    assert results == {"done.tpx3": "skipped", "boom.tpx3": "failed"}
 
 
 def test_run_rejects_empir_analysis(tmp_path: Path) -> None:
@@ -605,19 +766,25 @@ def test_delete_raw_after_unpack_removes_only_successful_files(
     # "done" already has valid outputs, so it is skipped, not re-unpacked here.
     _save_completed_files(analysis_root, done, pixel_rows=1)
 
-    def fake_execute_unpacker(
+    def fake_execute_unpacker_batch(
         analysis_arg,
         analysis_root_arg,
-        raw_file,
+        raw_files,
         measurement_info,
         *,
         overwrite=False,
     ):
-        if raw_file.path == bad.path:
-            raise HermesTpx3ExecutionError("boom")
-        return _summary(analysis_root_arg, raw_file.path.stem)
+        # "bad" fails (None); "good" unpacks. "done" is skipped before the pool.
+        return [
+            None
+            if raw_file.path == bad.path
+            else _summary(analysis_root_arg, raw_file.path.stem)
+            for raw_file in raw_files
+        ]
 
-    monkeypatch.setattr(run_module, "execute_unpacker", fake_execute_unpacker)
+    monkeypatch.setattr(
+        run_module, "execute_unpacker_batch", fake_execute_unpacker_batch
+    )
 
     manager = StateManager(
         _record(tmp_path, analysis),

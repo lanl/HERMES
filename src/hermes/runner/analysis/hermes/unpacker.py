@@ -3,9 +3,11 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+import tempfile
 from time import perf_counter
 from pathlib import Path
 
+import pyarrow as pa
 import pyarrow.parquet as pq
 from loguru import logger
 from pydantic import ValidationError
@@ -16,7 +18,17 @@ from hermes.state.models.analysis.hermes_tpx3_spidr import (
 )
 from hermes.state.models.measurement import MeasurementInfo
 from hermes.state.models.shared_models import FileReference
-from hermes.runner.analysis.executables import resolve_executable
+from hermes.runner.analysis.executables import (
+    resolve_executable,
+    single_thread_environment,
+)
+
+# Reading Parquet metadata during validation is footer-only work, so keep
+# PyArrow's process-wide thread pools at one thread. Otherwise every worker's
+# validation would size an Arrow pool to the whole machine and many concurrent
+# workers would oversubscribe the cores.
+pa.set_cpu_count(1)
+pa.set_io_thread_count(1)
 
 # Each Parquet category directory and the filename label the unpacker uses in it.
 # Pixel files are named "<stem>_chip_<chip>_pixels_<part>.parquet"; every other
@@ -28,7 +40,6 @@ _PARQUET_DIRECTORY_LABELS = {
     "control_packets": "control_packets",
     "unrecognized_packets": "unrecognized_packets",
 }
-_PARQUET_DIRECTORIES = tuple(_PARQUET_DIRECTORY_LABELS)
 # TDC triggers are written one file per channel+edge that occurs, so the
 # tdc_triggers directory holds up to four differently labeled filenames.
 _TDC_TRIGGER_LABELS = (
@@ -167,6 +178,7 @@ def execute_unpacker(
             capture_output=True,
             text=True,
             check=False,
+            env=single_thread_environment(),
         )
     except OSError as exc:
         elapsed_seconds = perf_counter() - started
@@ -234,6 +246,174 @@ def execute_unpacker(
         elapsed_seconds=elapsed_seconds,
         stdout_excerpt=stdout_excerpt,
         stderr_excerpt=stderr_excerpt,
+        summary=summary.model_dump(mode="json"),
+    )
+    return summary
+
+
+def derive_batch_unpacker_command(
+    analysis: HermesTpx3AnalysisState,
+    analysis_root: Path,
+    list_path: Path,
+    measurement_info: MeasurementInfo,
+    *,
+    overwrite: bool = False,
+) -> list[str]:
+    """Command that unpacks every raw file listed in ``list_path`` in one run.
+
+    Identical to ``derive_unpacker_command`` except it passes ``--input-list``
+    instead of ``--input``; every other option is per-run, not per-file, so it
+    is the same for the whole group.
+    """
+    command = [
+        str(analysis.unpacking.program.executable_path),
+        "--input-list",
+        str(list_path),
+        "--output",
+        str(analysis_root),
+        "--measurement-id",
+        measurement_info.measurement_id,
+        "--run",
+        measurement_info.run,
+    ]
+    if overwrite:
+        command.append("--overwrite")
+    if not analysis.unpacking.runtime_options.time_sort:
+        command.extend(["--time-sort", "false"])
+    return command
+
+
+def execute_unpacker_batch(
+    analysis: HermesTpx3AnalysisState,
+    analysis_root: Path,
+    raw_files: list[FileReference],
+    measurement_info: MeasurementInfo,
+    *,
+    overwrite: bool = False,
+) -> list[Tpx3SpidrSummary | None]:
+    """Unpack a group of raw files in one subprocess; report each file's result.
+
+    The binary reads the group's paths from a temporary list file and unpacks
+    them in sequence, so the cost of starting the process and loading its
+    Arrow/Parquet libraries is paid once for the whole group instead of once per
+    file. Each file's success is decided from its own summary JSON, never the
+    process exit code: a file whose summary is present and lists valid Parquet
+    output is unpacked; any other file — missing or invalid summary, including a
+    file the process never reached because it died partway — is failed, and a
+    resume re-runs it. Returns one entry per input file, in the given order: its
+    summary when unpacked, or ``None`` when failed.
+    """
+    resolved_executable_path = resolve_executable(
+        analysis.unpacking.program.executable_path
+    )
+    list_file = tempfile.NamedTemporaryFile(
+        "w",
+        suffix=".txt",
+        prefix="hermes_unpack_batch_",
+        delete=False,
+    )
+    try:
+        list_file.write(
+            "\n".join(str(raw_file.path) for raw_file in raw_files)
+        )
+        list_file.close()
+        command = derive_batch_unpacker_command(
+            analysis,
+            analysis_root,
+            Path(list_file.name),
+            measurement_info,
+            overwrite=overwrite,
+        )
+        started = perf_counter()
+        _ANALYSIS_LOGGER.info(
+            "Unpacking {file_count} raw TPX3 file(s) in one process "
+            "(time_sort={time_sort})",
+            event_type="analysis.tpx3_unpacking.batch_started",
+            file_count=len(raw_files),
+            analysis_directory=str(analysis_root),
+            executable_path=str(analysis.unpacking.program.executable_path),
+            resolved_executable_path=str(resolved_executable_path),
+            time_sort=analysis.unpacking.runtime_options.time_sort,
+            command=command,
+        )
+        try:
+            process = subprocess.run(
+                command,
+                shell=False,
+                capture_output=True,
+                text=True,
+                check=False,
+                env=single_thread_environment(),
+            )
+        except OSError as exc:
+            elapsed_seconds = perf_counter() - started
+            for raw_file in raw_files:
+                _log_process_failure(
+                    raw_file,
+                    command,
+                    elapsed_seconds,
+                    error=f"failed to launch unpacker: {exc}",
+                )
+            return [None] * len(raw_files)
+
+        elapsed_seconds = perf_counter() - started
+        stderr_excerpt = _bounded_text(process.stderr)
+        return [
+            _confirm_unpacked_file(
+                analysis_root,
+                raw_file,
+                command,
+                elapsed_seconds,
+                exit_code=process.returncode,
+                stderr_excerpt=stderr_excerpt,
+            )
+            for raw_file in raw_files
+        ]
+    finally:
+        Path(list_file.name).unlink(missing_ok=True)
+
+
+def _confirm_unpacked_file(
+    analysis_root: Path,
+    raw_file: FileReference,
+    command: list[str],
+    elapsed_seconds: float,
+    *,
+    exit_code: int | None,
+    stderr_excerpt: str,
+) -> Tpx3SpidrSummary | None:
+    """Return a file's summary if it unpacked cleanly, else ``None``, and log it.
+
+    Called once per file after its batch process finishes, to decide that file's
+    result from its own summary rather than the process's shared exit code.
+    """
+    summary_path = derive_summary_path(analysis_root, raw_file)
+    try:
+        summary = _load_summary(summary_path)
+        _validate_completed_files(
+            summary,
+            summary_path,
+            analysis_root,
+            raw_file.path.stem,
+        )
+    except HermesTpx3Error as exc:
+        _log_process_failure(
+            raw_file,
+            command,
+            elapsed_seconds,
+            error=str(exc),
+            exit_code=exit_code,
+            stderr_excerpt=stderr_excerpt,
+        )
+        return None
+
+    _ANALYSIS_LOGGER.info(
+        "Unpacked {raw_tpx3_file}",
+        event_type="analysis.tpx3_unpacking.completed",
+        raw_tpx3_file=str(raw_file.path),
+        analysis_directory=str(analysis_root),
+        summary_json_file=str(summary_path),
+        exit_code=exit_code,
         summary=summary.model_dump(mode="json"),
     )
     return summary
@@ -456,35 +636,6 @@ def _validate_completed_files(
                 f"Parquet row count mismatch for {expected_directory}: "
                 f"summary={category.row_count}, files={observed_rows}"
             )
-
-    matching_files = {
-        path.resolve()
-        for path in _matching_parquet_files(
-            analysis_directory,
-            raw_file_stem,
-        )
-    }
-    listed_resolved = {path.resolve() for path in listed_files}
-    if matching_files != listed_resolved:
-        unexpected = sorted(str(path) for path in matching_files - listed_resolved)
-        missing = sorted(str(path) for path in listed_resolved - matching_files)
-        raise HermesTpx3OutputError(
-            f"summary Parquet file list does not match files for "
-            f"{raw_file_stem}; unexpected={unexpected}, missing={missing}"
-        )
-
-
-def _matching_parquet_files(
-    analysis_directory: Path,
-    raw_file_stem: str,
-) -> list[Path]:
-    matches: list[Path] = []
-    pattern = f"{raw_file_stem}_*.parquet"
-    for directory in _PARQUET_DIRECTORIES:
-        category_directory = analysis_directory / directory
-        if category_directory.is_dir():
-            matches.extend(category_directory.glob(pattern))
-    return sorted(matches)
 
 
 def _bounded_text(text: str) -> str:
