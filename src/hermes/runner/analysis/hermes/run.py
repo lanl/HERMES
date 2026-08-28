@@ -220,20 +220,22 @@ def run_hermes_analysis(
                 # is no prior output to scan.
                 already_unpacked: dict = {}
             else:
-                # Reading each raw file's summary and revalidating its listed
-                # Parquet files is independent per file, so scan them across
-                # workers. On a resume this scan covers every already-unpacked
-                # file and is otherwise the slowest part of the stage.
-                scan_workers = _calculate_worker_count(
-                    analysis, len(raw_files), _largest_file_bytes(raw_files)
-                )
-                already_unpacked, scan_errors = _run_parallel(
-                    lambda raw_file: check_previous_unpacked_file(
-                        analysis_root, raw_file
-                    ),
-                    raw_files,
-                    scan_workers,
-                )
+                # Revalidating one raw file's summary and listed Parquet files
+                # is pure-Python work (path and filename checks plus summary
+                # parsing), so a thread pool cannot run it in parallel under the
+                # GIL and only adds contention: measured on a 40k-file resume the
+                # scan runs about twice as fast in a single thread as across the
+                # worker pool. Scan serially; the unpacking below still uses the
+                # pool, where each worker waits on a separate subprocess.
+                already_unpacked: dict = {}
+                scan_errors: dict[int, Exception] = {}
+                for index, raw_file in enumerate(raw_files):
+                    try:
+                        already_unpacked[index] = check_previous_unpacked_file(
+                            analysis_root, raw_file
+                        )
+                    except Exception as exc:
+                        scan_errors[index] = exc
                 if scan_errors:
                     # A corrupt or partial prior summary stops the whole stage,
                     # matching the single-file scan this replaces. Files
