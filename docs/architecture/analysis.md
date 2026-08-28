@@ -253,12 +253,13 @@ declared budget is not enforced as a process memory limit. The 1 GiB minimum and
 and other allocations beyond the sorting budget alone.
 
 When HERMES runs the same analysis again, it validates every raw TPX3 file,
-every existing summary, and every Parquet file its summary lists before
-launching any unpacker. Reading and validating one file's summary is independent
-of every other file's, so this scan runs across the same worker pool used for
-unpacking. On a resume that scan covers every already-finished file and is
-otherwise the slowest part of the stage. Files are handled according to these
-rules:
+every existing summary, and confirms that every Parquet file its summary lists
+exists before launching any unpacker. It does not open those Parquet files: the
+summary is written only after every Parquet file closes, so its presence already
+means the outputs are complete, and its row counts are trusted rather than
+re-read. Reading and validating one file's summary is independent of every other
+file's, so this scan runs across the same worker pool used for unpacking. Files
+are handled according to these rules:
 
 1. Skip the raw file when its summary is valid and every listed Parquet file
    exists.
@@ -281,12 +282,12 @@ the fixed startup cost is a small fraction of each file's work and grouping woul
 not help. The chunk size is capped so a subprocess that dies partway loses only
 that chunk's not-yet-finished files, which a later resume re-runs.
 
-Each subprocess, and HERMES's own Parquet-metadata reads, run with their
-internal thread pools limited to a single thread. Left unconstrained, the
-Arrow/Parquet thread pool inside each worker sizes itself to the whole machine,
-so many concurrent workers would spawn far more runnable threads than cores and
-oversubscribe the CPU. Pinning them to one thread keeps roughly one worker per
-core, which is the assumption behind the worker-count formula.
+Each subprocess runs with its internal thread pools limited to a single thread.
+Left unconstrained, the Arrow/Parquet thread pool inside each unpacker process
+sizes itself to the whole machine, so many concurrent workers would spawn far
+more runnable threads than cores and oversubscribe the CPU. Pinning them to one
+thread keeps roughly one worker per core, which is the assumption behind the
+worker-count formula.
 
 The runner returns completed files in the original `tpx3_files` order,
 regardless of completion order. All HERMES state changes remain on the main
