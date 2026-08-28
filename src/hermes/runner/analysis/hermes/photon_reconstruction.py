@@ -24,7 +24,10 @@ from hermes.state.models.analysis.hermes_tpx3_spidr import (
 )
 from hermes.state.models.measurement import MeasurementInfo
 from hermes.state.models.shared_models import FileReference
-from hermes.runner.analysis.executables import resolve_executable
+from hermes.runner.analysis.executables import (
+    resolve_executable,
+    single_thread_environment,
+)
 from hermes.shipped_files import default_timewalk_calibration
 
 _LOG_TEXT_LIMIT = 4_000
@@ -278,6 +281,7 @@ def execute_reconstruction(
                 capture_output=True,
                 text=True,
                 check=False,
+                env=single_thread_environment(),
             )
         except OSError as exc:
             elapsed_seconds = perf_counter() - started
