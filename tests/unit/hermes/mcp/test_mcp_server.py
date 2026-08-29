@@ -58,6 +58,24 @@ def test_unpacking_writes_a_loadable_unpack_only_config(tmp_path: Path) -> None:
     assert record.analysis.event_reconstruction is None
 
 
+def test_generated_config_records_the_working_directory(tmp_path: Path) -> None:
+    _write_raw_files(tmp_path, ["only.tpx3"])
+
+    result = create_analysis_config(
+        AnalysisConfigRequest(
+            working_directory=tmp_path,
+            measurement_id="demo",
+            run="run-1",
+            furthest_stage="unpacking",
+        )
+    )
+
+    # The config is self-contained: it names its own working directory, so the
+    # run script resolves the .tpx3 file list no matter where it is launched.
+    record = load_hermes_record_from_yaml(result.config_file)
+    assert record.environment.working_directory.path == tmp_path.resolve()
+
+
 def test_generated_config_is_quiet_and_uses_the_default_timewalk(
     tmp_path: Path,
 ) -> None:

@@ -156,6 +156,7 @@ def create_analysis_config(request: AnalysisConfigRequest) -> AnalysisConfigResu
             "run": request.run,
         },
         "environment": {
+            "working_directory": str(directory),
             "analysis_directory": "analysis",
             "log_level": _QUIET_LOG_LEVEL,
         },
@@ -163,19 +164,9 @@ def create_analysis_config(request: AnalysisConfigRequest) -> AnalysisConfigResu
     }
 
     # Validate against the installed HERMES's real rules before writing. The
-    # working directory is pinned here only so the .tpx3 file list resolves; the
-    # file written to disk keeps the minimal, portable form (relative paths, no
-    # resolved machine paths).
-    HermesRecord.model_validate(
-        {
-            **config,
-            "environment": {
-                "working_directory": str(directory),
-                "analysis_directory": "analysis",
-                "log_level": _QUIET_LOG_LEVEL,
-            },
-        }
-    )
+    # working directory is written into the config so the .tpx3 file list
+    # resolves no matter which directory the run script is launched from.
+    HermesRecord.model_validate(config)
 
     config_path = directory / "hermes-config.yaml"
     config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
