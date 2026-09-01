@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Literal
 
@@ -69,6 +70,49 @@ def _expand_file_list(value: object) -> object:
         raise ValueError(f"file list contains no file paths: {file_list_path}")
 
     return files
+
+
+def _expand_results_list(value: object) -> object:
+    """Expand a ``{"results_file": path}`` mapping into a list of result entries.
+
+    Each non-blank line of the referenced JSON-lines file is one result entry,
+    parsed straight back into a mapping the stage's result model validates. The
+    paths inside each entry are written by HERMES and kept verbatim, so a saved
+    and reloaded record holds the identical results. Any other value passes
+    through unchanged.
+    """
+    if not isinstance(value, dict) or "results_file" not in value:
+        return value
+
+    if set(value) != {"results_file"}:
+        raise ValueError("the results-file form must contain only results_file")
+
+    results_file_value = value["results_file"]
+    if not isinstance(results_file_value, str | Path):
+        raise ValueError("results_file must be a file path")
+
+    results_file_path = Path(results_file_value).expanduser().resolve(strict=False)
+    try:
+        lines = results_file_path.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeError) as exc:
+        raise ValueError(f"cannot read results file: {results_file_path}") from exc
+
+    entries: list[object] = []
+    for line in lines:
+        text = line.strip()
+        if not text:
+            continue
+        try:
+            entries.append(json.loads(text))
+        except json.JSONDecodeError as exc:
+            raise ValueError(
+                f"results file has an invalid JSON line: {results_file_path}"
+            ) from exc
+
+    if not entries:
+        raise ValueError(f"results file contains no entries: {results_file_path}")
+
+    return entries
 
 
 class HermesTpx3PhotonClusteringSettings(StrictBaseModel):
@@ -558,6 +602,11 @@ class Tpx3Unpacking(StrictBaseModel):
             )
         return value
 
+    @field_validator("results", mode="before")
+    @classmethod
+    def expand_results_list(cls, value: object) -> object:
+        return _expand_results_list(value)
+
     @model_validator(mode="after")
     def require_unique_stems(self) -> Tpx3Unpacking:
         if not isinstance(self.tpx3_files, list):
@@ -603,6 +652,11 @@ class HermesTpx3PhotonReconstruction(StrictBaseModel):
             )
         return value
 
+    @field_validator("results", mode="before")
+    @classmethod
+    def expand_results_list(cls, value: object) -> object:
+        return _expand_results_list(value)
+
 
 class HermesTpx3EventReconstructionRuntimeOptions(StrictBaseModel):
     overwrite: bool = False
@@ -635,6 +689,11 @@ class HermesTpx3EventReconstruction(StrictBaseModel):
                 "photon_parquet_files must be 'auto' or a non-empty file list"
             )
         return value
+
+    @field_validator("results", mode="before")
+    @classmethod
+    def expand_results_list(cls, value: object) -> object:
+        return _expand_results_list(value)
 
 
 # ---------------------------------------------------------------------------

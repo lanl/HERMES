@@ -1,0 +1,33 @@
+# HERMES record — Example 04: many input files (offload to sibling files)
+
+measurement_info:
+  measurement_id: harness-04-many-files
+  run: many-files
+
+environment:
+  working_directory: data/04-many-files
+  run_directory: many
+  log_directory: logs
+  raw_data_directory: ../raw
+  analysis_directory: analysis
+  config_file: HERMES_record.yaml
+
+analysis:
+  mode: hermes
+  resource_limit_percent: 90
+  unpacking:
+    program:
+      name: tpx3-spidr-cpp
+      executable_path: hermes-tpx3-spidr
+    tpx3_files:
+      - path: data/04-many-files/raw/many_00.tpx3
+      - path: data/04-many-files/raw/many_01.tpx3
+      - path: data/04-many-files/raw/many_02.tpx3
+      - path: data/04-many-files/raw/many_03.tpx3
+      - path: data/04-many-files/raw/many_04.tpx3
+      - path: data/04-many-files/raw/many_05.tpx3
+      - path: data/04-many-files/raw/many_06.tpx3
+      - path: data/04-many-files/raw/many_07.tpx3
+      - path: data/04-many-files/raw/many_08.tpx3
+      - path: data/04-many-files/raw/many_09.tpx3
+      - path: data/04-many-files/raw/many_10.tpx3

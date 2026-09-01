@@ -1,0 +1,14 @@
+{"event":"HERMES_record_initialized","record":"data/04-many-files/many/HERMES_record.yaml","time":"<TIMESTAMP>"}
+{"event":"workflow_initialized","stages":["unpacking"],"time":"<TIMESTAMP>"}
+{"event":"stage_completed","stage":"unpacking","file":"data/04-many-files/raw/many_00.tpx3","status":"success","start":"<TIMESTAMP>","stop":"<TIMESTAMP>","summary":"data/04-many-files/many/analysis/logs/unpacking/many_00_unpacker_summary.json"}
+{"event":"stage_completed","stage":"unpacking","file":"data/04-many-files/raw/many_01.tpx3","status":"success","start":"<TIMESTAMP>","stop":"<TIMESTAMP>","summary":"data/04-many-files/many/analysis/logs/unpacking/many_01_unpacker_summary.json"}
+{"event":"stage_completed","stage":"unpacking","file":"data/04-many-files/raw/many_02.tpx3","status":"success","start":"<TIMESTAMP>","stop":"<TIMESTAMP>","summary":"data/04-many-files/many/analysis/logs/unpacking/many_02_unpacker_summary.json"}
+{"event":"stage_completed","stage":"unpacking","file":"data/04-many-files/raw/many_03.tpx3","status":"success","start":"<TIMESTAMP>","stop":"<TIMESTAMP>","summary":"data/04-many-files/many/analysis/logs/unpacking/many_03_unpacker_summary.json"}
+{"event":"stage_completed","stage":"unpacking","file":"data/04-many-files/raw/many_04.tpx3","status":"success","start":"<TIMESTAMP>","stop":"<TIMESTAMP>","summary":"data/04-many-files/many/analysis/logs/unpacking/many_04_unpacker_summary.json"}
+{"event":"stage_completed","stage":"unpacking","file":"data/04-many-files/raw/many_05.tpx3","status":"success","start":"<TIMESTAMP>","stop":"<TIMESTAMP>","summary":"data/04-many-files/many/analysis/logs/unpacking/many_05_unpacker_summary.json"}
+{"event":"stage_completed","stage":"unpacking","file":"data/04-many-files/raw/many_06.tpx3","status":"success","start":"<TIMESTAMP>","stop":"<TIMESTAMP>","summary":"data/04-many-files/many/analysis/logs/unpacking/many_06_unpacker_summary.json"}
+{"event":"stage_completed","stage":"unpacking","file":"data/04-many-files/raw/many_07.tpx3","status":"success","start":"<TIMESTAMP>","stop":"<TIMESTAMP>","summary":"data/04-many-files/many/analysis/logs/unpacking/many_07_unpacker_summary.json"}
+{"event":"stage_completed","stage":"unpacking","file":"data/04-many-files/raw/many_08.tpx3","status":"success","start":"<TIMESTAMP>","stop":"<TIMESTAMP>","summary":"data/04-many-files/many/analysis/logs/unpacking/many_08_unpacker_summary.json"}
+{"event":"stage_completed","stage":"unpacking","file":"data/04-many-files/raw/many_09.tpx3","status":"success","start":"<TIMESTAMP>","stop":"<TIMESTAMP>","summary":"data/04-many-files/many/analysis/logs/unpacking/many_09_unpacker_summary.json"}
+{"event":"stage_completed","stage":"unpacking","file":"data/04-many-files/raw/many_10.tpx3","status":"success","start":"<TIMESTAMP>","stop":"<TIMESTAMP>","summary":"data/04-many-files/many/analysis/logs/unpacking/many_10_unpacker_summary.json"}
+{"event":"workflow_completed","stages":["unpacking"],"time":"<TIMESTAMP>"}

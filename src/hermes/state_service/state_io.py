@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -27,6 +28,14 @@ _OFFLOADABLE_FILE_LISTS = (
     ("unpacking", "tpx3_files"),
     ("photon_reconstruction", "pixel_files"),
     ("event_reconstruction", "photon_parquet_files"),
+)
+
+# Stages whose per-file ``results`` list can be moved to a sibling JSON-lines
+# file when it grows past MAX_INLINE_FILE_ENTRIES.
+_OFFLOADABLE_RESULTS_STAGES = (
+    "unpacking",
+    "photon_reconstruction",
+    "event_reconstruction",
 )
 
 
@@ -58,6 +67,40 @@ def _offload_long_file_lists(data: dict[str, Any], record_directory: Path) -> No
             encoding="utf-8",
         )
         stage[field_name] = {"file_list": str(list_path)}
+
+
+def _offload_long_results_lists(
+    data: dict[str, Any], record_directory: Path
+) -> None:
+    """Move long per-file ``results`` lists into sibling JSON-lines files.
+
+    Each list with more than ``MAX_INLINE_FILE_ENTRIES`` entries is written to
+    a ``<stage>_results.jsonl`` file in the record's directory, one JSON object
+    per line, and replaced in the record with a ``{"results_file": <path>}``
+    reference that the loader expands. Entries are already JSON-safe because the
+    record is dumped with ``model_dump(mode="json")`` before offloading.
+    """
+
+    analysis = data.get("analysis")
+    if not isinstance(analysis, dict):
+        return
+
+    for stage_name in _OFFLOADABLE_RESULTS_STAGES:
+        stage = analysis.get(stage_name)
+        if not isinstance(stage, dict):
+            continue
+        entries = stage.get("results")
+        if (
+            not isinstance(entries, list)
+            or len(entries) <= MAX_INLINE_FILE_ENTRIES
+        ):
+            continue
+        results_path = record_directory / f"{stage_name}_results.jsonl"
+        results_path.write_text(
+            "".join(f"{json.dumps(entry)}\n" for entry in entries),
+            encoding="utf-8",
+        )
+        stage["results"] = {"results_file": str(results_path)}
 
 
 def load_hermes_record_from_yaml(file_path: str | Path) -> HermesRecord:
@@ -99,6 +142,7 @@ def save_hermes_record_to_yaml(record: HermesRecord, file_path: str | Path) -> P
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         _offload_long_file_lists(data, path.parent)
+        _offload_long_results_lists(data, path.parent)
         content = yaml.dump(
             data,
             Dumper=_NoAliasSafeDumper,

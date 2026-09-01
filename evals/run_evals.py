@@ -10,6 +10,7 @@ each other. Exit status is non-zero if any case deviates from its expected/ file
 
 from __future__ import annotations
 
+import runpy
 import shutil
 import sys
 from pathlib import Path
@@ -39,6 +40,12 @@ def run_case(case_directory: Path) -> list[str]:
     # expected fixtures would flag).
     if compare_root.exists():
         shutil.rmtree(compare_root)
+
+    # Some cases generate their (gitignored) input data at run time; run the
+    # optional prepare.py so the inputs exist before the workflow starts.
+    prepare_script = case_directory / "input" / "prepare.py"
+    if prepare_script.exists():
+        runpy.run_path(str(prepare_script), run_name="__main__")
 
     # Run the workflow
     Workflow(record).run()

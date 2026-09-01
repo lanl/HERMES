@@ -1,0 +1,105 @@
+data/04-many-files/many/
+├── analysis/
+│   ├── control_packets/
+│   │   ├── many_00_control_packets_00000.parquet
+│   │   ├── many_01_control_packets_00000.parquet
+│   │   ├── many_02_control_packets_00000.parquet
+│   │   ├── many_03_control_packets_00000.parquet
+│   │   ├── many_04_control_packets_00000.parquet
+│   │   ├── many_05_control_packets_00000.parquet
+│   │   ├── many_06_control_packets_00000.parquet
+│   │   ├── many_07_control_packets_00000.parquet
+│   │   ├── many_08_control_packets_00000.parquet
+│   │   ├── many_09_control_packets_00000.parquet
+│   │   └── many_10_control_packets_00000.parquet
+│   ├── global_timestamps/
+│   │   ├── many_00_global_timestamps_00000.parquet
+│   │   ├── many_01_global_timestamps_00000.parquet
+│   │   ├── many_02_global_timestamps_00000.parquet
+│   │   ├── many_03_global_timestamps_00000.parquet
+│   │   ├── many_04_global_timestamps_00000.parquet
+│   │   ├── many_05_global_timestamps_00000.parquet
+│   │   ├── many_06_global_timestamps_00000.parquet
+│   │   ├── many_07_global_timestamps_00000.parquet
+│   │   ├── many_08_global_timestamps_00000.parquet
+│   │   ├── many_09_global_timestamps_00000.parquet
+│   │   └── many_10_global_timestamps_00000.parquet
+│   ├── logs/
+│   │   └── unpacking/
+│   │       ├── many_00_unpacker_summary.json
+│   │       ├── many_01_unpacker_summary.json
+│   │       ├── many_02_unpacker_summary.json
+│   │       ├── many_03_unpacker_summary.json
+│   │       ├── many_04_unpacker_summary.json
+│   │       ├── many_05_unpacker_summary.json
+│   │       ├── many_06_unpacker_summary.json
+│   │       ├── many_07_unpacker_summary.json
+│   │       ├── many_08_unpacker_summary.json
+│   │       ├── many_09_unpacker_summary.json
+│   │       └── many_10_unpacker_summary.json
+│   ├── pixel_hits/
+│   │   ├── many_00_chip_0_pixels_00000.parquet
+│   │   ├── many_00_chip_1_pixels_00000.parquet
+│   │   ├── many_00_chip_2_pixels_00000.parquet
+│   │   ├── many_01_chip_0_pixels_00000.parquet
+│   │   ├── many_01_chip_1_pixels_00000.parquet
+│   │   ├── many_01_chip_2_pixels_00000.parquet
+│   │   ├── many_02_chip_0_pixels_00000.parquet
+│   │   ├── many_02_chip_1_pixels_00000.parquet
+│   │   ├── many_02_chip_2_pixels_00000.parquet
+│   │   ├── many_03_chip_0_pixels_00000.parquet
+│   │   ├── many_03_chip_1_pixels_00000.parquet
+│   │   ├── many_03_chip_2_pixels_00000.parquet
+│   │   ├── many_04_chip_0_pixels_00000.parquet
+│   │   ├── many_04_chip_1_pixels_00000.parquet
+│   │   ├── many_04_chip_2_pixels_00000.parquet
+│   │   ├── many_05_chip_0_pixels_00000.parquet
+│   │   ├── many_05_chip_1_pixels_00000.parquet
+│   │   ├── many_05_chip_2_pixels_00000.parquet
+│   │   ├── many_06_chip_0_pixels_00000.parquet
+│   │   ├── many_06_chip_1_pixels_00000.parquet
+│   │   ├── many_06_chip_2_pixels_00000.parquet
+│   │   ├── many_07_chip_0_pixels_00000.parquet
+│   │   ├── many_07_chip_1_pixels_00000.parquet
+│   │   ├── many_07_chip_2_pixels_00000.parquet
+│   │   ├── many_08_chip_0_pixels_00000.parquet
+│   │   ├── many_08_chip_1_pixels_00000.parquet
+│   │   ├── many_08_chip_2_pixels_00000.parquet
+│   │   ├── many_09_chip_0_pixels_00000.parquet
+│   │   ├── many_09_chip_1_pixels_00000.parquet
+│   │   ├── many_09_chip_2_pixels_00000.parquet
+│   │   ├── many_10_chip_0_pixels_00000.parquet
+│   │   ├── many_10_chip_1_pixels_00000.parquet
+│   │   └── many_10_chip_2_pixels_00000.parquet
+│   ├── tdc_triggers/
+│   │   ├── many_00_tdc1_falling_triggers_00000.parquet
+│   │   ├── many_00_tdc1_rising_triggers_00000.parquet
+│   │   ├── many_01_tdc1_falling_triggers_00000.parquet
+│   │   ├── many_01_tdc1_rising_triggers_00000.parquet
+│   │   ├── many_02_tdc1_falling_triggers_00000.parquet
+│   │   ├── many_02_tdc1_rising_triggers_00000.parquet
+│   │   ├── many_03_tdc1_falling_triggers_00000.parquet
+│   │   ├── many_03_tdc1_rising_triggers_00000.parquet
+│   │   ├── many_04_tdc1_falling_triggers_00000.parquet
+│   │   ├── many_04_tdc1_rising_triggers_00000.parquet
+│   │   ├── many_05_tdc1_falling_triggers_00000.parquet
+│   │   ├── many_05_tdc1_rising_triggers_00000.parquet
+│   │   ├── many_06_tdc1_falling_triggers_00000.parquet
+│   │   ├── many_06_tdc1_rising_triggers_00000.parquet
+│   │   ├── many_07_tdc1_falling_triggers_00000.parquet
+│   │   ├── many_07_tdc1_rising_triggers_00000.parquet
+│   │   ├── many_08_tdc1_falling_triggers_00000.parquet
+│   │   ├── many_08_tdc1_rising_triggers_00000.parquet
+│   │   ├── many_09_tdc1_falling_triggers_00000.parquet
+│   │   ├── many_09_tdc1_rising_triggers_00000.parquet
+│   │   ├── many_10_tdc1_falling_triggers_00000.parquet
+│   │   └── many_10_tdc1_rising_triggers_00000.parquet
+│   └── unrecognized_packets/
+├── logs/
+│   ├── HERMES-workflow.jsonl
+│   ├── acquisition.serval.jsonl
+│   ├── analysis.jsonl
+│   └── state.jsonl
+├── HERMES_record.yaml
+├── tpx3_files.txt
+└── unpacking_results.jsonl
