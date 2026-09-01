@@ -13,10 +13,12 @@ from hermes.state.models.acquisition.serval import (
 )
 from hermes.state.models.analysis.hermes_tpx3_spidr import (
     HermesTpx3AnalysisState,
+    HermesTpx3UnpackingResult,
+    Tpx3Unpacking,
 )
 from hermes.state.models.environment import RuntimeEnvironment
 from hermes.state.models.measurement import MeasurementInfo
-from hermes.state.models.shared_models import FileReference
+from hermes.state.models.shared_models import BinaryProgram, FileReference
 from hermes.state.state import HermesRecord
 from hermes.state_service.shared_types import StateIOError
 from hermes.state_service.state_io import (
@@ -280,6 +282,75 @@ analysis:
     written_lines = written_list_path.read_text(encoding="utf-8").splitlines()
     assert len(written_lines) == 11
     assert reloaded == loaded
+
+
+def _record_with_unpacking_results(
+    tmp_path: Path, result_count: int
+) -> HermesRecord:
+    results = [
+        HermesTpx3UnpackingResult(
+            input_file=FileReference(path=tmp_path / f"raw/many_{index:02d}.tpx3"),
+            status="completed",
+        )
+        for index in range(result_count)
+    ]
+    return HermesRecord(
+        measurement_info=MeasurementInfo(
+            measurement_id="many-results-run",
+            run="test-run",
+        ),
+        environment=RuntimeEnvironment(working_directory=tmp_path / "run-001"),
+        analysis=HermesTpx3AnalysisState(
+            unpacking=Tpx3Unpacking(
+                program=BinaryProgram(
+                    name="tpx3-spidr-cpp",
+                    executable_path="hermes-tpx3-spidr",
+                ),
+                results=results,
+            ),
+        ),
+    )
+
+
+def test_save_writes_results_file_when_more_than_ten_results(
+    tmp_path: Path,
+) -> None:
+    record = _record_with_unpacking_results(tmp_path, result_count=11)
+    record_directory = tmp_path / "run"
+    final_record_path = record_directory / "HERMES_record.yaml"
+
+    save_hermes_record_to_yaml(record, final_record_path)
+    saved_yaml = yaml.safe_load(final_record_path.read_text(encoding="utf-8"))
+    reloaded = load_hermes_record_from_yaml(final_record_path)
+
+    # More than ten results are written to a sibling JSON-lines file, referenced
+    # by the results-file form rather than listed inline in the record.
+    written_results_path = record_directory / "unpacking_results.jsonl"
+    assert saved_yaml["analysis"]["unpacking"]["results"] == {
+        "results_file": str(written_results_path)
+    }
+    written_lines = written_results_path.read_text(encoding="utf-8").splitlines()
+    assert len(written_lines) == 11
+    assert reloaded == record
+
+
+def test_save_keeps_results_inline_when_ten_or_fewer(
+    tmp_path: Path,
+) -> None:
+    record = _record_with_unpacking_results(tmp_path, result_count=10)
+    record_directory = tmp_path / "run"
+    final_record_path = record_directory / "HERMES_record.yaml"
+
+    save_hermes_record_to_yaml(record, final_record_path)
+    saved_yaml = yaml.safe_load(final_record_path.read_text(encoding="utf-8"))
+    reloaded = load_hermes_record_from_yaml(final_record_path)
+
+    # Ten or fewer results stay inline; no sibling file is written.
+    saved_results = saved_yaml["analysis"]["unpacking"]["results"]
+    assert isinstance(saved_results, list)
+    assert len(saved_results) == 10
+    assert not (record_directory / "unpacking_results.jsonl").exists()
+    assert reloaded == record
 
 
 def test_load_hermes_record_from_yaml_rejects_invalid_yaml(tmp_path: Path) -> None:

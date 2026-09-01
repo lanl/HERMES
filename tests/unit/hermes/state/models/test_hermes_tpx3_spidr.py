@@ -7,6 +7,7 @@ import pytest
 from pydantic import ValidationError
 
 from hermes.state.models.analysis.hermes_tpx3_spidr import (
+    _expand_results_list,
     HermesTpx3AnalysisState,
     HermesTpx3PhotonReconstructionResult,
     HermesTpx3UnpackingResult,
@@ -371,6 +372,155 @@ def test_hermes_analysis_state_checks_duplicate_stems_from_file_list(
                         "executable_path": tmp_path / "hermes-tpx3-spidr",
                     },
                     "tpx3_files": {"file_list": file_list_path},
+                },
+            }
+        )
+
+
+def test_hermes_analysis_state_expands_unpacking_results_file(
+    tmp_path: Path,
+) -> None:
+    results = [
+        HermesTpx3UnpackingResult(
+            input_file=FileReference(path=tmp_path / f"raw/many_{index:02d}.tpx3"),
+            status="completed",
+        )
+        for index in range(3)
+    ]
+    results_file_path = tmp_path / "unpacking_results.jsonl"
+    results_file_path.write_text(
+        "".join(
+            f"{json.dumps(result.model_dump(mode='json'))}\n" for result in results
+        ),
+        encoding="utf-8",
+    )
+
+    analysis = HermesTpx3AnalysisState.model_validate(
+        {
+            "unpacking": {
+                "program": {
+                    "name": "tpx3-spidr-cpp",
+                    "executable_path": tmp_path / "hermes-tpx3-spidr",
+                },
+                "results": {"results_file": results_file_path},
+            },
+        }
+    )
+
+    assert analysis.unpacking.results == results
+
+
+def test_expand_results_list_round_trips_nested_photon_counts(
+    tmp_path: Path,
+) -> None:
+    # A photon result carries a nested counts summary, so the offload uses
+    # JSON-lines rather than one path per line; this pins that the nested
+    # structure survives the write-and-read round trip.
+    results = [
+        HermesTpx3PhotonReconstructionResult.model_validate(
+            {
+                "input_file": {"path": str(tmp_path / "pixel_00.parquet")},
+                "output_file": str(tmp_path / "photon_00.parquet"),
+                "status": "completed",
+                "counts": {
+                    "pixels_read": 100,
+                    "clusters_formed": 5,
+                    "rejected_clusters": 2,
+                    "rejection_reasons": {
+                        "below_min_cluster_size": 1,
+                        "above_max_cluster_size": 0,
+                        "below_min_cluster_tot": 1,
+                        "above_max_cluster_tot": 0,
+                        "above_max_aspect_ratio": 0,
+                        "below_min_filled_fraction": 0,
+                    },
+                    "quality_flag_counts": {
+                        "saturated_pixel": 1,
+                        "bridged_components": 0,
+                    },
+                    "warnings": [],
+                    "errors": [],
+                    "total_photons": 3,
+                },
+            }
+        ),
+        HermesTpx3PhotonReconstructionResult.model_validate(
+            {
+                "input_file": {"path": str(tmp_path / "pixel_01.parquet")},
+                "output_file": str(tmp_path / "photon_01.parquet"),
+                "status": "skipped",
+            }
+        ),
+    ]
+    results_file_path = tmp_path / "photon_reconstruction_results.jsonl"
+    results_file_path.write_text(
+        "".join(
+            f"{json.dumps(result.model_dump(mode='json'))}\n" for result in results
+        ),
+        encoding="utf-8",
+    )
+
+    expanded = _expand_results_list({"results_file": results_file_path})
+
+    assert [
+        HermesTpx3PhotonReconstructionResult.model_validate(entry)
+        for entry in expanded
+    ] == results
+
+
+@pytest.mark.parametrize(
+    ("file_contents", "error"),
+    [
+        (None, "cannot read results file"),
+        ("not json\n", "invalid JSON line"),
+        ("", "contains no entries"),
+        ("\n   \n", "contains no entries"),
+    ],
+)
+def test_hermes_analysis_state_rejects_invalid_results_file(
+    tmp_path: Path,
+    file_contents: str | None,
+    error: str,
+) -> None:
+    results_file_path = tmp_path / "unpacking_results.jsonl"
+    if file_contents is not None:
+        results_file_path.write_text(file_contents, encoding="utf-8")
+
+    with pytest.raises(ValidationError, match=error):
+        HermesTpx3AnalysisState.model_validate(
+            {
+                "unpacking": {
+                    "program": {
+                        "name": "tpx3-spidr-cpp",
+                        "executable_path": tmp_path / "hermes-tpx3-spidr",
+                    },
+                    "results": {"results_file": results_file_path},
+                },
+            }
+        )
+
+
+def test_hermes_analysis_state_rejects_results_file_with_extra_keys(
+    tmp_path: Path,
+) -> None:
+    results_file_path = tmp_path / "unpacking_results.jsonl"
+    results_file_path.write_text(
+        '{"input_file": {"path": "raw.tpx3"}, "status": "completed"}\n',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValidationError, match="must contain only results_file"):
+        HermesTpx3AnalysisState.model_validate(
+            {
+                "unpacking": {
+                    "program": {
+                        "name": "tpx3-spidr-cpp",
+                        "executable_path": tmp_path / "hermes-tpx3-spidr",
+                    },
+                    "results": {
+                        "results_file": results_file_path,
+                        "unexpected": "value",
+                    },
                 },
             }
         )

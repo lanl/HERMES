@@ -1,0 +1,77 @@
+{
+  "measurement_info": {
+    "measurement_id": "harness-04-many-files",
+    "run": "many-files"
+  },
+  "inputfile": "data/04-many-files/raw/many_00.tpx3",
+  "unpacking": {
+    "bytes_read": 348128,
+    "chunks_read": 21750,
+    "packets_read": 21766,
+    "pixel_data_packets": 34,
+    "tdc_timestamps": 5408,
+    "heartbeat_packets": 8,
+    "spidr_control_packets": 0,
+    "tpx3_control_packets": 84,
+    "unrecognized_packets": 0,
+    "tdc1_rising": 2704,
+    "tdc1_falling": 2704,
+    "tdc2_rising": 0,
+    "tdc2_falling": 0,
+    "unknown_tdc_edges": 0,
+    "errors": [],
+    "warnings": []
+  },
+  "timestamp_processing": {
+    "heartbeat_pairs": {
+      "number_of_beats": 8
+    },
+    "time_adjustments": {
+      "pixel_packets": 34,
+      "tdc_packets": 21632,
+      "control_packets": 0,
+      "failed": 0
+    }
+  },
+  "sorting": {
+    "strategy": "in_memory",
+    "memory_budget_bytes": 1073741824,
+    "estimated_memory_bytes": 225600,
+    "sorting_time_seconds": "<IGNORE: non-deterministic timing>"
+  },
+  "output_parquet": {
+    "pixel_data": {
+      "row_count": 34,
+      "files": [
+        "data/04-many-files/many/analysis/pixel_hits/many_00_chip_0_pixels_00000.parquet",
+        "data/04-many-files/many/analysis/pixel_hits/many_00_chip_1_pixels_00000.parquet",
+        "data/04-many-files/many/analysis/pixel_hits/many_00_chip_2_pixels_00000.parquet"
+      ]
+    },
+    "tdc_timestamps": {
+      "row_count": 5408,
+      "files": [
+        "data/04-many-files/many/analysis/tdc_triggers/many_00_tdc1_rising_triggers_00000.parquet",
+        "data/04-many-files/many/analysis/tdc_triggers/many_00_tdc1_falling_triggers_00000.parquet"
+      ]
+    },
+    "heartbeat_packets": {
+      "row_count": 8,
+      "files": [
+        "data/04-many-files/many/analysis/global_timestamps/many_00_global_timestamps_00000.parquet"
+      ]
+    },
+    "control_packets": {
+      "row_count": 84,
+      "files": [
+        "data/04-many-files/many/analysis/control_packets/many_00_control_packets_00000.parquet"
+      ]
+    },
+    "unrecognized_packets": {
+      "row_count": 0,
+      "files": []
+    },
+    "errors": []
+  },
+  "processing_times_seconds": "<IGNORE: non-deterministic timing>"
+}
