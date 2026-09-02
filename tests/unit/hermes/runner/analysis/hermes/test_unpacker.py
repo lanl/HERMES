@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -9,6 +10,7 @@ from loguru import logger
 
 from hermes.runner.analysis.executables import single_thread_environment
 from hermes.runner.analysis.hermes import run as run_module
+from hermes.runner.analysis.hermes import unpacker as unpacker_module
 from hermes.runner.analysis.hermes.run import HermesAnalysisError, run_hermes_analysis
 from hermes.runner.analysis.hermes.unpacker import (
     HermesTpx3Error,
@@ -21,6 +23,7 @@ from hermes.runner.analysis.hermes.unpacker import (
     execute_unpacker_batch,
     resolve_tpx3_files,
     validate_program_and_inputs,
+    _warn_if_timestamps_unanchored,
 )
 from hermes.state.models.analysis.empir import EmpirAnalysisState
 from hermes.state.models.analysis.hermes_tpx3_spidr import (
@@ -116,6 +119,8 @@ def _summary(
     raw_stem: str,
     *,
     pixel_rows: int = 0,
+    number_of_beats: int = 0,
+    failed: int = 0,
 ) -> Tpx3SpidrSummary:
     # The binary writes each Parquet path as the analysis directory it was given
     # joined with the category subdirectory and filename.
@@ -157,13 +162,13 @@ def _summary(
             },
             "timestamp_processing": {
                 "heartbeat_pairs": {
-                    "number_of_beats": 0,
+                    "number_of_beats": number_of_beats,
                 },
                 "time_adjustments": {
                     "pixel_packets": pixel_rows,
                     "tdc_packets": 0,
                     "control_packets": 0,
-                    "failed": 0,
+                    "failed": failed,
                 },
             },
             "sorting": {
@@ -215,6 +220,85 @@ def _save_completed_files(
     summary_path = derive_summary_path(analysis_root, raw_file)
     summary_path.parent.mkdir(parents=True, exist_ok=True)
     summary_path.write_text(summary.model_dump_json(), encoding="utf-8")
+
+
+def _capture_unanchored_warnings() -> tuple[list[dict[str, Any]], int]:
+    records: list[dict[str, Any]] = []
+    sink_id = logger.add(
+        lambda message: records.append(message.record),
+        filter=lambda record: record["extra"].get("event_type")
+        == "analysis.tpx3_unpacking.timestamps_unanchored",
+    )
+    return records, sink_id
+
+
+def test_unpacking_warns_when_timestamps_have_no_global_anchor(
+    tmp_path: Path,
+) -> None:
+    analysis_root = _analysis_root(tmp_path)
+    raw_file = FileReference(path=tmp_path / "rawTpx3" / "no_beats.tpx3")
+    # No global timestamps in the file, so every wrapped counter is left
+    # unresolved: this is the SoPhy/GlobalTimestampInterval-off signature.
+    summary = _summary(
+        analysis_root, "no_beats", pixel_rows=3, number_of_beats=0, failed=3
+    )
+
+    records, sink_id = _capture_unanchored_warnings()
+    try:
+        _warn_if_timestamps_unanchored(raw_file, summary)
+    finally:
+        logger.remove(sink_id)
+
+    assert len(records) == 1
+    warning = records[0]
+    assert warning["level"].name == "WARNING"
+    assert warning["extra"]["failed"] == 3
+    assert warning["extra"]["beats"] == 0
+    assert "GlobalTimestampInterval" in warning["message"]
+
+
+def test_unpacking_does_not_warn_when_all_timestamps_anchored(
+    tmp_path: Path,
+) -> None:
+    analysis_root = _analysis_root(tmp_path)
+    raw_file = FileReference(path=tmp_path / "rawTpx3" / "ok.tpx3")
+    summary = _summary(
+        analysis_root, "ok", pixel_rows=3, number_of_beats=8, failed=0
+    )
+
+    records, sink_id = _capture_unanchored_warnings()
+    try:
+        _warn_if_timestamps_unanchored(raw_file, summary)
+    finally:
+        logger.remove(sink_id)
+
+    assert records == []
+
+
+def test_unpacking_warns_per_chip_when_some_beats_present(tmp_path: Path) -> None:
+    analysis_root = _analysis_root(tmp_path)
+    raw_file = FileReference(path=tmp_path / "rawTpx3" / "partial.tpx3")
+    # The file has global timestamps (beats > 0) yet some counters were still
+    # unresolved: on a multi-chip detector a chip can lack its own anchor even
+    # though others have them. The hint must not blame acquisition here.
+    summary = _summary(
+        analysis_root, "partial", pixel_rows=5, number_of_beats=4, failed=2
+    )
+
+    records, sink_id = _capture_unanchored_warnings()
+    try:
+        _warn_if_timestamps_unanchored(raw_file, summary)
+    finally:
+        logger.remove(sink_id)
+
+    assert len(records) == 1
+    warning = records[0]
+    assert warning["extra"]["failed"] == 2
+    assert warning["extra"]["beats"] == 4
+    # With anchors present, do not tell the operator to enable it during
+    # acquisition; explain the per-chip cause instead.
+    assert "GlobalTimestampInterval" not in warning["message"]
+    assert "not for every chip" in warning["message"]
 
 
 def test_derives_command_and_input_specific_summary_path(tmp_path: Path) -> None:
@@ -436,6 +520,76 @@ def test_validate_rejects_missing_required_files(
         validate_program_and_inputs(
             analysis, analysis_root, list(analysis.unpacking.tpx3_files)
         )
+
+
+def _capture_binary_stale_warnings() -> tuple[list[dict[str, Any]], int]:
+    records: list[dict[str, Any]] = []
+    sink_id = logger.add(
+        lambda message: records.append(message.record),
+        filter=lambda record: record["extra"].get("event_type")
+        == "analysis.tpx3_unpacking.binary_stale",
+    )
+    return records, sink_id
+
+
+def _make_cpp_source(tmp_path: Path) -> Path:
+    source_directory = tmp_path / "cpp"
+    source_file = source_directory / "src" / "unpacker.cpp"
+    source_file.parent.mkdir(parents=True, exist_ok=True)
+    source_file.write_text("// unpacker\n", encoding="utf-8")
+    return source_directory
+
+
+def test_preflight_warns_when_binary_older_than_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A binary older than its C++ source is flagged as stale before unpacking."""
+    analysis = _analysis(tmp_path, "one.tpx3")
+    analysis_root = _analysis_root(tmp_path)
+    source_directory = _make_cpp_source(tmp_path)
+    binary = analysis.unpacking.program.executable_path
+    os.utime(binary, (1000.0, 1000.0))
+    os.utime(source_directory / "src" / "unpacker.cpp", (2000.0, 2000.0))
+    monkeypatch.setattr(unpacker_module, "_UNPACKER_CPP_SOURCE", source_directory)
+
+    records, sink_id = _capture_binary_stale_warnings()
+    try:
+        validate_program_and_inputs(
+            analysis, analysis_root, list(analysis.unpacking.tpx3_files)
+        )
+    finally:
+        logger.remove(sink_id)
+
+    assert len(records) == 1
+    warning = records[0]
+    assert warning["level"].name == "WARNING"
+    assert "pixi reinstall hermes" in warning["message"]
+    assert warning["extra"]["source"].endswith("unpacker.cpp")
+
+
+def test_preflight_does_not_warn_when_binary_is_current(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A binary newer than its C++ source raises no staleness warning."""
+    analysis = _analysis(tmp_path, "one.tpx3")
+    analysis_root = _analysis_root(tmp_path)
+    source_directory = _make_cpp_source(tmp_path)
+    binary = analysis.unpacking.program.executable_path
+    os.utime(source_directory / "src" / "unpacker.cpp", (1000.0, 1000.0))
+    os.utime(binary, (2000.0, 2000.0))
+    monkeypatch.setattr(unpacker_module, "_UNPACKER_CPP_SOURCE", source_directory)
+
+    records, sink_id = _capture_binary_stale_warnings()
+    try:
+        validate_program_and_inputs(
+            analysis, analysis_root, list(analysis.unpacking.tpx3_files)
+        )
+    finally:
+        logger.remove(sink_id)
+
+    assert records == []
 
 
 def test_plan_rejects_duplicate_raw_filename_stems(tmp_path: Path) -> None:

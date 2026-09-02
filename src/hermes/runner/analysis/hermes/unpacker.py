@@ -17,8 +17,21 @@ from hermes.state.models.analysis.hermes_tpx3_spidr import (
 from hermes.state.models.measurement import MeasurementInfo
 from hermes.state.models.shared_models import FileReference
 from hermes.runner.analysis.executables import (
+    newer_source_than_binary,
     resolve_executable,
     single_thread_environment,
+)
+
+# The unpacker's C++ source in a source checkout (repo/src/backends/...). An
+# editable install compiles the deployed binary from here, so the preflight
+# compares the binary against these files to catch a binary that was not rebuilt
+# after an edit. A wheel install has no source here and the check is skipped.
+_UNPACKER_CPP_SOURCE = (
+    Path(__file__).resolve().parents[4]
+    / "backends"
+    / "unpackers"
+    / "tpx3-spidr"
+    / "cpp"
 )
 
 # Each Parquet category directory and the filename label the unpacker uses in it.
@@ -243,6 +256,7 @@ def execute_unpacker(
         )
         raise
 
+    _warn_if_timestamps_unanchored(raw_file, summary)
     _ANALYSIS_LOGGER.info(
         "Unpacked {raw_tpx3_file} in {elapsed_seconds:.2f}s",
         event_type="analysis.tpx3_unpacking.completed",
@@ -415,6 +429,7 @@ def _confirm_unpacked_file(
         )
         return None
 
+    _warn_if_timestamps_unanchored(raw_file, summary)
     _ANALYSIS_LOGGER.info(
         "Unpacked {raw_tpx3_file}",
         event_type="analysis.tpx3_unpacking.completed",
@@ -471,6 +486,44 @@ def log_overall_failure(error: Exception) -> None:
     )
 
 
+def _warn_if_timestamps_unanchored(
+    raw_file: FileReference,
+    summary: Tpx3SpidrSummary,
+) -> None:
+    """Warn when a file's timestamps had no global timestamps to anchor to.
+
+    Unpacking recovers each clock counter's missing high bits by comparing it to
+    the run's global timestamps, which are matched to each chip on its own.
+    ``failed`` counts the counters that found no global timestamp to anchor to,
+    so they are left folded near zero and no longer share one comparable axis
+    with the rest. When the file has no global timestamps at all this almost
+    always means GlobalTimestampInterval was not enabled during acquisition;
+    when it has some but not for every chip, only the chips without one of their
+    own are affected.
+    """
+    failed = summary.timestamp_processing.time_adjustments.failed
+    if failed == 0:
+        return
+    beats = summary.timestamp_processing.heartbeat_pairs.number_of_beats
+    if beats == 0:
+        hint = "Check that GlobalTimestampInterval was enabled during acquisition."
+    else:
+        hint = (
+            "This file has global timestamps but not for every chip, so the "
+            "chips without one of their own could not be anchored."
+        )
+    _ANALYSIS_LOGGER.warning(
+        "{raw_tpx3_file}: {failed} timestamps had no global timestamps to anchor "
+        "to ({beats} in this file); pixel, TDC, and event times may be off by "
+        "whole clock wraps and are not comparable for time-of-flight. {hint}",
+        event_type="analysis.tpx3_unpacking.timestamps_unanchored",
+        raw_tpx3_file=str(raw_file.path),
+        failed=failed,
+        beats=beats,
+        hint=hint,
+    )
+
+
 def validate_program_and_inputs(
     analysis: HermesTpx3AnalysisState,
     analysis_root: Path,
@@ -478,12 +531,25 @@ def validate_program_and_inputs(
 ) -> None:
     executable = analysis.unpacking.program.executable_path
     try:
-        resolve_executable(executable)
+        resolved_executable_path = resolve_executable(executable)
     except (FileNotFoundError, PermissionError) as exc:
         raise HermesTpx3PreflightError(
             f"unpacker executable does not exist: {executable}; build the "
             "binary (e.g. via pixi) and set unpacking.program.executable_path"
         ) from exc
+
+    stale_source = newer_source_than_binary(
+        resolved_executable_path, _UNPACKER_CPP_SOURCE
+    )
+    if stale_source is not None:
+        _ANALYSIS_LOGGER.warning(
+            "Unpacker binary {binary} is older than its source file {source}; it "
+            "was not rebuilt after the source changed and is running stale code. "
+            "Rebuild it with `pixi reinstall hermes` before trusting the output.",
+            event_type="analysis.tpx3_unpacking.binary_stale",
+            binary=str(resolved_executable_path),
+            source=str(stale_source),
+        )
 
     for raw_file in raw_files:
         if not raw_file.path.is_file():

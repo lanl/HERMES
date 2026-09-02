@@ -330,6 +330,7 @@ def test_serval_acquisition_state_loads_config() -> None:
                 "detector_config": {
                     "TriggerMode": "AUTOTRIGSTART_TIMERSTOP",
                     "ExposureTime": 0.0002,
+                    "TriggerPeriod": 0.01,
                     "nTriggers": 10,
                 },
                 "run_timing": {

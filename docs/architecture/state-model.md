@@ -507,6 +507,8 @@ ServalRunTiming
   exposure_time_s: float | None
   trigger_period_s: float | None
   trigger_count: int | None   # maps to the detector config's n_triggers
+  max_wait_s: float | None    # HERMES-side limit on how long to wait for the
+                              # measurement to finish; not sent to the camera
 
 ServalAcquisitionResult
   started_at: datetime | None
