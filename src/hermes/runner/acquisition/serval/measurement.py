@@ -44,8 +44,10 @@ _PROGRESS_LOG_INTERVAL_S = 5.0
 # does (and produces no frames) within this window, HERMES stops waiting.
 _START_TIMEOUT_S = 15.0
 
-# A wait limit is always capped here, and a run whose length cannot be computed
-# (for example a continuous run) waits this long before HERMES stops it.
+# These apply only when the run does not set its own wait limit
+# (run_timing.max_wait_s). Then HERMES estimates a limit from the run's expected
+# duration and caps it at _MAX_WAIT_S; a run whose length cannot be computed (for
+# example a continuous run) waits _DEFAULT_WAIT_S before HERMES stops it.
 _MAX_WAIT_S = 300.0
 _DEFAULT_WAIT_S = 300.0
 
@@ -90,7 +92,12 @@ def build_effective_detector_config(
         updates["trigger_period_s"] = timing.trigger_period_s
     if timing.trigger_count is not None:
         updates["n_triggers"] = timing.trigger_count
-    return base.model_copy(update=updates)
+
+    merged = base.model_copy(update=updates)
+    # model_copy does not re-run validators, so validate the merged configuration
+    # to apply the cross-field rules (like the sequential dead-time rule) to the
+    # effective config before it is sent to SERVAL.
+    return DetectorConfiguration.model_validate(merged.model_dump())
 
 
 def _load_base_config(config: ServalAcquisitionConfig) -> DetectorConfiguration:
@@ -122,11 +129,39 @@ def run_measurement(
     to unpack raw files as new frames land during the recording; it must not
     raise, and it must be quick since it runs between polls.
     """
-    effective = build_effective_detector_config(config)
     warnings: list[str] = []
     errors: list[str] = []
 
+    try:
+        effective = build_effective_detector_config(config)
+    except ValueError as error:
+        errors.append(str(error))
+        _MEASUREMENT_LOGGER.error(
+            "Not starting the measurement: the detector configuration is "
+            "invalid: {error}",
+            event_type="acquisition.serval.measurement_not_started",
+            stop_reason="invalid_configuration",
+            error=str(error),
+        )
+        return _not_started_outcome(
+            client, None, warnings, errors, stop_reason="invalid_configuration"
+        )
+
     applied = _apply_config(client, effective, warnings, errors)
+    if errors:
+        # The configuration could not be applied, so the camera would record at
+        # its previous, unverified settings. Do not start the measurement: a run
+        # with no provenance over its settings is worse than no run at all.
+        _MEASUREMENT_LOGGER.error(
+            "Not starting the measurement: the detector configuration was not "
+            "applied",
+            event_type="acquisition.serval.measurement_not_started",
+            stop_reason="config_not_applied",
+            errors=errors,
+        )
+        return _not_started_outcome(
+            client, applied, warnings, errors, stop_reason="config_not_applied"
+        )
 
     started_at = utc_now()
     stop_reason = "completed"
@@ -187,6 +222,7 @@ def _apply_config(
     errors: list[str],
 ) -> DetectorConfiguration:
     """Send the configuration and read it back, warning on any difference."""
+    _warn_if_global_timestamps_disabled(effective, warnings)
     _MEASUREMENT_LOGGER.info(
         "Applying detector configuration",
         event_type="acquisition.serval.detector_config_apply",
@@ -211,6 +247,47 @@ def _apply_config(
     return applied
 
 
+def _warn_if_global_timestamps_disabled(
+    effective: DetectorConfiguration,
+    warnings: list[str],
+) -> None:
+    """Warn when this run's configuration does not enable global timestamps.
+
+    SERVAL writes periodic global timestamps only when GlobalTimestampInterval
+    is a positive number of seconds. When this run leaves it unset HERMES sends
+    nothing for it, so SERVAL keeps whatever it had; when this run sets it to
+    zero or a negative value HERMES sends that and SERVAL turns them off. Either
+    way, unless SERVAL already has them on the raw `.tpx3` will have none, and
+    unpacking then cannot place pixel, TDC, and event times on one comparable
+    time axis for time-of-flight. This is a valid configuration, so it is a
+    warning, not a failure.
+    """
+    interval = effective.global_timestamp_interval_s
+    if interval is not None and interval > 0:
+        return
+    if interval is None:
+        cause = (
+            "; this run leaves GlobalTimestampInterval unset, so unless SERVAL "
+            "already has them on the raw .tpx3 will have none"
+        )
+    else:
+        cause = (
+            f"; this run sets GlobalTimestampInterval to {interval!r}, which turns "
+            "them off on SERVAL, so the raw .tpx3 will have none"
+        )
+    warning = (
+        "this run does not enable global timestamps" + cause + ", and unpacking "
+        "cannot place pixel, TDC, and event times on one comparable time axis for "
+        "time-of-flight"
+    )
+    warnings.append(warning)
+    _MEASUREMENT_LOGGER.warning(
+        warning,
+        event_type="acquisition.serval.global_timestamp_disabled",
+        global_timestamp_interval_s=interval,
+    )
+
+
 def _warn_on_config_drift(
     sent: DetectorConfiguration,
     applied: DetectorConfiguration,
@@ -228,6 +305,7 @@ def _warn_on_config_drift(
             _MEASUREMENT_LOGGER.warning(
                 "Detector config drift: {message}",
                 event_type="acquisition.serval.detector_config_drift",
+                message=message,
                 field=key,
                 sent=value,
                 applied=applied_fields.get(key),
@@ -321,9 +399,37 @@ def _read_measurement(client: ServalClient):
         return None
 
 
+def _not_started_outcome(
+    client: ServalClient,
+    applied: DetectorConfiguration | None,
+    warnings: list[str],
+    errors: list[str],
+    *,
+    stop_reason: str,
+) -> MeasurementOutcome:
+    """Build a failed outcome for a measurement that was never started.
+
+    Used when the effective configuration is invalid or could not be applied:
+    nothing was recorded, so there are no output files, but the final detector
+    state is still read so the record shows what the camera looked like.
+    """
+    final_dashboard, final_snapshot = _read_final_state(client, applied, warnings)
+    result = ServalAcquisitionResult(
+        started_at=None,
+        completed_at=utc_now(),
+        stop_reason=stop_reason,
+        frames=None,
+        dropped_frames=None,
+        warnings=warnings,
+        errors=errors,
+        output_files=[],
+    )
+    return MeasurementOutcome(result, final_snapshot, final_dashboard)
+
+
 def _read_final_state(
     client: ServalClient,
-    applied: DetectorConfiguration,
+    applied: DetectorConfiguration | None,
     warnings: list[str],
 ) -> tuple[ServalDashboard | None, DetectorSnapshot]:
     """Read the final dashboard and health for the record, tolerating failures."""
@@ -366,6 +472,8 @@ def _safe_stop(client: ServalClient, warnings: list[str]) -> None:
 
 
 def _wait_limit_s(timing: ServalRunTiming | None) -> float:
+    if timing is not None and timing.max_wait_s is not None:
+        return timing.max_wait_s
     expected = _expected_duration_s(timing)
     if expected is None:
         return _DEFAULT_WAIT_S

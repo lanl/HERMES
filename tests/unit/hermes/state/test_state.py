@@ -159,6 +159,7 @@ def test_hermes_record_serializes_serval_config_and_calibration(
                 "detector_config": {
                     "TriggerMode": "AUTOTRIGSTART_TIMERSTOP",
                     "ExposureTime": 0.0002,
+                    "TriggerPeriod": 0.01,
                     "nTriggers": 100,
                     "BiasEnabled": True,
                 },

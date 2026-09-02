@@ -333,16 +333,21 @@ class CalibrationFiles(StrictBaseModel):
 
 
 class ServalRunTiming(StrictBaseModel):
-    """Exposure and trigger settings for the run.
+    """Timing and run-control settings for the measurement.
 
-    Any field set here overrides the matching field in the detector
-    configuration. `trigger_count` maps to the detector config's `n_triggers`.
+    The trigger and exposure fields each override the matching field in the
+    detector configuration; `trigger_count` maps to the detector config's
+    `n_triggers`. `max_wait_s` is a HERMES-side limit, not sent to the camera:
+    it is the longest HERMES waits for the measurement to finish before it stops
+    the measurement itself. When it is unset HERMES estimates a limit from the
+    run's expected duration instead.
     """
 
     trigger_mode: DetectorTriggerMode | None = None
     exposure_time_s: float | None = Field(default=None, ge=0, le=10)
     trigger_period_s: float | None = Field(default=None, ge=0, le=50)
     trigger_count: int | None = Field(default=None, ge=0)
+    max_wait_s: float | None = Field(default=None, gt=0)
 
 
 class ServalAcquisitionConfig(StrictBaseModel):

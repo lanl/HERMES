@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Annotated, Literal
 
-from pydantic import ConfigDict, Field, field_validator
+from pydantic import ConfigDict, Field, field_validator, model_validator
 
 from hermes.state.models.shared_models import StrictBaseModel, utc_now
 
@@ -136,6 +136,13 @@ class DetectorLayout(DetectorApiModel):
     rotated: DetectorLayoutCanvas | None = Field(default=None, alias="Rotated")
 
 
+# SERVAL rejects an automatic-mode (its "sequential" mode) configuration whose
+# exposure is not at least this many seconds shorter than the trigger period --
+# the dead time the camera needs between the end of one exposure and the next
+# self-generated trigger.
+_SEQUENTIAL_DEAD_TIME_S = 0.002
+
+
 class DetectorConfiguration(DetectorApiModel):
     log_level: DetectorLogLevel | None = Field(default=None, alias="LogLevel")
     fan1_pwm: int | None = Field(default=None, ge=0, le=100, alias="Fan1PWM")
@@ -192,6 +199,42 @@ class DetectorConfiguration(DetectorApiModel):
             return value
         msg = "GlobalTimestampInterval must be <= 0 or >= 0.001 seconds"
         raise ValueError(msg)
+
+    @model_validator(mode="after")
+    def validate_sequential_dead_time(self) -> DetectorConfiguration:
+        """Enforce SERVAL's dead-time rule for automatic (sequential) triggering.
+
+        In AUTOTRIGSTART_TIMERSTOP mode the camera self-triggers every trigger
+        period and opens the shutter for the exposure time inside it, so the
+        exposure must end at least _SEQUENTIAL_DEAD_TIME_S before the next
+        trigger. SERVAL rejects a configuration that breaks this; checking it
+        here catches the problem before anything is sent to the camera. Only
+        this mode uses both an exposure timer and a self-generated trigger
+        period, so the rule applies to it alone.
+        """
+        if (
+            self.trigger_mode != "AUTOTRIGSTART_TIMERSTOP"
+            or self.exposure_time_s is None
+        ):
+            return self
+        if self.trigger_period_s is None:
+            minimum = self.exposure_time_s + _SEQUENTIAL_DEAD_TIME_S
+            msg = (
+                "AUTOTRIGSTART_TIMERSTOP mode needs a trigger period: set "
+                f"trigger_period_s (TriggerPeriod) to at least {minimum} s, "
+                f"{_SEQUENTIAL_DEAD_TIME_S} s longer than the "
+                f"{self.exposure_time_s} s exposure_time_s"
+            )
+            raise ValueError(msg)
+        if self.exposure_time_s > self.trigger_period_s - _SEQUENTIAL_DEAD_TIME_S:
+            msg = (
+                f"exposure_time_s (ExposureTime) of {self.exposure_time_s} s must "
+                f"be at least {_SEQUENTIAL_DEAD_TIME_S} s shorter than "
+                f"trigger_period_s (TriggerPeriod) of {self.trigger_period_s} s in "
+                "AUTOTRIGSTART_TIMERSTOP mode"
+            )
+            raise ValueError(msg)
+        return self
 
 
 class DetectorSnapshot(StrictBaseModel):
