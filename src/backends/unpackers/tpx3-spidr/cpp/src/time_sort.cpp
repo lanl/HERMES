@@ -77,27 +77,20 @@ std::uint64_t findBestEpoch(const std::uint64_t raw_counter,
     const auto anchor_canonical =
         anchor.global_time_48bit * CANONICAL_TICKS_PER_25NS;
 
-    std::uint64_t best_epoch = 0;
-    std::uint64_t min_distance = std::numeric_limits<std::uint64_t>::max();
-
-    for (std::uint64_t epoch = 0; epoch < 100; ++epoch) {
-        const auto candidate_raw = raw_counter + epoch * modulus;
-        const auto candidate_canonical = candidate_raw * canonical_factor;
-
-        std::uint64_t distance;
-        if (candidate_canonical > anchor_canonical) {
-            distance = candidate_canonical - anchor_canonical;
-        } else {
-            distance = anchor_canonical - candidate_canonical;
-        }
-
-        if (distance < min_distance) {
-            min_distance = distance;
-            best_epoch = epoch;
-        }
+    // The number of times the counter has wrapped since the run started is the
+    // distance from this row's raw counter up to the anchor, divided by the
+    // size of one wrap. Computing it directly (rather than scanning a fixed
+    // number of wraps) has no ceiling, so pixel times stay correct on long runs
+    // where the 26.8 s pixel counter wraps far more times than a capped scan
+    // could reach. Work in canonical ticks so the anchor and the raw counter,
+    // which use different native units, are compared on one scale.
+    const auto raw_canonical = raw_counter * canonical_factor;
+    if (anchor_canonical <= raw_canonical) {
+        return 0;
     }
-
-    return best_epoch;
+    const auto gap = anchor_canonical - raw_canonical;
+    const auto wrap = modulus * canonical_factor;
+    return (gap + wrap / 2) / wrap;
 }
 
 void assignEpochsToPixels(std::vector<PixelHit>& pixels,

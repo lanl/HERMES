@@ -304,6 +304,28 @@ void testFindBestEpochNearestAnchor(TestContext& test) {
                      "row after the second heartbeat unwraps to the second");
 }
 
+void testFindBestEpochBeyondScanCeiling(TestContext& test) {
+    // A one-hour run wraps the 26.8 s pixel counter about 134 times -- past the
+    // 100-wrap ceiling the old fixed scan could reach, which used to freeze
+    // pixel times at the 99th wrap. The epoch is now computed directly, so a raw
+    // pixel time of 0 under an anchor 134 rollovers past zero unwraps to epoch
+    // 134, not a capped 99.
+    ChipAnchorIndex index;
+    GlobalAnchor anchor;
+    anchor.global_time_48bit = 134ULL * PIXEL_COUNTER_MODULUS;
+    index.anchors.push_back(anchor);
+
+    EpochAssignmentDiagnostics diagnostics;
+
+    const auto epoch = findBestEpoch(0, PIXEL_COUNTER_MODULUS,
+                                     CANONICAL_TICKS_PER_25NS, index, 0, 0,
+                                     diagnostics);
+
+    test.expectEqual(epoch, std::uint64_t{134},
+                     "pixel raw 0 unwraps past the old 99-wrap ceiling");
+    test.expect(!diagnostics.used_fallback, "no fallback with anchors");
+}
+
 void testAssignEpochsToPixels(TestContext& test) {
     std::vector<PixelHit> pixels;
 
@@ -556,6 +578,7 @@ int main() {
     testFindBestEpochPixelScale(test);
     testFindBestEpochTdcScale(test);
     testFindBestEpochNearestAnchor(test);
+    testFindBestEpochBeyondScanCeiling(test);
     testAssignEpochsToPixels(test);
     testAssignEpochsToPixelsUsesChipSpecificAnchors(test);
     testAssignEpochsToTdcs(test);
