@@ -50,6 +50,50 @@ def resolve_executable(configured_path: Path) -> Path:
     return resolved_path
 
 
+def newer_source_than_binary(
+    binary_path: Path,
+    source_directory: Path,
+) -> Path | None:
+    """Return a C++ source file that changed after the binary was built, if any.
+
+    An editable install compiles ``binary_path`` from ``source_directory`` once
+    at install time and does not recompile when the C++ source later changes, so
+    a source file newer than the binary means the binary was never rebuilt and is
+    running stale code. Only the files that compile into the binary are checked
+    (``CMakeLists.txt`` and the ``inc`` and ``src`` trees), so editing tests or
+    notes does not count.
+
+    Returns the most recently changed such file, or ``None`` when the binary is
+    up to date or the source tree is absent (a wheel install has no source here,
+    so freshness cannot be judged and the check is skipped).
+    """
+    if not source_directory.is_dir():
+        return None
+    try:
+        binary_mtime = binary_path.stat().st_mtime
+    except OSError:
+        return None
+
+    newest_file: Path | None = None
+    newest_mtime = binary_mtime
+    source_files = [
+        *source_directory.glob("CMakeLists.txt"),
+        *source_directory.glob("inc/**/*"),
+        *source_directory.glob("src/**/*"),
+    ]
+    for source_file in source_files:
+        if not source_file.is_file():
+            continue
+        try:
+            source_mtime = source_file.stat().st_mtime
+        except OSError:
+            continue
+        if source_mtime > newest_mtime:
+            newest_mtime = source_mtime
+            newest_file = source_file
+    return newest_file
+
+
 def single_thread_environment() -> dict[str, str]:
     """Copy the current environment with common thread-count variables set to 1.
 
