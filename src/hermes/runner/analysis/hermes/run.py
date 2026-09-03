@@ -9,7 +9,8 @@ from loguru import logger
 
 from hermes.runner.analysis.hermes.event_reconstruction import (
     HermesEventReconstructionError,
-    execute_event_reconstruction,
+    execute_event_reconstruction_batch,
+    group_photon_files_by_stem,
     resolve_raw_file_stems,
 )
 from hermes.runner.analysis.hermes.event_reconstruction import (
@@ -565,7 +566,12 @@ def _run_event_reconstruction(
     skipped_results: list[HermesTpx3EventReconstructionResult] = []
     try:
         validate_event_program_and_algorithm(event_reconstruction)
-        raw_file_stems = resolve_raw_file_stems(analysis, analysis_root)
+        # Scan the photons directory once and group every file under its raw
+        # stem; the stems drive the skip/overwrite bookkeeping below and the
+        # grouping hands each batch its exact photon paths so the binary never
+        # scans the directory again.
+        grouping = group_photon_files_by_stem(analysis, analysis_root)
+        raw_file_stems = sorted(grouping)
         for raw_file_stem in raw_file_stems:
             already_reconstructed = check_previous_event_reconstructed_file(
                 analysis_root, raw_file_stem
@@ -590,32 +596,57 @@ def _run_event_reconstruction(
         if stems_to_run:
             photon_files = [
                 FileReference(path=path)
-                for path in (analysis_root / "photons").glob("*.parquet")
+                for raw_file_stem in stems_to_run
+                for path in grouping[raw_file_stem]
             ]
             worker_count = _calculate_worker_count(
                 analysis, len(stems_to_run), _largest_file_bytes(photon_files)
             )
-            completed, errors = _run_parallel(
-                lambda raw_file_stem: execute_event_reconstruction(
+            # Reconstruct in chunks: one subprocess per chunk reconstructs its
+            # stems in sequence, so the process startup cost (loading
+            # Arrow/Parquet) is paid once per chunk instead of once per stem. The
+            # size is capped so a subprocess that dies partway loses at most that
+            # many not-yet-finished stems, which a later resume re-runs, and so
+            # there are enough chunks to keep every worker busy.
+            chunk_size = max(1, min(100, ceil(len(stems_to_run) / worker_count)))
+            chunks = [
+                stems_to_run[start:start + chunk_size]
+                for start in range(0, len(stems_to_run), chunk_size)
+            ]
+            chunk_results, _chunk_errors = _run_parallel(
+                lambda chunk: execute_event_reconstruction_batch(
                     analysis,
                     analysis_root,
-                    raw_file_stem,
+                    chunk,
+                    grouping,
                     overwrite=event_overwrite,
                 ),
-                stems_to_run,
+                chunks,
                 worker_count,
             )
-            run_results = [completed[i] for i in sorted(completed)]
-            failed_results = [
-                HermesTpx3EventReconstructionResult(
-                    raw_file_stem=stems_to_run[i],
-                    output_file=derive_event_output_path(
-                        analysis_root, stems_to_run[i]
-                    ),
-                    status="failed",
-                )
-                for i in sorted(errors)
-            ]
+            # Each chunk returns one entry per stem (its result, or None when
+            # that stem failed); a chunk missing from the results raised and its
+            # whole chunk failed.
+            for chunk_index, chunk in enumerate(chunks):
+                stem_results = chunk_results.get(chunk_index)
+                for position_in_chunk, raw_file_stem in enumerate(chunk):
+                    result = (
+                        stem_results[position_in_chunk]
+                        if stem_results is not None
+                        else None
+                    )
+                    if result is not None:
+                        run_results.append(result)
+                    else:
+                        failed_results.append(
+                            HermesTpx3EventReconstructionResult(
+                                raw_file_stem=raw_file_stem,
+                                output_file=derive_event_output_path(
+                                    analysis_root, raw_file_stem
+                                ),
+                                status="failed",
+                            )
+                        )
 
         _apply_event_reconstruction_results(
             state_manager,

@@ -1,7 +1,9 @@
 #include <algorithm>
 #include <chrono>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -32,12 +34,19 @@ void printHelp(const char* program_name) {
               << hermes_event_reconstructor::kVersion << "\n\n";
     std::cout << "Usage: " << program_name
               << " --input <analysis_directory> --raw-file-stem <stem>"
+                 " [--settings <file>] [--overwrite]\n";
+    std::cout << "       " << program_name
+              << " --input <analysis_directory> --input-list <file>"
                  " [--settings <file>] [--overwrite]\n\n";
     std::cout << "Options:\n";
     std::cout << "  --input <analysis_directory>   Analysis directory holding "
                  "the photons/ subdirectory (required)\n";
     std::cout << "  --raw-file-stem <stem>         Raw TPX3 filename stem whose "
-                 "photon files to reconstruct (required)\n";
+                 "photon files to reconstruct\n";
+    std::cout << "  --input-list <file>            Reconstruct every photon file "
+                 "listed in <file> (one path\n";
+    std::cout << "                                 per line), grouped by raw "
+                 "stem, in one process\n";
     std::cout << "  --settings <file>              JSON file overriding "
                  "individual event\n";
     std::cout << "                                 settings (any field omitted "
@@ -98,94 +107,44 @@ std::vector<std::string> gatherPhotonFiles(const fs::path& photons_dir,
     return files;
 }
 
-}  // namespace
-
-int main(const int argc, char* argv[]) {
-    std::string analysis_directory;
-    std::string raw_file_stem;
-    std::string settings_file;
-    bool overwrite = false;
-    bool have_input = false;
-    bool have_stem = false;
-
-    for (int i = 1; i < argc; ++i) {
-        const std::string arg = argv[i];
-        if (arg == "-h" || arg == "--help") {
-            printHelp(argv[0]);
-            return 0;
-        }
-        if (arg == "-v" || arg == "--version") {
-            printVersion();
-            return 0;
-        }
-        if (arg == "--overwrite") {
-            overwrite = true;
-            continue;
-        }
-        if (arg == "--input") {
-            if (i + 1 >= argc) {
-                std::cerr << "Error: --input requires a directory path\n";
-                return 2;
-            }
-            analysis_directory = argv[++i];
-            have_input = true;
-            continue;
-        }
-        if (arg == "--raw-file-stem") {
-            if (i + 1 >= argc) {
-                std::cerr << "Error: --raw-file-stem requires a value\n";
-                return 2;
-            }
-            raw_file_stem = argv[++i];
-            have_stem = true;
-            continue;
-        }
-        if (arg == "--settings") {
-            if (i + 1 >= argc) {
-                std::cerr << "Error: --settings requires a file path\n";
-                return 2;
-            }
-            settings_file = argv[++i];
-            continue;
-        }
-        std::cerr << "Error: unrecognized argument: " << arg << "\n\n";
-        std::cerr << "Try '" << argv[0] << " --help' for more information.\n";
-        return 2;
+// Returns the raw TPX3 filename stem a photon file belongs to, or an empty
+// string when the name does not match <stem>_chip_<chip>_photon_<part>.parquet.
+// This is the inverse of the "<stem>_chip_" prefix gatherPhotonFiles builds and
+// matches the Python side's _parse_photon_file_name, so batch mode can group
+// listed files by stem without scanning the photons/ directory. Parsing the
+// exact stem (the whole token before "_chip_") means a stem that is a prefix of
+// another can never pick up the other's files.
+std::string stemForPhotonFile(const std::string& file_path) {
+    const std::string name = fs::path(file_path).filename().string();
+    const std::string chip_marker = "_chip_";
+    const std::string photon_marker = "_photon_";
+    const auto chip_position = name.find(chip_marker);
+    const auto photon_position = name.rfind(photon_marker);
+    if (chip_position == std::string::npos ||
+        photon_position == std::string::npos ||
+        photon_position < chip_position) {
+        return {};
     }
-
-    if (!have_input) {
-        std::cerr << "Error: --input <analysis_directory> is required\n";
-        return 2;
+    if (fs::path(name).extension() != ".parquet") {
+        return {};
     }
-    if (!have_stem) {
-        std::cerr << "Error: --raw-file-stem <stem> is required\n";
-        return 2;
-    }
+    return name.substr(0, chip_position);
+}
 
-    // Start from built-in defaults; a settings file overrides only named fields.
-    // Only the layout-independent checks run here; the grid checks that depend on
-    // the sensor width wait until the layout is read from the photon files.
-    hermes_event_reconstructor::ReconParams settings;
-    try {
-        if (settings_file.empty()) {
-            hermes_event_reconstructor::validateReconParams(settings);
-        } else {
-            settings =
-                hermes_event_reconstructor::loadReconParams(settings_file);
-        }
-    } catch (const std::exception& error) {
-        std::cerr << "Error: " << error.what() << "\n";
-        return 2;
-    }
-
-    const fs::path analysis_path(analysis_directory);
-    const fs::path photons_dir = analysis_path / "photons";
-    const std::vector<std::string> photon_files =
-        gatherPhotonFiles(photons_dir, raw_file_stem);
+// Runs the whole per-stem reconstruction for one raw stem's photon files: read
+// the shared sensor layout, size and validate the grid, pool and sort the
+// photons, cluster them, and write the events, optional event_photons, and
+// summary files under the analysis directory. Returns 0 on success and a
+// non-zero code on failure (2 for a settings/grid problem, 1 otherwise) — the
+// same codes the single-stem run returns.
+int reconstructOneStem(const fs::path& analysis_path,
+                       const std::string& raw_file_stem,
+                       const std::vector<std::string>& photon_files,
+                       const hermes_event_reconstructor::ReconParams& settings,
+                       const bool overwrite) {
     if (photon_files.empty()) {
         std::cerr << "Error: no photon files found for raw file stem '"
-                  << raw_file_stem << "' under " << photons_dir.string()
-                  << "\n";
+                  << raw_file_stem << "'\n";
         return 1;
     }
 
@@ -358,4 +317,163 @@ int main(const int argc, char* argv[]) {
     }
     std::cout << "Summary: " << summary_path << "\n";
     return 0;
+}
+
+// Reconstructs every photon file listed in list_path (one path per line) in a
+// single process, so the one-time cost of loading Arrow/Parquet is paid once for
+// the whole list instead of once per stem. Paths are grouped by raw stem so each
+// stem is reconstructed from exactly its own files, without scanning the
+// photons/ directory. A stem that fails is logged and skipped so the rest of the
+// list still runs; the exit code only reports whether the list file itself could
+// be read, and the Python runner decides each stem's success from its summary
+// JSON, not from this process's exit code.
+int runBatch(const fs::path& analysis_path, const std::string& list_path,
+             const hermes_event_reconstructor::ReconParams& settings,
+             const bool overwrite) {
+    std::ifstream list_file(list_path);
+    if (!list_file) {
+        std::cerr << "Error: unable to open input list file: " << list_path
+                  << "\n";
+        return 2;
+    }
+
+    // Group the listed photon files by raw stem. std::map keeps stems in a
+    // stable order, and each group is sorted below so parts read in order.
+    std::map<std::string, std::vector<std::string>> files_by_stem;
+    std::string photon_path;
+    while (std::getline(list_file, photon_path)) {
+        if (!photon_path.empty() && photon_path.back() == '\r') {
+            photon_path.pop_back();
+        }
+        if (photon_path.empty()) {
+            continue;
+        }
+        const std::string stem = stemForPhotonFile(photon_path);
+        if (stem.empty()) {
+            std::cerr << "Error: photon filename does not match "
+                         "<stem>_chip_<chip>_photon_<part>.parquet: "
+                      << photon_path << "\n";
+            continue;
+        }
+        files_by_stem[stem].push_back(photon_path);
+    }
+
+    for (auto& [stem, files] : files_by_stem) {
+        std::sort(files.begin(), files.end());
+        if (reconstructOneStem(analysis_path, stem, files, settings,
+                               overwrite) != 0) {
+            std::cerr << "Failed: " << stem << "\n";
+        }
+    }
+    return 0;
+}
+
+}  // namespace
+
+int main(const int argc, char* argv[]) {
+    std::string analysis_directory;
+    std::string raw_file_stem;
+    std::string input_list_path;
+    std::string settings_file;
+    bool overwrite = false;
+    bool have_input = false;
+    bool have_stem = false;
+    bool have_input_list = false;
+
+    for (int i = 1; i < argc; ++i) {
+        const std::string arg = argv[i];
+        if (arg == "-h" || arg == "--help") {
+            printHelp(argv[0]);
+            return 0;
+        }
+        if (arg == "-v" || arg == "--version") {
+            printVersion();
+            return 0;
+        }
+        if (arg == "--overwrite") {
+            overwrite = true;
+            continue;
+        }
+        if (arg == "--input") {
+            if (i + 1 >= argc) {
+                std::cerr << "Error: --input requires a directory path\n";
+                return 2;
+            }
+            analysis_directory = argv[++i];
+            have_input = true;
+            continue;
+        }
+        if (arg == "--raw-file-stem") {
+            if (i + 1 >= argc) {
+                std::cerr << "Error: --raw-file-stem requires a value\n";
+                return 2;
+            }
+            raw_file_stem = argv[++i];
+            have_stem = true;
+            continue;
+        }
+        if (arg == "--input-list") {
+            if (i + 1 >= argc) {
+                std::cerr << "Error: --input-list requires a file path\n";
+                return 2;
+            }
+            input_list_path = argv[++i];
+            have_input_list = true;
+            continue;
+        }
+        if (arg == "--settings") {
+            if (i + 1 >= argc) {
+                std::cerr << "Error: --settings requires a file path\n";
+                return 2;
+            }
+            settings_file = argv[++i];
+            continue;
+        }
+        std::cerr << "Error: unrecognized argument: " << arg << "\n\n";
+        std::cerr << "Try '" << argv[0] << " --help' for more information.\n";
+        return 2;
+    }
+
+    if (!have_input) {
+        std::cerr << "Error: --input <analysis_directory> is required\n";
+        return 2;
+    }
+    if (have_stem == have_input_list) {
+        std::cerr << "Error: pass exactly one of --raw-file-stem <stem> or "
+                     "--input-list <file>\n";
+        return 2;
+    }
+
+    // Start from built-in defaults; a settings file overrides only named fields.
+    // Only the layout-independent checks run here; the grid checks that depend on
+    // the sensor width wait until the layout is read from the photon files.
+    hermes_event_reconstructor::ReconParams settings;
+    try {
+        if (settings_file.empty()) {
+            hermes_event_reconstructor::validateReconParams(settings);
+        } else {
+            settings =
+                hermes_event_reconstructor::loadReconParams(settings_file);
+        }
+    } catch (const std::exception& error) {
+        std::cerr << "Error: " << error.what() << "\n";
+        return 2;
+    }
+
+    const fs::path analysis_path(analysis_directory);
+    if (have_input_list) {
+        return runBatch(analysis_path, input_list_path, settings, overwrite);
+    }
+
+    const fs::path photons_dir = analysis_path / "photons";
+    const std::vector<std::string> photon_files =
+        gatherPhotonFiles(photons_dir, raw_file_stem);
+    if (photon_files.empty()) {
+        std::cerr << "Error: no photon files found for raw file stem '"
+                  << raw_file_stem << "' under " << photons_dir.string()
+                  << "\n";
+        return 1;
+    }
+    return reconstructOneStem(analysis_path, raw_file_stem, photon_files,
+                              settings, overwrite);
 }

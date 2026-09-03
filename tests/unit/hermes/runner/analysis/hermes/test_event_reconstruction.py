@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -8,9 +10,12 @@ import pytest
 from hermes.runner.analysis.hermes.event_reconstruction import (
     HermesEventReconstructionPreflightError,
     check_previous_reconstructed_file,
+    derive_batch_event_reconstruction_command,
     derive_event_reconstruction_command,
     derive_output_path,
     derive_summary_path,
+    execute_event_reconstruction_batch,
+    group_photon_files_by_stem,
     resolve_raw_file_stems,
     validate_program_and_algorithm,
 )
@@ -343,29 +348,40 @@ def test_run_groups_two_chips_of_one_stem_into_one_result(
     )
 
     calls: list[str] = []
+    grouped: dict[str, list[Path]] = {}
 
-    def fake_execute(
+    def fake_execute_batch(
         analysis: Any,
         analysis_root: Path,
-        raw_file_stem: str,
+        raw_file_stems: list[str],
+        grouping: dict[str, list[Path]],
         *,
         overwrite: bool = False,
-    ) -> HermesTpx3EventReconstructionResult:
-        calls.append(raw_file_stem)
-        return HermesTpx3EventReconstructionResult(
-            raw_file_stem=raw_file_stem,
-            output_file=derive_output_path(analysis_root, raw_file_stem),
-            status="completed",
-        )
+    ) -> list[HermesTpx3EventReconstructionResult | None]:
+        calls.extend(raw_file_stems)
+        grouped.update(grouping)
+        return [
+            HermesTpx3EventReconstructionResult(
+                raw_file_stem=raw_file_stem,
+                output_file=derive_output_path(analysis_root, raw_file_stem),
+                status="completed",
+            )
+            for raw_file_stem in raw_file_stems
+        ]
 
     monkeypatch.setattr(
-        "hermes.runner.analysis.hermes.run.execute_event_reconstruction",
-        fake_execute,
+        "hermes.runner.analysis.hermes.run.execute_event_reconstruction_batch",
+        fake_execute_batch,
     )
 
     run_hermes_analysis(manager)
 
     assert calls == ["run_000000"]
+    # Both chips of the one stem were grouped together and handed to the batch.
+    assert [path.name for path in grouped["run_000000"]] == [
+        "run_000000_chip_0_photon_00000.parquet",
+        "run_000000_chip_1_photon_00000.parquet",
+    ]
     results = manager.get_state().analysis.event_reconstruction.results
     assert [(r.raw_file_stem, r.status) for r in results] == [
         ("run_000000", "completed")
@@ -393,22 +409,26 @@ def test_run_skips_stems_with_existing_summary(
         config=StateServiceConfig(allow_trusted_workflow_bypass=True),
     )
 
-    def fake_execute(
+    def fake_execute_batch(
         analysis: Any,
         analysis_root: Path,
-        raw_file_stem: str,
+        raw_file_stems: list[str],
+        grouping: dict[str, list[Path]],
         *,
         overwrite: bool = False,
-    ) -> HermesTpx3EventReconstructionResult:
-        return HermesTpx3EventReconstructionResult(
-            raw_file_stem=raw_file_stem,
-            output_file=derive_output_path(analysis_root, raw_file_stem),
-            status="completed",
-        )
+    ) -> list[HermesTpx3EventReconstructionResult | None]:
+        return [
+            HermesTpx3EventReconstructionResult(
+                raw_file_stem=raw_file_stem,
+                output_file=derive_output_path(analysis_root, raw_file_stem),
+                status="completed",
+            )
+            for raw_file_stem in raw_file_stems
+        ]
 
     monkeypatch.setattr(
-        "hermes.runner.analysis.hermes.run.execute_event_reconstruction",
-        fake_execute,
+        "hermes.runner.analysis.hermes.run.execute_event_reconstruction_batch",
+        fake_execute_batch,
     )
 
     run_hermes_analysis(manager)
@@ -436,28 +456,30 @@ def test_run_marks_failed_stem_and_continues(
         config=StateServiceConfig(allow_trusted_workflow_bypass=True),
     )
 
-    from hermes.runner.analysis.hermes.event_reconstruction import (
-        HermesEventReconstructionExecutionError,
-    )
-
-    def fake_execute(
+    def fake_execute_batch(
         analysis: Any,
         analysis_root: Path,
-        raw_file_stem: str,
+        raw_file_stems: list[str],
+        grouping: dict[str, list[Path]],
         *,
         overwrite: bool = False,
-    ) -> HermesTpx3EventReconstructionResult:
-        if raw_file_stem == "boom":
-            raise HermesEventReconstructionExecutionError("boom failed")
-        return HermesTpx3EventReconstructionResult(
-            raw_file_stem=raw_file_stem,
-            output_file=derive_output_path(analysis_root, raw_file_stem),
-            status="completed",
-        )
+    ) -> list[HermesTpx3EventReconstructionResult | None]:
+        # A stem that failed comes back as None in the batch's per-stem list; the
+        # rest of the batch still succeeds.
+        return [
+            None
+            if raw_file_stem == "boom"
+            else HermesTpx3EventReconstructionResult(
+                raw_file_stem=raw_file_stem,
+                output_file=derive_output_path(analysis_root, raw_file_stem),
+                status="completed",
+            )
+            for raw_file_stem in raw_file_stems
+        ]
 
     monkeypatch.setattr(
-        "hermes.runner.analysis.hermes.run.execute_event_reconstruction",
-        fake_execute,
+        "hermes.runner.analysis.hermes.run.execute_event_reconstruction_batch",
+        fake_execute_batch,
     )
 
     run_hermes_analysis(manager)
@@ -467,3 +489,192 @@ def test_run_marks_failed_stem_and_continues(
         for r in manager.get_state().analysis.event_reconstruction.results
     }
     assert results == {"run_000000": "completed", "boom": "failed"}
+
+
+# ---- group_photon_files_by_stem -----------------------------------------
+
+
+def test_group_photon_files_by_stem_groups_and_sorts(tmp_path: Path) -> None:
+    # Every chip and part of one stem is grouped under it, and each group is
+    # sorted so parts read in a stable order regardless of directory order.
+    analysis = _analysis(
+        tmp_path,
+        "run_000000_chip_1_photon_00000.parquet",
+        "run_000000_chip_0_photon_00001.parquet",
+        "run_000000_chip_0_photon_00000.parquet",
+        "run_000001_chip_0_photon_00000.parquet",
+    )
+    grouping = group_photon_files_by_stem(analysis, tmp_path / "analysis")
+    assert sorted(grouping) == ["run_000000", "run_000001"]
+    assert [path.name for path in grouping["run_000000"]] == [
+        "run_000000_chip_0_photon_00000.parquet",
+        "run_000000_chip_0_photon_00001.parquet",
+        "run_000000_chip_1_photon_00000.parquet",
+    ]
+    assert [path.name for path in grouping["run_000001"]] == [
+        "run_000001_chip_0_photon_00000.parquet",
+    ]
+
+
+def test_group_photon_files_by_stem_missing_directory(tmp_path: Path) -> None:
+    # No photon files means the photons directory is never created; grouping is
+    # empty rather than an error.
+    analysis = _analysis(tmp_path)
+    assert group_photon_files_by_stem(analysis, tmp_path / "analysis") == {}
+
+
+# ---- derive_batch_event_reconstruction_command --------------------------
+
+
+def test_batch_command_passes_input_list_and_settings(tmp_path: Path) -> None:
+    analysis = _analysis(tmp_path, "run_000000_chip_0_photon_00000.parquet")
+    analysis_root = tmp_path / "analysis"
+    command = derive_batch_event_reconstruction_command(
+        analysis.event_reconstruction,
+        analysis_root,
+        tmp_path / "list.txt",
+        tmp_path / "settings.json",
+    )
+    assert command[1:] == [
+        "--input",
+        str(analysis_root),
+        "--input-list",
+        str(tmp_path / "list.txt"),
+        "--settings",
+        str(tmp_path / "settings.json"),
+    ]
+    assert "--overwrite" not in command
+
+
+def test_batch_command_appends_overwrite_when_requested(tmp_path: Path) -> None:
+    analysis = _analysis(tmp_path, "run_000000_chip_0_photon_00000.parquet")
+    command = derive_batch_event_reconstruction_command(
+        analysis.event_reconstruction,
+        tmp_path / "analysis",
+        tmp_path / "list.txt",
+        tmp_path / "settings.json",
+        overwrite=True,
+    )
+    assert command[-1] == "--overwrite"
+
+
+# ---- execute_event_reconstruction_batch ---------------------------------
+
+
+def _valid_event_summary_dict() -> dict[str, Any]:
+    """A minimal valid event reconstruction summary the binary would write."""
+    return {
+        "schema_version": 1,
+        "reconstruction": {
+            "photons_read": 10,
+            "components_formed": 3,
+            "event_count": 3,
+            "quality_flag_counts": {"single_photon": 1, "duration_exceeded": 0},
+            "min_photon_count_below": 0,
+            "warnings": [],
+            "errors": [],
+        },
+        "clustering": {
+            "algorithm": "connected_components",
+            "settings": {
+                "spatial_link_radius_pixels": 10.0,
+                "spatial_cells_per_axis": 5,
+                "max_time_difference_ticks": 4915200.0,
+                "max_event_duration_ticks": 14745600.0,
+                "min_photon_count": 1,
+                "save_event_photons": False,
+                "derived_cell_width": 104,
+            },
+        },
+        "event_timing": {"estimator": "earliest_photon"},
+        "parquet": {
+            "input_photon_events_files": [],
+            "event_candidates": {"row_count": 0, "files": []},
+        },
+        "processing_times_seconds": {
+            "photon_reading": 0.0,
+            "clustering": 0.0,
+            "parquet_writing": 0.0,
+            "total": 0.0,
+            "throughput": {
+                "photons_per_second": 0.0,
+                "events_per_second": 0.0,
+            },
+        },
+    }
+
+
+def test_batch_confirms_each_stem_from_its_own_summary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # One process reconstructs both stems; each stem's result comes from its own
+    # summary. The good stem's summary is written and confirmed; the bad stem's
+    # is not, so it comes back None while the good stem still succeeds.
+    analysis = _analysis(
+        tmp_path,
+        "good_chip_0_photon_00000.parquet",
+        "bad_chip_0_photon_00000.parquet",
+    )
+    analysis_root = tmp_path / "analysis"
+    grouping = group_photon_files_by_stem(analysis, analysis_root)
+
+    captured: dict[str, list[str]] = {}
+
+    def fake_run(command: list[str], **kwargs: Any) -> SimpleNamespace:
+        # The binary is handed the grouped photon paths in the list file, so it
+        # never scans the photons directory.
+        list_index = command.index("--input-list") + 1
+        captured["photon_paths"] = (
+            Path(command[list_index]).read_text().splitlines()
+        )
+        # Write only the good stem's summary; the bad stem gets none.
+        summary_path = derive_summary_path(analysis_root, "good")
+        summary_path.parent.mkdir(parents=True, exist_ok=True)
+        summary_path.write_text(json.dumps(_valid_event_summary_dict()))
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(
+        "hermes.runner.analysis.hermes.event_reconstruction.subprocess.run",
+        fake_run,
+    )
+
+    results = execute_event_reconstruction_batch(
+        analysis, analysis_root, ["good", "bad"], grouping
+    )
+
+    assert captured["photon_paths"] == [
+        str(grouping["good"][0]),
+        str(grouping["bad"][0]),
+    ]
+    assert results[0] is not None
+    assert results[0].raw_file_stem == "good"
+    assert results[0].status == "completed"
+    assert results[0].counts.event_count == 3
+    assert results[1] is None
+
+
+def test_batch_marks_every_stem_failed_when_launch_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    analysis = _analysis(
+        tmp_path,
+        "good_chip_0_photon_00000.parquet",
+        "bad_chip_0_photon_00000.parquet",
+    )
+    analysis_root = tmp_path / "analysis"
+    grouping = group_photon_files_by_stem(analysis, analysis_root)
+
+    def fake_run(command: list[str], **kwargs: Any) -> SimpleNamespace:
+        raise OSError("cannot launch")
+
+    monkeypatch.setattr(
+        "hermes.runner.analysis.hermes.event_reconstruction.subprocess.run",
+        fake_run,
+    )
+
+    results = execute_event_reconstruction_batch(
+        analysis, analysis_root, ["good", "bad"], grouping
+    )
+    assert results == [None, None]
