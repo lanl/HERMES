@@ -4,6 +4,9 @@ Event reconstruction is whole-sensor: every chip's photon files for one raw TPX3
 filename stem are clustered together in the shared sensor frame, producing one
 event set per raw stem. execute_event_reconstruction runs the binary on one raw
 stem and reads its summary JSON for that stem's counts.
+execute_event_reconstruction_batch runs many stems in one process, handing the
+binary the exact photon paths so it never scans the photons directory, and reads
+each stem's summary JSON on its own.
 """
 
 from __future__ import annotations
@@ -86,16 +89,19 @@ def _parse_photon_file_name(input_file: FileReference) -> str:
     return raw_file_stem
 
 
-def resolve_raw_file_stems(
+def group_photon_files_by_stem(
     analysis: HermesTpx3AnalysisState,
     analysis_root: Path,
-) -> list[str]:
-    """Return the raw TPX3 filename stems event reconstruction should run over.
+) -> dict[str, list[Path]]:
+    """Return each raw TPX3 filename stem mapped to its photon files.
 
-    ``photon_parquet_files == "auto"`` gathers every ``*.parquet`` under the
-    photon stage's ``photons`` directory; an explicit list is used as-is. Either
-    way each photon filename is parsed for its raw stem and the sorted, unique
-    stems are returned, so a stem's several chips and parts collapse to one run.
+    ``photon_parquet_files == "auto"`` scans the photon stage's ``photons``
+    directory once; an explicit list is used as-is. Every photon filename is
+    parsed for its raw stem, and each file is grouped under the stem it belongs
+    to. Event reconstruction is whole-sensor, so a stem's several chips and parts
+    collapse into one group, and each group is sorted so parts are read in a
+    stable order. The batch run hands the binary exactly these paths, so it never
+    scans the ``photons`` directory itself.
     """
     event_reconstruction = _require_event_reconstruction(analysis)
     if event_reconstruction.photon_parquet_files != "auto":
@@ -103,13 +109,30 @@ def resolve_raw_file_stems(
     else:
         photon_directory = analysis_root / "photons"
         if not photon_directory.is_dir():
-            return []
+            return {}
         photon_files = [
             FileReference(path=path)
-            for path in sorted(photon_directory.glob("*.parquet"))
+            for path in photon_directory.glob("*.parquet")
         ]
-    stems = {_parse_photon_file_name(photon_file) for photon_file in photon_files}
-    return sorted(stems)
+    grouping: dict[str, list[Path]] = {}
+    for photon_file in photon_files:
+        raw_file_stem = _parse_photon_file_name(photon_file)
+        grouping.setdefault(raw_file_stem, []).append(photon_file.path)
+    for photon_paths in grouping.values():
+        photon_paths.sort()
+    return grouping
+
+
+def resolve_raw_file_stems(
+    analysis: HermesTpx3AnalysisState,
+    analysis_root: Path,
+) -> list[str]:
+    """Return the raw TPX3 filename stems event reconstruction should run over.
+
+    The sorted, unique stems of every photon file, so a stem's several chips and
+    parts collapse to one run.
+    """
+    return sorted(group_photon_files_by_stem(analysis, analysis_root))
 
 
 def derive_output_path(
@@ -291,6 +314,189 @@ def execute_event_reconstruction(
         elapsed_seconds=elapsed_seconds,
         stdout_excerpt=stdout_excerpt,
         stderr_excerpt=stderr_excerpt,
+        event_count=summary.reconstruction.event_count,
+        photons_read=summary.reconstruction.photons_read,
+    )
+    return HermesTpx3EventReconstructionResult(
+        raw_file_stem=raw_file_stem,
+        output_file=output_file,
+        status="completed",
+        counts=summary.reconstruction,
+    )
+
+
+def derive_batch_event_reconstruction_command(
+    event_reconstruction: HermesTpx3EventReconstruction,
+    analysis_root: Path,
+    list_path: Path,
+    settings_file: Path,
+    *,
+    overwrite: bool = False,
+) -> list[str]:
+    """Build the command that reconstructs every listed photon file in one run.
+
+    Identical to ``derive_event_reconstruction_command`` except it passes
+    ``--input-list`` (a file of photon paths the binary groups back by raw stem)
+    instead of ``--raw-file-stem``; ``--input`` is still the analysis directory
+    the events/, event_photons/, and logs/event_reconstruction/ outputs go under.
+    """
+    command = [
+        str(event_reconstruction.program.executable_path),
+        "--input",
+        str(analysis_root),
+        "--input-list",
+        str(list_path),
+        "--settings",
+        str(settings_file),
+    ]
+    if overwrite:
+        command.append("--overwrite")
+    return command
+
+
+def execute_event_reconstruction_batch(
+    analysis: HermesTpx3AnalysisState,
+    analysis_root: Path,
+    raw_file_stems: list[str],
+    grouping: dict[str, list[Path]],
+    *,
+    overwrite: bool = False,
+) -> list[HermesTpx3EventReconstructionResult | None]:
+    """Reconstruct a group of raw stems in one subprocess; report each result.
+
+    The binary reads the group's photon paths from a temporary list file, groups
+    them back by raw stem, and reconstructs each stem in sequence, so the cost of
+    starting the process and loading its Arrow/Parquet libraries is paid once for
+    the whole group instead of once per stem. Each stem's success is decided from
+    its own summary JSON, never the process exit code: a stem whose summary is
+    present is reconstructed; any other stem — missing summary, including a stem
+    the process never reached because it died partway — is failed, and a resume
+    re-runs it. Returns one entry per input stem, in the given order: its result
+    when reconstructed, or ``None`` when failed.
+    """
+    event_reconstruction = _require_event_reconstruction(analysis)
+
+    # The complete event settings go to the binary in a temporary JSON file, and
+    # the group's photon paths go in a temporary list file; both are removed once
+    # the process finishes.
+    settings_json = event_reconstruction.settings.model_dump(mode="json")
+    settings_stream = tempfile.NamedTemporaryFile(
+        mode="w",
+        suffix=".json",
+        prefix="hermes_event_batch_settings_",
+        delete=False,
+    )
+    list_file = tempfile.NamedTemporaryFile(
+        "w",
+        suffix=".txt",
+        prefix="hermes_event_batch_",
+        delete=False,
+    )
+    try:
+        json.dump(settings_json, settings_stream)
+        settings_stream.close()
+        settings_file = Path(settings_stream.name)
+
+        photon_paths = [
+            str(path)
+            for raw_file_stem in raw_file_stems
+            for path in grouping.get(raw_file_stem, [])
+        ]
+        list_file.write("\n".join(photon_paths))
+        list_file.close()
+
+        command = derive_batch_event_reconstruction_command(
+            event_reconstruction,
+            analysis_root,
+            Path(list_file.name),
+            settings_file,
+            overwrite=overwrite,
+        )
+        started = perf_counter()
+        _ANALYSIS_LOGGER.info(
+            "Reconstructing events for {stem_count} raw stem(s) in one process",
+            event_type="analysis.tpx3_event_reconstruction.batch_started",
+            stem_count=len(raw_file_stems),
+            analysis_directory=str(analysis_root),
+            executable_path=str(event_reconstruction.program.executable_path),
+            executable_version=event_reconstruction.program.version,
+            clustering_algorithm=event_reconstruction.clustering_algorithm,
+            command=command,
+        )
+        try:
+            process = subprocess.run(
+                command,
+                shell=False,
+                capture_output=True,
+                text=True,
+                check=False,
+                env=single_thread_environment(),
+            )
+        except OSError as exc:
+            elapsed_seconds = perf_counter() - started
+            for raw_file_stem in raw_file_stems:
+                _log_process_failure(
+                    raw_file_stem,
+                    command,
+                    elapsed_seconds,
+                    error=f"failed to launch event reconstructor: {exc}",
+                )
+            return [None] * len(raw_file_stems)
+
+        elapsed_seconds = perf_counter() - started
+        stderr_excerpt = _bounded_text(process.stderr)
+        return [
+            _confirm_reconstructed_stem(
+                analysis_root,
+                raw_file_stem,
+                command,
+                elapsed_seconds,
+                exit_code=process.returncode,
+                stderr_excerpt=stderr_excerpt,
+            )
+            for raw_file_stem in raw_file_stems
+        ]
+    finally:
+        Path(settings_stream.name).unlink(missing_ok=True)
+        Path(list_file.name).unlink(missing_ok=True)
+
+
+def _confirm_reconstructed_stem(
+    analysis_root: Path,
+    raw_file_stem: str,
+    command: list[str],
+    elapsed_seconds: float,
+    *,
+    exit_code: int | None,
+    stderr_excerpt: str,
+) -> HermesTpx3EventReconstructionResult | None:
+    """Return a stem's result if it reconstructed cleanly, else ``None``, logged.
+
+    Called once per stem after its batch process finishes, to decide that stem's
+    result from its own summary rather than the process's shared exit code.
+    """
+    output_file = derive_output_path(analysis_root, raw_file_stem)
+    summary_path = derive_summary_path(analysis_root, raw_file_stem)
+    try:
+        summary = _load_summary(summary_path)
+    except HermesEventReconstructionError as exc:
+        _log_process_failure(
+            raw_file_stem,
+            command,
+            elapsed_seconds,
+            error=str(exc),
+            exit_code=exit_code,
+            stderr_excerpt=stderr_excerpt,
+        )
+        return None
+
+    _ANALYSIS_LOGGER.info(
+        "Reconstructed events for {raw_file_stem}: {event_count} events",
+        event_type="analysis.tpx3_event_reconstruction.completed",
+        raw_file_stem=raw_file_stem,
+        output_file=str(output_file),
+        summary_json_file=str(summary_path),
+        exit_code=exit_code,
         event_count=summary.reconstruction.event_count,
         photons_read=summary.reconstruction.photons_read,
     )
