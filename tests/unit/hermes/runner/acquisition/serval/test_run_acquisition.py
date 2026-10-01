@@ -385,6 +385,54 @@ def test_takes_a_measurement_when_run_timing_is_set(
     assert client.put_detector_config_arg.n_triggers == 5
 
 
+def test_refuses_to_measure_into_a_raw_directory_with_old_files(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    (raw_dir / "2026-10-01T131439_000000.tpx3").write_bytes(b"old run")
+    client = _FakeAcquisitionClient(server_up=False)
+    _patch_client(monkeypatch, client)
+    started: list[str] = []
+    monkeypatch.setattr(
+        run_module, "start_serval", lambda *_a, **_k: started.append("start")
+    )
+
+    state_manager = _state_manager(
+        tmp_path,
+        raw_data_directory=raw_dir,
+        run_timing=ServalRunTiming(exposure_time_s=0.1, trigger_count=3),
+    )
+    with pytest.raises(ServalAcquisitionError, match="already holds 1 .tpx3 files"):
+        run_serval_acquisition(state_manager)
+
+    # It refused before launching SERVAL or touching the detector.
+    assert started == []
+    assert client._put_destination is None
+    assert client.started is False
+    assert state_manager.get_state().acquisition.result is None
+
+
+def test_configure_only_run_ignores_old_raw_files(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    (raw_dir / "old.tpx3").write_bytes(b"old run")
+    client = _FakeAcquisitionClient(server_up=True)
+    _patch_client(monkeypatch, client)
+    monkeypatch.setattr(run_module, "start_serval", lambda *_a, **_k: None)
+    monkeypatch.setattr(run_module, "stop_serval", lambda *_a, **_k: None)
+
+    # Without run_timing no measurement is taken, so old files cannot be mixed in.
+    state_manager = _state_manager(tmp_path, raw_data_directory=raw_dir)
+    run_serval_acquisition(state_manager)
+
+    assert state_manager.get_state().acquisition.status == "configured"
+
+
 def test_raises_when_acquisition_is_not_serval(tmp_path: Path) -> None:
     record = HermesRecord(
         measurement_info=MeasurementInfo(measurement_id="run-test", run="test-run"),

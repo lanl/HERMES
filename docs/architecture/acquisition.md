@@ -226,7 +226,12 @@ logs to reproduce or debug the run.
    SERVAL host, disk space is sufficient, and the requested acquisition plan is
    compatible with the detected hardware. Bias checks should include the
    TPX3Cam manual's 40 V recommended maximum for normal operation, even though
-   the SERVAL API schema accepts a wider range.
+   the SERVAL API schema accepts a wider range. A run that takes a measurement
+   must also find no `.tpx3` files already in `raw_data_dir`: the measurement
+   result and `auto` unpacking take every `.tpx3` file there, so files left by
+   an earlier run would be mixed into this one. HERMES refuses to start such a
+   run before contacting SERVAL; choose a new run directory or move the old
+   files away.
 7. Load chip calibration files.
    Load the user-provided `.bpc` pixel configuration and `.dacs` DAC files with
    SERVAL `/config/load`. These files are generated outside HERMES by SoPhy or

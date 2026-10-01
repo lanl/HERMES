@@ -80,6 +80,13 @@ def run_serval_acquisition(state_manager: StateManager) -> None:
         )
         raise ServalAcquisitionError(error)
 
+    # Check before contacting SERVAL, so a run that cannot proceed never
+    # launches the server or touches the detector.
+    if acquisition.config.run_timing is not None:
+        _refuse_raw_directory_with_old_files(
+            state.environment.raw_data_directory.resolved_path
+        )
+
     serval = acquisition.config.serval
     log_dir = (
         state.environment.log_directory.resolved_path
@@ -175,6 +182,36 @@ def run_serval_acquisition(state_manager: StateManager) -> None:
         if process is not None:
             stop_serval(client, process)
         client.close()
+
+
+def _refuse_raw_directory_with_old_files(raw_data_directory: Path | None) -> None:
+    """Fail when the raw data directory already holds `.tpx3` files.
+
+    The measurement result and an `auto` unpacking both take every `.tpx3` in
+    the raw data directory, so files left there by an earlier run would be
+    recorded and unpacked as part of this one, with both runs' times mixed on
+    one time axis. The user must choose a new run directory or move the old
+    files away first.
+    """
+    if raw_data_directory is None or not raw_data_directory.is_dir():
+        return
+    old_files = sorted(raw_data_directory.glob("*.tpx3"))
+    if not old_files:
+        return
+    error = (
+        f"the raw data directory {raw_data_directory} already holds "
+        f"{len(old_files)} .tpx3 files from an earlier run; choose a new run "
+        "directory or move those files away before measuring again"
+    )
+    _ACQUISITION_LOGGER.error(
+        "Refusing to measure: {error}",
+        event_type="acquisition.serval.raw_directory_not_empty",
+        error=error,
+        directory=str(raw_data_directory),
+        file_count=len(old_files),
+        first_file=old_files[0].name,
+    )
+    raise ServalAcquisitionError(error)
 
 
 def _run_measurement(
