@@ -25,6 +25,11 @@ from hermes.runner.analysis.hermes.unpacker import (
     validate_program_and_inputs,
     _warn_if_timestamps_unanchored,
 )
+from hermes.state.models.acquisition.serval import (
+    ServalAcquisitionConfig,
+    ServalAcquisitionState,
+    ServalServer,
+)
 from hermes.state.models.analysis.empir import EmpirAnalysisState
 from hermes.state.models.analysis.hermes_tpx3_spidr import (
     HermesTpx3AnalysisState,
@@ -416,6 +421,39 @@ def test_completed_file_is_detected_as_previously_unpacked(tmp_path: Path) -> No
     _save_completed_files(analysis_root, raw_file, pixel_rows=1)
 
     assert check_previous_unpacked_file(analysis_root, raw_file)
+
+
+def test_raw_file_that_changed_size_is_unpacked_again(tmp_path: Path) -> None:
+    analysis = _analysis(tmp_path, "growing.tpx3", "other.tpx3")
+    analysis_root = _analysis_root(tmp_path)
+    raw_file, other_file = analysis.unpacking.tpx3_files
+    _save_completed_files(analysis_root, raw_file, pixel_rows=1)
+    _save_completed_files(analysis_root, other_file, pixel_rows=1)
+    # Later steps' files made from the partial raw file must go too, or those
+    # steps would skip the file on the next pass.
+    later_files = [
+        analysis_root / "photons" / "growing_chip_0_photon_00000.parquet",
+        analysis_root
+        / "logs/photon_reconstruction"
+        / "growing_chip_0_photon_reconstruction_summary_00000.json",
+        analysis_root / "events" / "growing_event_candidates.parquet",
+        analysis_root
+        / "logs/event_reconstruction"
+        / "growing_event_reconstruction_summary.json",
+    ]
+    for path in later_files:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.touch()
+    # The summary says 0 bytes were read; SERVAL has since written more.
+    raw_file.path.write_bytes(b"\0" * 8)
+
+    assert not check_previous_unpacked_file(analysis_root, raw_file)
+
+    assert not derive_summary_path(analysis_root, raw_file).exists()
+    assert not list((analysis_root / "pixel_hits").glob("growing_*"))
+    assert not any(path.exists() for path in later_files)
+    # Another raw file's outputs are left alone.
+    assert check_previous_unpacked_file(analysis_root, other_file)
 
 
 def test_extra_unlisted_parquet_file_does_not_fail_validation(
@@ -964,8 +1002,57 @@ def test_delete_raw_after_unpack_removes_only_successful_files(
     )
     run_hermes_analysis(manager)
 
-    # Only the file this run unpacked without error is deleted; the skipped and
-    # the failed raw files stay on disk.
+    # Files whose outputs are complete are deleted, whether unpacked now or
+    # skipped because an earlier pass unpacked them; the failed file stays.
     assert not good.path.exists()
-    assert done.path.exists()
+    assert not done.path.exists()
     assert bad.path.exists()
+
+
+def test_delete_raw_after_unpack_waits_until_recording_ends(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    base = _analysis(tmp_path, "frame.tpx3")
+    analysis = HermesTpx3AnalysisState(
+        unpacking=Tpx3Unpacking(
+            program=base.unpacking.program,
+            tpx3_files=base.unpacking.tpx3_files,
+            runtime_options=Tpx3UnpackingRuntimeOptions(
+                delete_raw_after_unpack=True
+            ),
+        ),
+    )
+    (raw_file,) = analysis.unpacking.tpx3_files
+
+    def fake_execute_unpacker_batch(
+        analysis_arg,
+        analysis_root_arg,
+        raw_files,
+        measurement_info,
+        *,
+        overwrite=False,
+    ):
+        return [_summary(analysis_root_arg, f.path.stem) for f in raw_files]
+
+    monkeypatch.setattr(
+        run_module, "execute_unpacker_batch", fake_execute_unpacker_batch
+    )
+
+    record = _record(tmp_path, analysis).model_copy(
+        update={
+            "acquisition": ServalAcquisitionState(
+                config=ServalAcquisitionConfig(
+                    serval=ServalServer(url="http://localhost:8080")
+                ),
+                status="running",
+            )
+        }
+    )
+    manager = StateManager(
+        record,
+        config=StateServiceConfig(allow_trusted_workflow_bypass=True),
+    )
+    run_hermes_analysis(manager)
+
+    # SERVAL may still be writing the file, so it is kept while recording.
+    assert raw_file.path.exists()

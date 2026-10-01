@@ -66,6 +66,7 @@ from hermes.state.models.analysis.hermes_tpx3_spidr import (
 )
 from hermes.state.models.measurement import MeasurementInfo
 from hermes.state.models.shared_models import FileReference
+from hermes.state.state import HermesRecord
 from hermes.state_service.state_manager import StateManager
 
 _ANALYSIS_LOGGER = logger.bind(
@@ -323,8 +324,25 @@ def run_hermes_analysis(
                                 status="failed",
                             )
                             failed_count += 1
-                if analysis.unpacking.runtime_options.delete_raw_after_unpack:
-                    _delete_raw_files(unpacked_files)
+
+            if analysis.unpacking.runtime_options.delete_raw_after_unpack:
+                # SERVAL may still be writing a raw file while the camera
+                # records, so raw files are deleted only once recording is over.
+                # That later pass skips the files unpacked during recording, so
+                # every file that is done (skipped or unpacked now) is deleted.
+                if _recording_in_progress(state):
+                    _ANALYSIS_LOGGER.info(
+                        "Keeping raw files until the recording ends",
+                        event_type="analysis.tpx3_unpacking.raw_delete_waiting",
+                    )
+                else:
+                    _delete_raw_files(
+                        [
+                            result.input_file
+                            for result in unpacking_results
+                            if result.status != "failed"
+                        ]
+                    )
 
             _apply_unpacking_results(
                 state_manager,
@@ -389,11 +407,16 @@ def run_hermes_analysis(
         raise
 
 
+def _recording_in_progress(state: HermesRecord) -> bool:
+    """True while a SERVAL measurement in this record is still recording."""
+    return state.acquisition is not None and state.acquisition.status == "running"
+
+
 def _delete_raw_files(raw_files: list[FileReference]) -> None:
     """Delete each raw file after a successful unpack (best-effort, never raises).
 
-    Only called for files this run unpacked without error, when the run opted in
-    with ``delete_raw_after_unpack``. A file that cannot be deleted is logged and
+    Only called for files whose outputs are complete, when the run opted in with
+    ``delete_raw_after_unpack``. A file that cannot be deleted is logged and
     left in place.
     """
     for raw_file in raw_files:

@@ -448,12 +448,48 @@ def test_interleaved_analysis_runs_once_per_new_raw_file(
     assert calls == []
 
     (raw_dir / "a.tpx3").write_bytes(b"x")
-    on_poll(None)  # a new file appeared -> one run
+    on_poll(None)  # a new file appeared -> wait to see it is not growing
+    assert calls == []
+    on_poll(None)  # same size as last poll -> one run
     on_poll(None)  # nothing new -> no extra run
     assert len(calls) == 1
 
     (raw_dir / "b.tpx3").write_bytes(b"x")
-    on_poll(None)  # another new file -> one more run
+    on_poll(None)
+    on_poll(None)  # another new file, settled -> one more run
+    assert len(calls) == 2
+
+
+def test_interleaved_analysis_waits_while_a_raw_file_grows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    manager = _both_state_manager(tmp_path)
+    calls: list[int] = []
+    monkeypatch.setattr(run_module, "run_analysis", lambda _sm: calls.append(1))
+
+    on_poll = run_module._interleaved_analysis_callback(manager, raw_dir)
+    assert on_poll is not None
+
+    # SERVAL creates the file under its final name and keeps writing to it.
+    raw_file = raw_dir / "a.tpx3"
+    raw_file.write_bytes(b"x" * 8)
+    on_poll(None)
+    raw_file.write_bytes(b"x" * 16)
+    on_poll(None)  # still growing -> no run
+    raw_file.write_bytes(b"x" * 24)
+    on_poll(None)  # still growing -> no run
+    assert calls == []
+
+    on_poll(None)  # stopped growing -> one run
+    assert len(calls) == 1
+
+    # A file that grows again after it was unpacked is unpacked again once it
+    # settles; the analysis itself redoes the file because its size changed.
+    raw_file.write_bytes(b"x" * 32)
+    on_poll(None)
+    on_poll(None)
     assert len(calls) == 2
 
 
@@ -483,4 +519,5 @@ def test_interleaved_analysis_failure_does_not_propagate(
     on_poll = run_module._interleaved_analysis_callback(manager, raw_dir)
     assert on_poll is not None
     # A failed analysis during recording must not stop the measurement.
+    on_poll(None)
     on_poll(None)

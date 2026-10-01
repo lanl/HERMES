@@ -265,8 +265,12 @@ serially. The worker pool is still used for the unpacking itself, where each
 worker waits on a separate subprocess. Files are handled according to these
 rules:
 
-1. Skip the raw file when its summary is valid and every listed Parquet file
-   exists.
+1. Skip the raw file when its summary is valid, every listed Parquet file
+   exists, and the summary's `bytes_read` equals the raw file's current size.
+   A raw file whose size has changed since it was unpacked (SERVAL was still
+   writing it) has every file made from it removed — its Parquet files, its
+   photon and event files, and each step's summary — and is unpacked and
+   reconstructed again.
 2. Run the unpacker when neither its summary nor matching Parquet files exist.
 3. Stop when matching Parquet files exist without a valid summary.
 4. Stop when the summary exists but is invalid.
