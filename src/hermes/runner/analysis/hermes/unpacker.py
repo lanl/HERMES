@@ -44,6 +44,19 @@ _PARQUET_DIRECTORY_LABELS = {
     "control_packets": "control_packets",
     "unrecognized_packets": "unrecognized_packets",
 }
+# Every directory under the analysis directory that holds files made from one
+# raw file: the unpacker's Parquet files, the photon and event files built from
+# them, and each step's summary.
+_OUTPUT_DIRECTORIES_FOR_RAW_FILE = (
+    *_PARQUET_DIRECTORY_LABELS,
+    "photons",
+    "pixel_clusters",
+    "events",
+    "event_photons",
+    "logs/unpacking",
+    "logs/photon_reconstruction",
+    "logs/event_reconstruction",
+)
 # TDC triggers are written one file per channel+edge that occurs, so the
 # tdc_triggers directory holds up to four differently labeled filenames.
 _TDC_TRIGGER_LABELS = (
@@ -129,13 +142,47 @@ def check_previous_unpacked_file(
     analysis_root: Path,
     raw_file: FileReference,
 ) -> bool:
-    """Return True when this raw file was already unpacked with valid outputs."""
+    """Return True when this raw file was already unpacked with valid outputs.
+
+    A raw file that is a different size now than when it was unpacked (SERVAL
+    was still writing it) is not done: its outputs from every analysis step are
+    removed so it is unpacked and reconstructed again, and this returns False.
+    """
     summary_path = derive_summary_path(analysis_root, raw_file)
     if not summary_path.is_file():
         return False
     summary = _load_summary(summary_path)
     _validate_completed_files(summary, summary_path, analysis_root, raw_file.path.stem)
+    raw_file_bytes = raw_file.path.stat().st_size
+    if summary.unpacking.bytes_read != raw_file_bytes:
+        _ANALYSIS_LOGGER.warning(
+            "Raw file {raw_tpx3_file} changed size after it was unpacked "
+            "({bytes_read} of {raw_file_bytes} bytes were read); removing its "
+            "old outputs to unpack it again",
+            event_type="analysis.tpx3_unpacking.raw_file_changed",
+            raw_tpx3_file=str(raw_file.path),
+            bytes_read=summary.unpacking.bytes_read,
+            raw_file_bytes=raw_file_bytes,
+        )
+        _remove_outputs_for_raw_file(analysis_root, raw_file.path.stem)
+        return False
     return True
+
+
+def _remove_outputs_for_raw_file(analysis_root: Path, raw_file_stem: str) -> None:
+    """Delete every unpacking, photon, and event file made from one raw file.
+
+    Every one of those files is named ``<raw-file-stem>_...``, the same rule the
+    unpacker uses when it overwrites a raw file's outputs.
+    """
+    prefix = f"{raw_file_stem}_"
+    for directory_name in _OUTPUT_DIRECTORIES_FOR_RAW_FILE:
+        directory = analysis_root / directory_name
+        if not directory.is_dir():
+            continue
+        for path in directory.iterdir():
+            if path.is_file() and path.name.startswith(prefix):
+                path.unlink()
 
 def derive_unpacker_command(
     analysis: HermesTpx3AnalysisState,

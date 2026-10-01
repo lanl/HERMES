@@ -250,23 +250,32 @@ def _interleaved_analysis_callback(
     """Build a poll callback that unpacks raw files as new frames land.
 
     Returns None when the record has no HERMES analysis to run alongside the
-    recording. The callback runs the analysis only when a new `.tpx3` file has
-    appeared since the last run, so state is not rewritten on every poll, and it
-    never lets an analysis failure stop the recording. Files already unpacked on
-    an earlier poll are skipped by the analysis itself, so it stays incremental.
+    recording. SERVAL creates each raw file under its final name and can keep
+    writing to it for seconds, so the callback runs the analysis only when no
+    `.tpx3` file has changed size since the previous poll and something is new
+    since the last run. It never lets an analysis failure stop the recording.
+    Files already unpacked on an earlier poll are skipped by the analysis
+    itself, so it stays incremental.
     """
     if not isinstance(
         state_manager.get_state().analysis, HermesTpx3AnalysisState
     ):
         return None
 
-    dispatched: set[Path] = set()
+    previous_sizes: dict[Path, int] = {}
+    analyzed_sizes: dict[Path, int] = {}
 
     def on_poll(measurement: ServalDashboardMeasurement | None) -> None:
-        current = set(raw_data_directory.glob("*.tpx3"))
-        if not current - dispatched:
+        nonlocal previous_sizes, analyzed_sizes
+        current_sizes = {
+            path: path.stat().st_size
+            for path in raw_data_directory.glob("*.tpx3")
+        }
+        unchanged = current_sizes == previous_sizes
+        previous_sizes = current_sizes
+        if not unchanged or current_sizes == analyzed_sizes:
             return
-        dispatched.update(current)
+        analyzed_sizes = current_sizes
         try:
             run_analysis(state_manager)
         except Exception as error:

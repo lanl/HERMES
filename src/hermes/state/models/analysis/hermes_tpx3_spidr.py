@@ -574,7 +574,9 @@ class Tpx3UnpackingRuntimeOptions(StrictBaseModel):
     overwrite: bool = False
     time_sort: bool = True
     # Delete each raw .tpx3 file after it has been successfully unpacked, to
-    # reclaim disk during long runs. Off by default; deletion is irreversible.
+    # reclaim disk. While the camera is recording, files are kept until the
+    # recording ends, since SERVAL may still be writing them. Off by default;
+    # deletion is irreversible.
     delete_raw_after_unpack: bool = False
 
 
