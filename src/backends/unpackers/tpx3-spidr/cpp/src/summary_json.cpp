@@ -18,6 +18,10 @@ json categoryJson(const ParquetCategoryFiles& category) {
     };
 }
 
+json optionalJson(const std::optional<std::uint64_t>& value) {
+    return value ? json(*value) : json(nullptr);
+}
+
 }  // namespace
 
 std::string generateSummaryJson(const SummaryJsonContent& content) {
@@ -65,7 +69,13 @@ std::string generateSummaryJson(const SummaryJsonContent& content) {
 
     j["timestamp_processing"] = {
         {"heartbeat_pairs", {
-            {"number_of_beats", content.anchor_diagnostics.total_anchors}
+            {"number_of_beats", content.anchor_diagnostics.total_anchors},
+            {"first_timestamp_canonical",
+             optionalJson(content.first_timestamp_canonical)},
+            {"last_timestamp_canonical",
+             optionalJson(content.last_timestamp_canonical)},
+            {"previous_file_timestamp_canonical",
+             optionalJson(content.previous_file_timestamp_canonical)}
         }},
         {"time_adjustments", {
             {"pixel_packets", content.epoch_diagnostics.pixels_assigned},

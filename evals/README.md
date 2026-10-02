@@ -10,7 +10,10 @@ quietly drifting from the intended design.
 evals/
 ├── cases/
 │   ├── 01-unpacking/     unpacking a raw TPX3 file into parquet tables
-│   └── 02-two-stage/     unpacking followed by photon reconstruction
+│   ├── 02-two-stage/     unpacking followed by photon reconstruction
+│   ├── 03-event-quad/    unpacking, photon, and event reconstruction (quad)
+│   ├── 04-many-files/    many raw files, moved out to sibling list files
+│   └── 05-earlier-global-timestamp/  a raw file with no global timestamp
 ├── run_evals.py          runs each case, then compares against its expected/ files
 └── compare.py            the sentinel-aware comparison used by run_evals.py
 ```
@@ -26,7 +29,8 @@ NN-name/
 └── expected/
     ├── output_tree.txt         working-dir layout after a correct run
     ├── HERMES-workflow.jsonl    the workflow log, one JSON record per line
-    └── *-summary.json           the per-file summary log(s)
+    ├── *-summary.json           the per-file summary log(s), for the first file
+    └── <stem>_unpacker_summary.json  the unpacker summary of one named file
 ```
 
 ## Running

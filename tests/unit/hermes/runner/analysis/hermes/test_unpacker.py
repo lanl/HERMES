@@ -126,6 +126,9 @@ def _summary(
     pixel_rows: int = 0,
     number_of_beats: int = 0,
     failed: int = 0,
+    first_timestamp: int | None = None,
+    last_timestamp: int | None = None,
+    previous_file_timestamp: int | None = None,
 ) -> Tpx3SpidrSummary:
     # The binary writes each Parquet path as the analysis directory it was given
     # joined with the category subdirectory and filename.
@@ -168,6 +171,9 @@ def _summary(
             "timestamp_processing": {
                 "heartbeat_pairs": {
                     "number_of_beats": number_of_beats,
+                    "first_timestamp_canonical": first_timestamp,
+                    "last_timestamp_canonical": last_timestamp,
+                    "previous_file_timestamp_canonical": previous_file_timestamp,
                 },
                 "time_adjustments": {
                     "pixel_packets": pixel_rows,
@@ -215,8 +221,14 @@ def _save_completed_files(
     raw_file: FileReference,
     *,
     pixel_rows: int = 0,
+    last_timestamp: int | None = None,
 ) -> None:
-    summary = _summary(analysis_root, raw_file.path.stem, pixel_rows=pixel_rows)
+    summary = _summary(
+        analysis_root,
+        raw_file.path.stem,
+        pixel_rows=pixel_rows,
+        last_timestamp=last_timestamp,
+    )
     for parquet_path in summary.output_parquet.pixel_data.files:
         parquet_path.parent.mkdir(parents=True, exist_ok=True)
         # Validation confirms the listed file exists but never opens it, so the
@@ -351,6 +363,29 @@ def test_command_includes_time_sort_false_when_time_sort_disabled(
         "test-run",
         "--time-sort",
         "false",
+    ]
+
+
+def test_command_includes_previous_global_timestamp_when_given(
+    tmp_path: Path,
+) -> None:
+    analysis = _analysis(tmp_path, "first.tpx3")
+    analysis_root = _analysis_root(tmp_path)
+    raw_file = analysis.unpacking.tpx3_files[0]
+
+    command = derive_unpacker_command(
+        analysis,
+        analysis_root,
+        raw_file,
+        _measurement_info(),
+        overwrite=True,
+        previous_global_timestamp=12_288_000,
+    )
+
+    assert command[-3:] == [
+        "--overwrite",
+        "--previous-global-timestamp",
+        "12288000",
     ]
 
 
@@ -1056,3 +1091,213 @@ def test_delete_raw_after_unpack_waits_until_recording_ends(
 
     # SERVAL may still be writing the file, so it is kept while recording.
     assert raw_file.path.exists()
+
+
+# Canonical ticks in one second (25 ns / 12288 per tick).
+_TICKS_PER_SECOND = 40_000_000 * 12_288
+
+
+def _run_with_unpacked_summaries(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    summaries: dict[str, dict[str, Any]],
+    *,
+    done: dict[str, int | None] | None = None,
+    unpack_again_fails: bool = False,
+) -> tuple[StateManager, list[dict[str, Any]]]:
+    """Run the analysis with faked unpacking; return the unpack-again calls.
+
+    ``summaries`` maps each raw file name to the ``_summary`` options its first
+    unpacking reports. ``done`` maps raw file names already unpacked on an
+    earlier run to the last global timestamp their saved summary records.
+    """
+    done = done or {}
+    analysis = _analysis(tmp_path, *done, *summaries)
+    analysis_root = _analysis_root(tmp_path)
+    for raw_file in analysis.unpacking.tpx3_files:
+        if raw_file.path.name in done:
+            _save_completed_files(
+                analysis_root, raw_file, last_timestamp=done[raw_file.path.name]
+            )
+    manager = StateManager(
+        _record(tmp_path, analysis),
+        config=StateServiceConfig(allow_trusted_workflow_bypass=True),
+        state_logger=CapturingStateLogger(),
+    )
+    monkeypatch.setattr(
+        "hermes.runner.analysis.hermes.run.execute_unpacker_batch",
+        lambda analysis, analysis_root, raw_files, measurement_info, **kwargs: [
+            _summary(
+                analysis_root, raw_file.path.stem, **summaries[raw_file.path.name]
+            )
+            for raw_file in raw_files
+        ],
+    )
+    calls: list[dict[str, Any]] = []
+
+    def unpack_again(
+        analysis: Any,
+        analysis_root: Path,
+        raw_file: FileReference,
+        measurement_info: MeasurementInfo,
+        **kwargs: Any,
+    ) -> Tpx3SpidrSummary:
+        calls.append({"raw_file": raw_file.path.name, **kwargs})
+        if unpack_again_fails:
+            raise HermesTpx3Error("unpacker exited with code 1")
+        return _summary(
+            analysis_root,
+            raw_file.path.stem,
+            previous_file_timestamp=kwargs["previous_global_timestamp"],
+        )
+
+    monkeypatch.setattr(unpacker_module, "execute_unpacker", unpack_again)
+    return manager, calls
+
+
+def _capture_events(event_type: str) -> tuple[list[dict[str, Any]], int]:
+    records: list[dict[str, Any]] = []
+    sink_id = logger.add(
+        lambda message: records.append(message.record),
+        filter=lambda record: record["extra"].get("event_type") == event_type,
+    )
+    return records, sink_id
+
+
+def test_file_without_global_timestamp_is_unpacked_again_with_earlier_one(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # frame_01 has no global timestamp of its own, so its rows failed. It sits
+    # between two files that do, 0.4 s apart.
+    manager, calls = _run_with_unpacked_summaries(
+        tmp_path,
+        monkeypatch,
+        {
+            "frame_02.tpx3": {"first_timestamp": 5 * _TICKS_PER_SECOND // 2},
+            "frame_00.tpx3": {"last_timestamp": 2 * _TICKS_PER_SECOND + 1},
+            "frame_01.tpx3": {"pixel_rows": 0, "failed": 3},
+        },
+    )
+    records, sink_id = _capture_events(
+        "analysis.tpx3_unpacking.earlier_timestamp_too_far"
+    )
+    try:
+        unpacked = run_hermes_analysis(manager)
+    finally:
+        logger.remove(sink_id)
+
+    assert calls == [
+        {
+            "raw_file": "frame_01.tpx3",
+            "overwrite": True,
+            "previous_global_timestamp": 2 * _TICKS_PER_SECOND + 1,
+        }
+    ]
+    assert records == []
+    assert len(unpacked) == 3
+    results = manager.get_state().analysis.unpacking.results
+    assert all(result.status == "completed" for result in results)
+
+
+def test_earlier_global_timestamp_comes_from_a_file_unpacked_before(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # frame_00 was unpacked on an earlier run, so its timestamp comes from its
+    # saved summary. frame_01 has none, so the search goes past it.
+    manager, calls = _run_with_unpacked_summaries(
+        tmp_path,
+        monkeypatch,
+        {
+            "frame_01.tpx3": {"failed": 3},
+            "frame_02.tpx3": {"failed": 3},
+        },
+        done={"frame_00.tpx3": 7_000},
+    )
+
+    run_hermes_analysis(manager)
+
+    assert [(call["raw_file"], call["previous_global_timestamp"]) for call in calls] == [
+        ("frame_01.tpx3", 7_000),
+        ("frame_02.tpx3", 7_000),
+    ]
+
+
+def test_unpacking_again_warns_when_earlier_timestamp_is_too_far(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manager, calls = _run_with_unpacked_summaries(
+        tmp_path,
+        monkeypatch,
+        {
+            "frame_00.tpx3": {"last_timestamp": 0},
+            "frame_01.tpx3": {"failed": 3},
+            "frame_02.tpx3": {"first_timestamp": 13 * _TICKS_PER_SECOND},
+        },
+    )
+    records, sink_id = _capture_events(
+        "analysis.tpx3_unpacking.earlier_timestamp_too_far"
+    )
+    try:
+        run_hermes_analysis(manager)
+    finally:
+        logger.remove(sink_id)
+
+    # The times are still written, with a warning.
+    assert [call["raw_file"] for call in calls] == ["frame_01.tpx3"]
+    assert len(records) == 1
+    assert records[0]["level"].name == "WARNING"
+    assert records[0]["extra"]["seconds_between"] == 13.0
+
+
+def test_file_with_no_earlier_global_timestamp_is_not_unpacked_again(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manager, calls = _run_with_unpacked_summaries(
+        tmp_path,
+        monkeypatch,
+        {
+            "frame_00.tpx3": {"failed": 3},
+            "frame_01.tpx3": {"first_timestamp": 5, "last_timestamp": 9},
+        },
+    )
+    records, sink_id = _capture_unanchored_warnings()
+    try:
+        run_hermes_analysis(manager)
+    finally:
+        logger.remove(sink_id)
+
+    assert calls == []
+    assert [record["extra"]["raw_tpx3_file"] for record in records] == [
+        str(tmp_path / "rawTpx3" / "frame_00.tpx3")
+    ]
+    results = manager.get_state().analysis.unpacking.results
+    assert all(result.status == "completed" for result in results)
+
+
+def test_file_that_fails_to_unpack_again_is_marked_failed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manager, calls = _run_with_unpacked_summaries(
+        tmp_path,
+        monkeypatch,
+        {
+            "frame_00.tpx3": {"last_timestamp": 9},
+            "frame_01.tpx3": {"failed": 3},
+        },
+        unpack_again_fails=True,
+    )
+
+    unpacked = run_hermes_analysis(manager)
+
+    assert len(calls) == 1
+    assert [raw.path.name for raw in unpacked] == ["frame_00.tpx3"]
+    results = {
+        result.input_file.path.name: result.status
+        for result in manager.get_state().analysis.unpacking.results
+    }
+    assert results == {"frame_00.tpx3": "completed", "frame_01.tpx3": "failed"}

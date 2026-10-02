@@ -5,6 +5,8 @@
 #include "parquet_writer.h"
 #include "time_sort.h"
 
+#include <cstdint>
+#include <optional>
 #include <string>
 
 namespace hermes_tpx3_spidr {
@@ -24,6 +26,12 @@ struct SummaryJsonContent {
     std::string inputfile;
     UnpackSummary unpack_summary;
     AnchorIndexDiagnostics anchor_diagnostics;
+    // The earliest and latest global timestamp in this file, over all chips,
+    // in canonical ticks; empty when the file has none.
+    std::optional<std::uint64_t> first_timestamp_canonical;
+    std::optional<std::uint64_t> last_timestamp_canonical;
+    // The value given with --previous-global-timestamp; empty when not given.
+    std::optional<std::uint64_t> previous_file_timestamp_canonical;
     EpochAssignmentDiagnostics epoch_diagnostics;
     SortingDiagnostics sorting_diagnostics;
     ParquetWriterDiagnostics writer_diagnostics;

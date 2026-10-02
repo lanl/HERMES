@@ -416,7 +416,7 @@ def test_refuses_to_measure_into_a_raw_directory_with_old_files(
     assert state_manager.get_state().acquisition.result is None
 
 
-def test_refuses_to_measure_with_global_timestamp_interval_over_trigger_period(
+def test_refuses_to_measure_with_global_timestamp_interval_over_half_the_trigger_period(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -430,7 +430,7 @@ def test_refuses_to_measure_with_global_timestamp_interval_over_trigger_period(
     state_manager = _state_manager(
         tmp_path,
         raw_data_directory=tmp_path / "raw",
-        detector_config=DetectorConfiguration(global_timestamp_interval_s=1.0),
+        detector_config=DetectorConfiguration(global_timestamp_interval_s=0.15),
         run_timing=ServalRunTiming(
             trigger_mode="AUTOTRIGSTART_TIMERSTOP",
             exposure_time_s=0.1,
@@ -438,7 +438,7 @@ def test_refuses_to_measure_with_global_timestamp_interval_over_trigger_period(
             trigger_count=3,
         ),
     )
-    with pytest.raises(ServalAcquisitionError, match="trigger period"):
+    with pytest.raises(ServalAcquisitionError, match="half the 0.2 s trigger period"):
         run_serval_acquisition(state_manager)
 
     # It refused before launching SERVAL or touching the detector.

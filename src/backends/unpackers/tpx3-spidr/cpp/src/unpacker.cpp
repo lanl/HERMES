@@ -497,7 +497,9 @@ WorkflowResult runTwoPassWorkflow(std::istream& input,
                                   const std::string& measurement_id,
                                   const std::string& run,
                                   const bool overwrite,
-                                  const bool time_sort) {
+                                  const bool time_sort,
+                                  const std::optional<std::uint64_t>
+                                      previous_global_timestamp_canonical) {
     using Clock = std::chrono::high_resolution_clock;
     using Duration = std::chrono::duration<double>;
 
@@ -508,6 +510,8 @@ WorkflowResult runTwoPassWorkflow(std::istream& input,
     workflow_result.summary.measurement_id = measurement_id;
     workflow_result.summary.run = run;
     workflow_result.summary.inputfile = source_file_path;
+    workflow_result.summary.previous_file_timestamp_canonical =
+        previous_global_timestamp_canonical;
 
     const std::string raw_file_stem =
         std::filesystem::path(source_file_path).stem().string();
@@ -579,8 +583,18 @@ WorkflowResult runTwoPassWorkflow(std::istream& input,
     EpochAssignmentDiagnostics epoch_diag;
     const auto chip_indexes = collectTimestampedChipIndexes(unpack_result);
     for (const auto chip_index : chip_indexes) {
-        const auto anchors = buildChipAnchorIndex(
+        auto anchors = buildChipAnchorIndex(
             unpack_result.global_timestamps, chip_index, anchor_diag);
+        // A chip with no global timestamp of its own in this file counts its
+        // wraps from the last one in the nearest earlier raw file of the run.
+        // The 48-bit timer does not reset between files, so that timestamp is
+        // on the same time axis. It is not counted in number_of_beats.
+        if (anchors.anchors.empty() && previous_global_timestamp_canonical) {
+            GlobalAnchor previous;
+            previous.global_time_48bit = *previous_global_timestamp_canonical /
+                                         CANONICAL_TICKS_PER_25NS;
+            anchors.anchors.push_back(previous);
+        }
         assignEpochsToPixels(unpack_result.pixel_hits, anchors, chip_index,
                              epoch_diag);
         assignEpochsToTdcs(unpack_result.tdc_hits, anchors, chip_index,
@@ -589,6 +603,18 @@ WorkflowResult runTwoPassWorkflow(std::istream& input,
                                chip_index, epoch_diag);
     }
     workflow_result.summary.anchor_diagnostics = anchor_diag;
+    for (const auto& global : unpack_result.global_timestamps) {
+        const auto canonical =
+            global.global_time_raw * CANONICAL_TICKS_PER_25NS;
+        auto& first = workflow_result.summary.first_timestamp_canonical;
+        auto& last = workflow_result.summary.last_timestamp_canonical;
+        if (!first || canonical < *first) {
+            first = canonical;
+        }
+        if (!last || canonical > *last) {
+            last = canonical;
+        }
+    }
     auto epoch_end = Clock::now();
     workflow_result.summary.timing_diagnostics.epoch_assignment_seconds =
         Duration(epoch_end - epoch_start).count();

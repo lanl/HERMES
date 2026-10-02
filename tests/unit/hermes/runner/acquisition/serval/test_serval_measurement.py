@@ -208,19 +208,49 @@ def test_build_effective_detector_config_rejects_interval_over_half_a_pixel_wrap
         build_effective_detector_config(config)
 
 
-def test_build_effective_detector_config_rejects_interval_over_trigger_period() -> None:
-    # With one raw file per frame, an interval longer than the trigger period
-    # leaves some files with no global timestamp.
+def test_build_effective_detector_config_rejects_interval_over_half_the_trigger_period() -> None:
+    # With one raw file per frame, and global timestamps a few ms off schedule,
+    # an interval over half the trigger period can leave a file with none.
     config = _config(
-        detector_config=DetectorConfiguration(global_timestamp_interval_s=11.0),
+        detector_config=DetectorConfiguration(global_timestamp_interval_s=1.5),
         run_timing=ServalRunTiming(
             trigger_mode="AUTOTRIGSTART_TIMERSTOP",
-            exposure_time_s=10.0,
-            trigger_period_s=10.1,
+            exposure_time_s=1.95,
+            trigger_period_s=2.0,
         ),
     )
 
-    with pytest.raises(ValueError, match="longer than the 10.1 s trigger period"):
+    with pytest.raises(ValueError, match="longer than half the 2.0 s trigger period"):
+        build_effective_detector_config(config)
+
+
+@pytest.mark.parametrize("interval_s", [0.0, -1.0])
+def test_build_effective_detector_config_refuses_global_timestamps_off(
+    interval_s: float,
+) -> None:
+    config = _config(
+        detector_config=DetectorConfiguration(global_timestamp_interval_s=interval_s),
+        run_timing=ServalRunTiming(exposure_time_s=0.1, trigger_count=5),
+    )
+
+    with pytest.raises(ValueError, match="turns global timestamps off"):
+        build_effective_detector_config(config)
+
+
+@pytest.mark.parametrize("trigger_mode", ["AUTOTRIGSTART_TIMERSTOP", "CONTINUOUS"])
+def test_build_effective_detector_config_rejects_frames_under_100_ms(
+    trigger_mode: str,
+) -> None:
+    config = _config(
+        detector_config=DetectorConfiguration(global_timestamp_interval_s=0.01),
+        run_timing=ServalRunTiming(
+            trigger_mode=trigger_mode,
+            exposure_time_s=0.05,
+            trigger_period_s=0.09,
+        ),
+    )
+
+    with pytest.raises(ValueError, match="shorter than 0.1 s"):
         build_effective_detector_config(config)
 
 
@@ -236,25 +266,23 @@ def test_build_effective_detector_config_checks_interval_without_run_timing() ->
 @pytest.mark.parametrize(
     ("interval_s", "trigger_mode", "trigger_period_s"),
     [
-        # The tested setting: 1 s global timestamps, 10 s frames.
+        # The tested settings: 1 s global timestamps, 2 s or 10 s frames.
+        (1.0, "AUTOTRIGSTART_TIMERSTOP", 2.0),
         (1.0, "AUTOTRIGSTART_TIMERSTOP", 10.1),
-        # Equal to the trigger period.
-        (10.1, "AUTOTRIGSTART_TIMERSTOP", 10.1),
+        # Exactly half the trigger period, at the shortest frame.
+        (0.05, "CONTINUOUS", 0.1),
         # Externally triggered frames have no trigger period to compare with.
         (13.0, "PEXSTART_TIMERSTOP", 0.2),
-        # Turned off: the run warns about this separately.
-        (0.0, "AUTOTRIGSTART_TIMERSTOP", 0.2),
-        (None, "AUTOTRIGSTART_TIMERSTOP", 0.2),
     ],
 )
 def test_build_effective_detector_config_accepts_safe_intervals(
-    interval_s: float | None, trigger_mode: str, trigger_period_s: float
+    interval_s: float, trigger_mode: str, trigger_period_s: float
 ) -> None:
     config = _config(
         detector_config=DetectorConfiguration(global_timestamp_interval_s=interval_s),
         run_timing=ServalRunTiming(
             trigger_mode=trigger_mode,
-            exposure_time_s=0.1,
+            exposure_time_s=0.01,
             trigger_period_s=trigger_period_s,
         ),
     )
@@ -262,6 +290,47 @@ def test_build_effective_detector_config_accepts_safe_intervals(
     effective = build_effective_detector_config(config)
 
     assert effective.global_timestamp_interval_s == interval_s
+
+
+@pytest.mark.parametrize(
+    ("trigger_mode", "trigger_period_s", "expected_interval_s"),
+    [
+        # Frames of 2 s or longer get the 1 s default.
+        ("AUTOTRIGSTART_TIMERSTOP", 2.0, 1.0),
+        ("AUTOTRIGSTART_TIMERSTOP", 10.1, 1.0),
+        # Shorter frames get half the frame length.
+        ("AUTOTRIGSTART_TIMERSTOP", 0.2, 0.1),
+        ("CONTINUOUS", 1.0, 0.5),
+        # Externally triggered frames have no known length, so 1 s.
+        ("PEXSTART_TIMERSTOP", 0.2, 1.0),
+        (None, None, 1.0),
+    ],
+)
+def test_build_effective_detector_config_fills_in_unset_interval(
+    trigger_mode: str | None,
+    trigger_period_s: float | None,
+    expected_interval_s: float,
+) -> None:
+    config = _config(
+        run_timing=ServalRunTiming(
+            trigger_mode=trigger_mode,
+            exposure_time_s=0.01,
+            trigger_period_s=trigger_period_s,
+        ),
+    )
+
+    effective = build_effective_detector_config(config)
+
+    assert effective.global_timestamp_interval_s == expected_interval_s
+
+
+def test_build_effective_detector_config_fills_in_unset_interval_without_run_timing() -> None:
+    config = _config(detector_config=DetectorConfiguration(bias_voltage_v=12.0))
+
+    effective = build_effective_detector_config(config)
+
+    assert effective.global_timestamp_interval_s == 1.0
+    assert effective.bias_voltage_v == 12.0
 
 
 def test_detector_configuration_enforces_sequential_dead_time() -> None:
@@ -334,54 +403,31 @@ def test_run_measurement_does_not_start_when_config_cannot_be_applied(
     assert client.started is False
 
 
-def test_run_measurement_warns_when_global_timestamps_disabled(
+def test_run_measurement_sends_the_default_global_timestamp_interval(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _install_fake_clock(monkeypatch)
     raw = tmp_path / "raw"
     client = _FakeClient(["DA_RECORDING", "DA_IDLE"], raw_dir=raw)
-    # run_timing alone leaves GlobalTimestampInterval unset, so SERVAL emits no
-    # global timestamps and unpacking cannot share one time axis.
+    # run_timing alone leaves GlobalTimestampInterval unset; a freshly started
+    # SERVAL has global timestamps off, so HERMES must send one.
     config = _config(
         run_timing=ServalRunTiming(exposure_time_s=0.1, trigger_count=5)
     )
 
     outcome = run_measurement(client, config, raw)
 
-    assert any(
-        "does not enable global timestamps" in warning
-        for warning in outcome.result.warnings
-    )
+    assert outcome.result.stop_reason == "completed"
+    assert client.put_config is not None
+    assert client.put_config.global_timestamp_interval_s == 1.0
 
 
-def test_run_measurement_no_warning_when_global_timestamps_enabled(
+def test_run_measurement_does_not_start_with_global_timestamps_off(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _install_fake_clock(monkeypatch)
     raw = tmp_path / "raw"
-    client = _FakeClient(["DA_RECORDING", "DA_IDLE"], raw_dir=raw)
-    config = _config(
-        detector_config=DetectorConfiguration(global_timestamp_interval_s=1.0),
-        run_timing=ServalRunTiming(exposure_time_s=0.1, trigger_count=5),
-    )
-
-    outcome = run_measurement(client, config, raw)
-
-    assert not any(
-        "does not enable global timestamps" in warning
-        for warning in outcome.result.warnings
-    )
-
-
-def test_run_measurement_warns_that_zero_interval_turns_timestamps_off(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    _install_fake_clock(monkeypatch)
-    raw = tmp_path / "raw"
-    client = _FakeClient(["DA_RECORDING", "DA_IDLE"], raw_dir=raw)
-    # An explicit 0 is sent to SERVAL and actively turns global timestamps off,
-    # so the warning must say that rather than "unless SERVAL already has them
-    # on" (which only holds when the interval is left unset).
+    client = _FakeClient(["DA_IDLE"], raw_dir=raw)
     config = _config(
         detector_config=DetectorConfiguration(global_timestamp_interval_s=0),
         run_timing=ServalRunTiming(exposure_time_s=0.1, trigger_count=5),
@@ -389,14 +435,10 @@ def test_run_measurement_warns_that_zero_interval_turns_timestamps_off(
 
     outcome = run_measurement(client, config, raw)
 
-    disabled = [
-        warning
-        for warning in outcome.result.warnings
-        if "does not enable global timestamps" in warning
-    ]
-    assert len(disabled) == 1
-    assert "turns them off on SERVAL" in disabled[0]
-    assert "unless SERVAL already has them on" not in disabled[0]
+    assert outcome.result.stop_reason == "invalid_configuration"
+    assert any("turns global timestamps off" in error for error in outcome.result.errors)
+    assert client.put_config is None
+    assert client.started is False
 
 
 def test_warn_on_config_drift_reports_difference_without_crashing() -> None:

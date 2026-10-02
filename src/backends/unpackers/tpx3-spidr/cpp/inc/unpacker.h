@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <istream>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -34,7 +35,10 @@ WorkflowResult runTwoPassWorkflow(std::istream& input,
                                   const std::string& measurement_id,
                                   const std::string& run,
                                   bool overwrite = false,
-                                  bool time_sort = true);
+                                  bool time_sort = true,
+                                  std::optional<std::uint64_t>
+                                      previous_global_timestamp_canonical =
+                                          std::nullopt);
 
 }  // namespace hermes_tpx3_spidr
 

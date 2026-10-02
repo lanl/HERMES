@@ -1,0 +1,5 @@
+{"event":"HERMES_record_initialized","record":"data/05-earlier-global-timestamp/earlier-global-timestamp/HERMES_record.yaml","time":"<TIMESTAMP>"}
+{"event":"workflow_initialized","stages":["unpacking"],"time":"<TIMESTAMP>"}
+{"event":"stage_completed","stage":"unpacking","file":"data/05-earlier-global-timestamp/raw/frame_000.tpx3","status":"success","start":"<TIMESTAMP>","stop":"<TIMESTAMP>","summary":"data/05-earlier-global-timestamp/earlier-global-timestamp/analysis/logs/unpacking/frame_000_unpacker_summary.json"}
+{"event":"stage_completed","stage":"unpacking","file":"data/05-earlier-global-timestamp/raw/frame_001.tpx3","status":"success","start":"<TIMESTAMP>","stop":"<TIMESTAMP>","summary":"data/05-earlier-global-timestamp/earlier-global-timestamp/analysis/logs/unpacking/frame_001_unpacker_summary.json"}
+{"event":"workflow_completed","stages":["unpacking"],"time":"<TIMESTAMP>"}

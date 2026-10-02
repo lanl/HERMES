@@ -1,0 +1,22 @@
+# HERMES record — Example 05: a raw file with no global timestamp of its own
+
+measurement_info:
+  measurement_id: harness-05-earlier-global-timestamp
+  run: earlier-global-timestamp
+
+environment:
+  working_directory: data/05-earlier-global-timestamp
+  run_directory: earlier-global-timestamp
+  log_directory: logs
+  raw_data_directory: ../raw
+  analysis_directory: analysis
+  config_file: HERMES_record.yaml
+
+analysis:
+  mode: hermes
+  resource_limit_percent: 90
+  unpacking:
+    program:
+      name: tpx3-spidr-cpp
+      executable_path: hermes-tpx3-spidr
+    tpx3_files: auto

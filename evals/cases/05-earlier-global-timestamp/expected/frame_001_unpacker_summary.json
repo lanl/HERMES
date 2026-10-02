@@ -1,0 +1,78 @@
+{
+  "measurement_info": {
+    "measurement_id": "harness-05-earlier-global-timestamp",
+    "run": "earlier-global-timestamp"
+  },
+  "inputfile": "data/05-earlier-global-timestamp/raw/frame_001.tpx3",
+  "unpacking": {
+    "bytes_read": 348000,
+    "chunks_read": 21750,
+    "packets_read": 21750,
+    "pixel_data_packets": 34,
+    "tdc_timestamps": 5408,
+    "heartbeat_packets": 0,
+    "spidr_control_packets": 0,
+    "tpx3_control_packets": 84,
+    "unrecognized_packets": 0,
+    "tdc1_rising": 2704,
+    "tdc1_falling": 2704,
+    "tdc2_rising": 0,
+    "tdc2_falling": 0,
+    "unknown_tdc_edges": 0,
+    "errors": [],
+    "warnings": []
+  },
+  "timestamp_processing": {
+    "heartbeat_pairs": {
+      "number_of_beats": 0,
+      "first_timestamp_canonical": null,
+      "last_timestamp_canonical": null,
+      "previous_file_timestamp_canonical": 1017068974080
+    },
+    "time_adjustments": {
+      "pixel_packets": 34,
+      "tdc_packets": 21632,
+      "control_packets": 0,
+      "failed": 0
+    }
+  },
+  "sorting": {
+    "strategy": "in_memory",
+    "memory_budget_bytes": 1073741824,
+    "estimated_memory_bytes": 225344,
+    "sorting_time_seconds": "<IGNORE: non-deterministic timing>"
+  },
+  "output_parquet": {
+    "pixel_data": {
+      "row_count": 34,
+      "files": [
+        "data/05-earlier-global-timestamp/earlier-global-timestamp/analysis/pixel_hits/frame_001_chip_0_pixels_00000.parquet",
+        "data/05-earlier-global-timestamp/earlier-global-timestamp/analysis/pixel_hits/frame_001_chip_1_pixels_00000.parquet",
+        "data/05-earlier-global-timestamp/earlier-global-timestamp/analysis/pixel_hits/frame_001_chip_2_pixels_00000.parquet"
+      ]
+    },
+    "tdc_timestamps": {
+      "row_count": 5408,
+      "files": [
+        "data/05-earlier-global-timestamp/earlier-global-timestamp/analysis/tdc_triggers/frame_001_tdc1_rising_triggers_00000.parquet",
+        "data/05-earlier-global-timestamp/earlier-global-timestamp/analysis/tdc_triggers/frame_001_tdc1_falling_triggers_00000.parquet"
+      ]
+    },
+    "heartbeat_packets": {
+      "row_count": 0,
+      "files": []
+    },
+    "control_packets": {
+      "row_count": 84,
+      "files": [
+        "data/05-earlier-global-timestamp/earlier-global-timestamp/analysis/control_packets/frame_001_control_packets_00000.parquet"
+      ]
+    },
+    "unrecognized_packets": {
+      "row_count": 0,
+      "files": []
+    },
+    "errors": []
+  },
+  "processing_times_seconds": "<IGNORE: non-deterministic timing>"
+}

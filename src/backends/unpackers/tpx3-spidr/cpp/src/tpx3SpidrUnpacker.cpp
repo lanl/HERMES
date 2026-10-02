@@ -1,5 +1,7 @@
+#include <cstdint>
 #include <fstream>
 #include <iostream>
+#include <optional>
 #include <string>
 
 #include "diagnostics.h"
@@ -11,7 +13,8 @@ void printHelp(const char* program_name) {
     std::cout << "Usage: " << program_name
               << " --input <input.tpx3> [--output <analysis_directory>"
                  " --measurement-id <id> --run <run>]"
-                 " [--overwrite] [--time-sort <true|false>]\n\n";
+                 " [--overwrite] [--time-sort <true|false>]"
+                 " [--previous-global-timestamp <ticks>]\n\n";
     std::cout << "Options:\n";
     std::cout << "  --input <input.tpx3>          Input TPX3 raw data file (required)\n";
     std::cout << "  --input-list <file>           Unpack every raw file listed in <file>\n";
@@ -29,6 +32,12 @@ void printHelp(const char* program_name) {
     std::cout << "                                false leaves rows in source packet order\n";
     std::cout << "                                (diagnostics only; downstream clustering\n";
     std::cout << "                                assumes time-ordered data)\n";
+    std::cout << "  --previous-global-timestamp <ticks>\n";
+    std::cout << "                                Last global timestamp, in canonical ticks,\n";
+    std::cout << "                                of the nearest earlier raw file of the run.\n";
+    std::cout << "                                Used only for a chip with no global\n";
+    std::cout << "                                timestamp of its own. Set by the Python\n";
+    std::cout << "                                runner; needs --input and --output\n";
     std::cout << "  -h, --help                    Show this help message\n";
     std::cout << "  -v, --version                 Show version information\n\n";
     std::cout << "Output Modes:\n";
@@ -118,6 +127,7 @@ int main(const int argc, char* argv[]) {
     bool have_output = false;
     bool have_measurement_id = false;
     bool have_run = false;
+    std::optional<std::uint64_t> previous_global_timestamp;
 
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
@@ -187,6 +197,28 @@ int main(const int argc, char* argv[]) {
             have_run = true;
             continue;
         }
+        if (arg == "--previous-global-timestamp") {
+            if (i + 1 >= argc) {
+                std::cerr << "Error: --previous-global-timestamp requires a "
+                             "number of canonical ticks\n";
+                return 2;
+            }
+            const std::string value = argv[++i];
+            std::size_t parsed_length = 0;
+            try {
+                previous_global_timestamp = std::stoull(value, &parsed_length);
+            } catch (const std::exception&) {
+                parsed_length = 0;
+            }
+            if (value.empty() || value[0] == '-' ||
+                parsed_length != value.size()) {
+                std::cerr << "Error: --previous-global-timestamp must be a "
+                             "whole number of canonical ticks, not "
+                          << value << '\n';
+                return 2;
+            }
+            continue;
+        }
         std::cerr << "Error: unrecognized argument: " << arg << "\n\n";
         std::cerr << "Try '" << argv[0] << " --help' for more information.\n";
         return 2;
@@ -198,6 +230,11 @@ int main(const int argc, char* argv[]) {
         // inputs from the list file instead of --input.
         if (have_input) {
             std::cerr << "Error: use either --input or --input-list, not both\n";
+            return 2;
+        }
+        if (previous_global_timestamp) {
+            std::cerr << "Error: --previous-global-timestamp is for one file; "
+                         "use it with --input, not --input-list\n";
             return 2;
         }
         if (!have_output || !have_measurement_id || !have_run) {
@@ -221,6 +258,11 @@ int main(const int argc, char* argv[]) {
         return 2;
     }
 
+    if (!have_output && previous_global_timestamp) {
+        std::cerr << "Error: --previous-global-timestamp requires --output\n";
+        return 2;
+    }
+
     if (!have_output) {
         // Without --output, unpack and print a summary without writing files.
         const auto result = hermes_tpx3_spidr::unpack(input);
@@ -237,7 +279,7 @@ int main(const int argc, char* argv[]) {
 
     const auto result = hermes_tpx3_spidr::runTwoPassWorkflow(
         input, input_path, output_dir, measurement_id, run, overwrite,
-        time_sort);
+        time_sort, previous_global_timestamp);
 
     if (!result.success) {
         std::cerr << "Workflow failed with errors:\n";

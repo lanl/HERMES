@@ -56,6 +56,7 @@ from hermes.runner.analysis.hermes.unpacker import (
     log_overall_failure,
     log_skipped_input,
     resolve_tpx3_files,
+    unpack_again_with_earlier_global_timestamp,
     validate_program_and_inputs,
 )
 from hermes.state.models.analysis.hermes_tpx3_spidr import (
@@ -63,6 +64,7 @@ from hermes.state.models.analysis.hermes_tpx3_spidr import (
     HermesTpx3EventReconstructionResult,
     HermesTpx3PhotonReconstructionResult,
     HermesTpx3UnpackingResult,
+    Tpx3SpidrSummary,
 )
 from hermes.state.models.measurement import MeasurementInfo
 from hermes.state.models.shared_models import FileReference
@@ -306,6 +308,7 @@ def run_hermes_analysis(
                 # Each chunk returns one entry per file (its summary, or None when
                 # that file failed); a chunk missing from the results raised and
                 # its whole chunk failed. Files stay "completed" unless flipped.
+                new_summaries: dict[Path, Tpx3SpidrSummary] = {}
                 for chunk_index, chunk in enumerate(chunks):
                     offset = chunk_index * chunk_size
                     summaries = chunk_summaries.get(chunk_index)
@@ -316,6 +319,9 @@ def run_hermes_analysis(
                         )
                         if unpacked:
                             unpacked_files.append(raw_file)
+                            new_summaries[raw_file.path] = summaries[
+                                position_in_chunk
+                            ]
                         else:
                             unpacking_results[
                                 run_result_positions[offset + position_in_chunk]
@@ -324,6 +330,28 @@ def run_hermes_analysis(
                                 status="failed",
                             )
                             failed_count += 1
+
+                # A new file with a chip that had no global timestamp of its own
+                # is unpacked again with the last one of an earlier raw file.
+                failed_again = unpack_again_with_earlier_global_timestamp(
+                    analysis,
+                    analysis_root,
+                    [
+                        result.input_file
+                        for result in unpacking_results
+                        if result.status != "failed"
+                    ],
+                    new_summaries,
+                    measurement_info,
+                )
+                for raw_file in failed_again:
+                    unpacked_files.remove(raw_file)
+                    position = run_result_positions[files_to_run.index(raw_file)]
+                    unpacking_results[position] = HermesTpx3UnpackingResult(
+                        input_file=raw_file,
+                        status="failed",
+                    )
+                    failed_count += 1
 
             if analysis.unpacking.runtime_options.delete_raw_after_unpack:
                 # SERVAL may still be writing a raw file while the camera

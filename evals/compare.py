@@ -140,6 +140,16 @@ def compare_case(expected_dir: Path, working_dir: Path) -> list[str]:
         else:
             problems.append(f"no produced file for {expected_name} (looked for {glob_pattern})")
 
+    # An expected "<raw-file-stem>_unpacker_summary.json" is compared with the
+    # unpacker summary of that one raw file, for a case that needs to check a
+    # file other than the first.
+    for expected_file in sorted(expected_dir.glob("*_unpacker_summary.json")):
+        actual_file = working_dir / "analysis/logs/unpacking" / expected_file.name
+        if actual_file.exists():
+            problems += compare_json(expected_file, actual_file)
+        else:
+            problems.append(f"missing produced file: {actual_file}")
+
     expected_tree = expected_dir / "output_tree.txt"
     if expected_tree.exists():
         problems += compare_tree(expected_tree, working_dir)
