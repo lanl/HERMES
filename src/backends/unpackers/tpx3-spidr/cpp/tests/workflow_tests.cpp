@@ -427,7 +427,14 @@ void testSummaryJsonStructure(TestContext& test) {
 
     test.expectEqual(
         parsed["timestamp_processing"]["heartbeat_pairs"].size(),
-        std::size_t{1}, "heartbeat pairs contain only number_of_beats");
+        std::size_t{4}, "heartbeat pairs contain four values");
+    for (const auto* field : {"first_timestamp_canonical",
+                              "last_timestamp_canonical",
+                              "previous_file_timestamp_canonical"}) {
+        test.expect(
+            parsed["timestamp_processing"]["heartbeat_pairs"][field].is_null(),
+            std::string(field) + " is null when there is no timestamp");
+    }
     test.expectEqual(
         parsed["timestamp_processing"]["time_adjustments"].size(),
         std::size_t{4}, "time adjustments contain four packet counts");
@@ -557,6 +564,116 @@ void testTdcTriggersSplitByType(TestContext& test) {
     std::filesystem::remove_all(analysis_directory);
 }
 
+std::uint64_t makeGlobalLow(const std::uint32_t low) {
+    return (0x44ULL << 56U) | (static_cast<std::uint64_t>(low) << 16U);
+}
+
+std::uint64_t makeGlobalHigh(const std::uint16_t high) {
+    return (0x45ULL << 56U) | (static_cast<std::uint64_t>(high) << 16U);
+}
+
+void testSummaryRecordsFirstAndLastGlobalTimestamp(TestContext& test) {
+    const auto analysis_directory = makeTestDirectory("first-last");
+    std::string bytes;
+    appendLittleEndianWord(bytes, makeChunkHeader(0, 0, 40));
+    appendLittleEndianWord(bytes, makeGlobalLow(1000));
+    appendLittleEndianWord(bytes, makeGlobalHigh(0));
+    appendLittleEndianWord(bytes, makeGlobalLow(5000));
+    appendLittleEndianWord(bytes, makeGlobalHigh(2));
+    appendLittleEndianWord(bytes, makePixelPacket(0x0100, 0x0020, 0x0005, 0, 0));
+
+    std::istringstream input(bytes);
+    const auto result = runTwoPassWorkflow(
+        input, "/tmp/first_last.tpx3", analysis_directory.string(),
+        "test-measurement", "test-run");
+
+    printWorkflowErrors(result, "first-last run");
+    test.expect(result.success, "first-last input wrote analysis files");
+    const auto summary = readJson(
+        analysis_directory / "logs/unpacking/first_last_unpacker_summary.json");
+    const auto& beats = summary["timestamp_processing"]["heartbeat_pairs"];
+    test.expectEqual(beats["number_of_beats"].get<std::uint64_t>(),
+                     std::uint64_t{2}, "two global timestamps counted");
+    test.expectEqual(beats["first_timestamp_canonical"].get<std::uint64_t>(),
+                     std::uint64_t{1000} * 12288U,
+                     "first global timestamp recorded in canonical ticks");
+    test.expectEqual(beats["last_timestamp_canonical"].get<std::uint64_t>(),
+                     ((std::uint64_t{2} << 32U) | 5000U) * 12288U,
+                     "last global timestamp recorded in canonical ticks");
+    test.expect(beats["previous_file_timestamp_canonical"].is_null(),
+                "no earlier timestamp given");
+
+    std::filesystem::remove_all(analysis_directory);
+}
+
+void testPreviousGlobalTimestampAnchorsFileWithNone(TestContext& test) {
+    // One pixel and no global timestamp: on its own it cannot be anchored.
+    const auto bytes = makePixelInput();
+
+    const auto alone_directory = makeTestDirectory("no-previous");
+    std::istringstream alone_input(bytes);
+    const auto alone = runTwoPassWorkflow(
+        alone_input, "/tmp/no_previous.tpx3", alone_directory.string(),
+        "test-measurement", "test-run");
+    test.expectEqual(alone.summary.epoch_diagnostics.unresolved_timestamps,
+                     std::uint64_t{1},
+                     "pixel without any global timestamp is counted failed");
+
+    const auto previous_directory = makeTestDirectory("with-previous");
+    const std::uint64_t previous_ticks = 1000ULL * 12288U;
+    std::istringstream previous_input(bytes);
+    const auto previous = runTwoPassWorkflow(
+        previous_input, "/tmp/with_previous.tpx3", previous_directory.string(),
+        "test-measurement", "test-run", /*overwrite=*/false,
+        /*time_sort=*/true, previous_ticks);
+    printWorkflowErrors(previous, "with-previous run");
+    test.expect(previous.success, "with-previous input wrote analysis files");
+    test.expectEqual(previous.summary.epoch_diagnostics.unresolved_timestamps,
+                     std::uint64_t{0},
+                     "pixel anchored to the earlier file's global timestamp");
+    test.expectEqual(previous.summary.anchor_diagnostics.total_anchors,
+                     std::uint64_t{0},
+                     "earlier timestamp is not counted as this file's own");
+
+    const auto summary = readJson(
+        previous_directory /
+        "logs/unpacking/with_previous_unpacker_summary.json");
+    const auto& beats = summary["timestamp_processing"]["heartbeat_pairs"];
+    test.expectEqual(
+        beats["previous_file_timestamp_canonical"].get<std::uint64_t>(),
+        previous_ticks, "summary records the earlier timestamp it was given");
+    test.expect(beats["first_timestamp_canonical"].is_null(),
+                "file has no global timestamp of its own");
+
+    std::filesystem::remove_all(alone_directory);
+    std::filesystem::remove_all(previous_directory);
+}
+
+void testPreviousGlobalTimestampIgnoredForChipWithItsOwn(TestContext& test) {
+    // Chip 0 has its own global timestamp; chip 1 has none.
+    std::string bytes;
+    appendLittleEndianWord(bytes, makeChunkHeader(0, 0, 24));
+    appendLittleEndianWord(bytes, makeGlobalLow(1000));
+    appendLittleEndianWord(bytes, makeGlobalHigh(0));
+    appendLittleEndianWord(bytes, makePixelPacket(0x0100, 0x0020, 0x0005, 0, 0));
+    appendLittleEndianWord(bytes, makeChunkHeader(1, 0, 8));
+    appendLittleEndianWord(bytes, makePixelPacket(0x0200, 0x0030, 0x0006, 0, 0));
+
+    const auto analysis_directory = makeTestDirectory("mixed-chips");
+    std::istringstream input(bytes);
+    const auto result = runTwoPassWorkflow(
+        input, "/tmp/mixed_chips.tpx3", analysis_directory.string(),
+        "test-measurement", "test-run", /*overwrite=*/false,
+        /*time_sort=*/true, std::uint64_t{50} * 12288U);
+    printWorkflowErrors(result, "mixed-chips run");
+    test.expectEqual(result.summary.epoch_diagnostics.unresolved_timestamps,
+                     std::uint64_t{0}, "both chips anchored");
+    test.expectEqual(result.summary.anchor_diagnostics.total_anchors,
+                     std::uint64_t{1}, "only chip 0's own timestamp counted");
+
+    std::filesystem::remove_all(analysis_directory);
+}
+
 }  // namespace
 
 int main() {
@@ -571,5 +688,8 @@ int main() {
     testTimeSortDisabledStillWritesRows(test);
     testDuplicateTdcTriggersAreCollapsed(test);
     testTdcTriggersSplitByType(test);
+    testSummaryRecordsFirstAndLastGlobalTimestamp(test);
+    testPreviousGlobalTimestampAnchorsFileWithNone(test);
+    testPreviousGlobalTimestampIgnoredForChipWithItsOwn(test);
     return test.finish();
 }

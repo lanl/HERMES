@@ -24,7 +24,10 @@
   },
   "timestamp_processing": {
     "heartbeat_pairs": {
-      "number_of_beats": 1
+      "number_of_beats": 1,
+      "first_timestamp_canonical": 620912640,
+      "last_timestamp_canonical": 620912640,
+      "previous_file_timestamp_canonical": null
     },
     "time_adjustments": {
       "pixel_packets": 505721,

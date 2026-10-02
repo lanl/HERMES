@@ -1,0 +1,30 @@
+data/05-earlier-global-timestamp/earlier-global-timestamp/
+├── analysis/
+│   ├── control_packets/
+│   │   ├── frame_000_control_packets_00000.parquet
+│   │   └── frame_001_control_packets_00000.parquet
+│   ├── global_timestamps/
+│   │   └── frame_000_global_timestamps_00000.parquet
+│   ├── logs/
+│   │   └── unpacking/
+│   │       ├── frame_000_unpacker_summary.json
+│   │       └── frame_001_unpacker_summary.json
+│   ├── pixel_hits/
+│   │   ├── frame_000_chip_0_pixels_00000.parquet
+│   │   ├── frame_000_chip_1_pixels_00000.parquet
+│   │   ├── frame_000_chip_2_pixels_00000.parquet
+│   │   ├── frame_001_chip_0_pixels_00000.parquet
+│   │   ├── frame_001_chip_1_pixels_00000.parquet
+│   │   └── frame_001_chip_2_pixels_00000.parquet
+│   ├── tdc_triggers/
+│   │   ├── frame_000_tdc1_falling_triggers_00000.parquet
+│   │   ├── frame_000_tdc1_rising_triggers_00000.parquet
+│   │   ├── frame_001_tdc1_falling_triggers_00000.parquet
+│   │   └── frame_001_tdc1_rising_triggers_00000.parquet
+│   └── unrecognized_packets/
+├── logs/
+│   ├── HERMES-workflow.jsonl
+│   ├── acquisition.serval.jsonl
+│   ├── analysis.jsonl
+│   └── state.jsonl
+└── HERMES_record.yaml

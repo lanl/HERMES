@@ -5,6 +5,7 @@ import re
 import subprocess
 import tempfile
 from time import perf_counter
+from collections.abc import Iterable
 from pathlib import Path
 
 from loguru import logger
@@ -83,6 +84,12 @@ _LABEL_SUFFIX_PATTERNS = {
     if label is not None and directory != "tdc_triggers"
 }
 _LOG_TEXT_LIMIT = 4_000
+# Canonical ticks in one second: 40 million 25 ns clock periods, each split
+# into 12288 canonical ticks.
+_CANONICAL_TICKS_PER_SECOND = 40_000_000 * 12_288
+# A row more than half the pixel clock's 26.84 s wrap after the global
+# timestamp it counts wraps from gets the wrong wrap count, with no error.
+_MAX_SECONDS_AFTER_EARLIER_TIMESTAMP = 13.0
 _ANALYSIS_LOGGER = logger.bind(
     domain="analysis",
     mode="hermes",
@@ -191,6 +198,7 @@ def derive_unpacker_command(
     measurement_info: MeasurementInfo,
     *,
     overwrite: bool = False,
+    previous_global_timestamp: int | None = None,
 ) -> list[str]:
     command = [
         str(analysis.unpacking.program.executable_path),
@@ -207,6 +215,10 @@ def derive_unpacker_command(
         command.append("--overwrite")
     if not analysis.unpacking.runtime_options.time_sort:
         command.extend(["--time-sort", "false"])
+    if previous_global_timestamp is not None:
+        command.extend(
+            ["--previous-global-timestamp", str(previous_global_timestamp)]
+        )
     return command
 
 def execute_unpacker(
@@ -216,9 +228,15 @@ def execute_unpacker(
     measurement_info: MeasurementInfo,
     *,
     overwrite: bool = False,
+    previous_global_timestamp: int | None = None,
 ) -> Tpx3SpidrSummary:
     command = derive_unpacker_command(
-        analysis, analysis_root, raw_file, measurement_info, overwrite=overwrite
+        analysis,
+        analysis_root,
+        raw_file,
+        measurement_info,
+        overwrite=overwrite,
+        previous_global_timestamp=previous_global_timestamp,
     )
     summary_path = derive_summary_path(analysis_root, raw_file)
     resolved_executable_path = resolve_executable(
@@ -303,7 +321,6 @@ def execute_unpacker(
         )
         raise
 
-    _warn_if_timestamps_unanchored(raw_file, summary)
     _ANALYSIS_LOGGER.info(
         "Unpacked {raw_tpx3_file} in {elapsed_seconds:.2f}s",
         event_type="analysis.tpx3_unpacking.completed",
@@ -476,7 +493,6 @@ def _confirm_unpacked_file(
         )
         return None
 
-    _warn_if_timestamps_unanchored(raw_file, summary)
     _ANALYSIS_LOGGER.info(
         "Unpacked {raw_tpx3_file}",
         event_type="analysis.tpx3_unpacking.completed",
@@ -533,6 +549,132 @@ def log_overall_failure(error: Exception) -> None:
     )
 
 
+def unpack_again_with_earlier_global_timestamp(
+    analysis: HermesTpx3AnalysisState,
+    analysis_root: Path,
+    raw_files: list[FileReference],
+    new_summaries: dict[Path, Tpx3SpidrSummary],
+    measurement_info: MeasurementInfo,
+) -> list[FileReference]:
+    """Unpack again each new file that had no global timestamp to count wraps from.
+
+    Files are unpacked in parallel, so the first time a file is unpacked it
+    cannot use the global timestamps of earlier files. ``raw_files`` are the
+    run's unpacked raw files, skipped or new, and ``new_summaries`` holds the
+    summaries of the files unpacked in this pass. Each new file with failed
+    timestamps is unpacked again by itself with the last global timestamp of
+    the nearest earlier raw file in the same directory. SERVAL names each file
+    by the run's start time and its frame number, so name order is recording
+    order.
+
+    Returns the files that failed to unpack again. Their outputs are already
+    removed, so a later resume unpacks them from the start.
+    """
+    ordered = sorted(
+        raw_files,
+        key=lambda raw_file: (str(raw_file.path.parent), raw_file.path.name),
+    )
+    failed_again: list[FileReference] = []
+    for index, raw_file in enumerate(ordered):
+        summary = new_summaries.get(raw_file.path)
+        if summary is None:
+            continue
+        timestamps = summary.timestamp_processing
+        if (
+            timestamps.time_adjustments.failed == 0
+            or timestamps.heartbeat_pairs.previous_file_timestamp_canonical
+            is not None
+        ):
+            continue
+        earlier = _nearest_global_timestamp(
+            analysis_root,
+            raw_file,
+            reversed(ordered[:index]),
+            new_summaries,
+            "last_timestamp_canonical",
+        )
+        if earlier is None:
+            _warn_if_timestamps_unanchored(raw_file, summary)
+            continue
+        earlier_file, earlier_timestamp = earlier
+        later = _nearest_global_timestamp(
+            analysis_root,
+            raw_file,
+            ordered[index + 1:],
+            new_summaries,
+            "first_timestamp_canonical",
+        )
+        _ANALYSIS_LOGGER.info(
+            "Unpacking {raw_tpx3_file} again with the last global timestamp of "
+            "{earlier_tpx3_file}, because some chips have no global timestamp "
+            "of their own in it",
+            event_type="analysis.tpx3_unpacking.unpacking_again",
+            raw_tpx3_file=str(raw_file.path),
+            earlier_tpx3_file=str(earlier_file.path),
+            earlier_timestamp_canonical=earlier_timestamp,
+        )
+        if later is not None:
+            later_file, later_timestamp = later
+            seconds_between = (
+                later_timestamp - earlier_timestamp
+            ) / _CANONICAL_TICKS_PER_SECOND
+            if seconds_between >= _MAX_SECONDS_AFTER_EARLIER_TIMESTAMP:
+                _ANALYSIS_LOGGER.warning(
+                    "{raw_tpx3_file}: the last global timestamp of "
+                    "{earlier_tpx3_file} is {seconds_between:.1f} s before the "
+                    "next one, in {later_tpx3_file}; pixel, TDC, and event "
+                    "times more than 13.4 s after it may be off by whole clock "
+                    "wraps and are not comparable for time-of-flight.",
+                    event_type="analysis.tpx3_unpacking.earlier_timestamp_too_far",
+                    raw_tpx3_file=str(raw_file.path),
+                    earlier_tpx3_file=str(earlier_file.path),
+                    later_tpx3_file=str(later_file.path),
+                    seconds_between=seconds_between,
+                )
+        _remove_outputs_for_raw_file(analysis_root, raw_file.path.stem)
+        try:
+            execute_unpacker(
+                analysis,
+                analysis_root,
+                raw_file,
+                measurement_info,
+                overwrite=True,
+                previous_global_timestamp=earlier_timestamp,
+            )
+        except HermesTpx3Error:
+            # execute_unpacker has already logged the failure.
+            failed_again.append(raw_file)
+    return failed_again
+
+
+def _nearest_global_timestamp(
+    analysis_root: Path,
+    raw_file: FileReference,
+    candidates: Iterable[FileReference],
+    new_summaries: dict[Path, Tpx3SpidrSummary],
+    field_name: str,
+) -> tuple[FileReference, int] | None:
+    """Return the first candidate in ``raw_file``'s directory with a timestamp.
+
+    ``field_name`` names the summary's ``heartbeat_pairs`` field to read. A
+    candidate's summary comes from ``new_summaries`` when it was unpacked in
+    this pass and from its summary JSON file otherwise.
+    """
+    for candidate in candidates:
+        if candidate.path.parent != raw_file.path.parent:
+            return None
+        summary = new_summaries.get(candidate.path)
+        if summary is None:
+            try:
+                summary = _load_summary(derive_summary_path(analysis_root, candidate))
+            except HermesTpx3Error:
+                continue
+        timestamp = getattr(summary.timestamp_processing.heartbeat_pairs, field_name)
+        if timestamp is not None:
+            return candidate, timestamp
+    return None
+
+
 def _warn_if_timestamps_unanchored(
     raw_file: FileReference,
     summary: Tpx3SpidrSummary,
@@ -540,24 +682,29 @@ def _warn_if_timestamps_unanchored(
     """Warn when a file's timestamps had no global timestamps to anchor to.
 
     Unpacking recovers each clock counter's missing high bits by comparing it to
-    the run's global timestamps, which are matched to each chip on its own.
-    ``failed`` counts the counters that found no global timestamp to anchor to,
-    so they are left folded near zero and no longer share one comparable axis
-    with the rest. When the file has no global timestamps at all this almost
-    always means GlobalTimestampInterval was not enabled during acquisition;
-    when it has some but not for every chip, only the chips without one of their
-    own are affected.
+    the run's global timestamps, which are matched to each chip on its own. A
+    chip with none of its own in the file uses the last one of an earlier raw
+    file of the run. ``failed`` counts the counters that found neither, so they
+    are left folded near zero and no longer share one comparable axis with the
+    rest. When the file has no global timestamps at all this almost always means
+    GlobalTimestampInterval was not enabled during acquisition; when it has some
+    but not for every chip, only the chips without one of their own are
+    affected.
     """
     failed = summary.timestamp_processing.time_adjustments.failed
     if failed == 0:
         return
     beats = summary.timestamp_processing.heartbeat_pairs.number_of_beats
     if beats == 0:
-        hint = "Check that GlobalTimestampInterval was enabled during acquisition."
+        hint = (
+            "No earlier raw file of the run has one either. Check that "
+            "GlobalTimestampInterval was enabled during acquisition."
+        )
     else:
         hint = (
-            "This file has global timestamps but not for every chip, so the "
-            "chips without one of their own could not be anchored."
+            "This file has global timestamps but not for every chip, and no "
+            "earlier raw file of the run has one, so the chips without one of "
+            "their own could not be anchored."
         )
     _ANALYSIS_LOGGER.warning(
         "{raw_tpx3_file}: {failed} timestamps had no global timestamps to anchor "

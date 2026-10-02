@@ -230,6 +230,13 @@ class Tpx3SpidrUnpackingSummary(StrictBaseModel):
 
 class Tpx3SpidrHeartbeatPairsSummary(StrictBaseModel):
     number_of_beats: int = Field(ge=0)
+    # The earliest and latest global timestamp in the file, over all chips, in
+    # canonical ticks; None when the file has none.
+    first_timestamp_canonical: int | None = Field(default=None, ge=0)
+    last_timestamp_canonical: int | None = Field(default=None, ge=0)
+    # The global timestamp from an earlier raw file that the runner gave with
+    # --previous-global-timestamp; None when it was not given.
+    previous_file_timestamp_canonical: int | None = Field(default=None, ge=0)
 
 
 class Tpx3SpidrTimeAdjustmentsSummary(StrictBaseModel):

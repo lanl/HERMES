@@ -290,6 +290,22 @@ the fixed startup cost is a small fraction of each file's work and grouping woul
 not help. The chunk size is capped so a subprocess that dies partway loses only
 that chunk's not-yet-finished files, which a later resume re-runs.
 
+Files are unpacked in parallel, so a raw file cannot use a global timestamp
+from an earlier file the first time it is unpacked. Almost every file has its
+own, so this costs nothing. After the chunks finish, the runner looks at each
+summary whose `time_adjustments.failed` is above 0 and whose
+`previous_file_timestamp_canonical` is `null`. For each one it finds the
+nearest earlier raw file in the same directory that has
+`last_timestamp_canonical` set. Earlier means earlier in name order: SERVAL
+names each file by the run's start time and its frame number, so name order is
+recording order. It removes the file's outputs and unpacks it again by itself
+with `--overwrite` and `--previous-global-timestamp` set to that value. Photon
+and event reconstruction then run on the new outputs. The runner warns when the
+gap from that value to the first global timestamp of the next later file is
+13 s or more. It also warns when no earlier file has one. In both cases the
+file's times may be off by whole wraps. A later resume skips the file like any
+other, because its summary is valid.
+
 Each subprocess runs with its internal thread pools limited to a single thread.
 Left unconstrained, the Arrow/Parquet thread pool inside each unpacker process
 sizes itself to the whole machine, so many concurrent workers would spawn far

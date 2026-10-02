@@ -232,14 +232,31 @@ logs to reproduce or debug the run.
    an earlier run would be mixed into this one. HERMES refuses to start such a
    run before contacting SERVAL; choose a new run directory or move the old
    files away.
-   HERMES also refuses, before contacting SERVAL, a `GlobalTimestampInterval`
-   that would give wrong times with no error. Unpacking places each pixel time
-   using the global timestamp before it, and the pixel clock wraps every
-   26.84 s, so the interval must be at most 13 s (a little under half a wrap).
-   In `AUTOTRIGSTART_TIMERSTOP` and `CONTINUOUS` modes, where the trigger
-   period sets the frame length and each frame is its own raw file, the
-   interval must also be no longer than the trigger period, or some files get
-   no global timestamp. 1 s is the tested value.
+   A run that takes a measurement must also meet these global timestamp
+   rules. HERMES checks them before contacting SERVAL. Unpacking needs global
+   timestamps to place pixel, TDC, and event times on one time axis, and the
+   pixel clock wraps every 26.84 s, so a run that breaks them gives wrong times
+   with no error.
+   - Global timestamps are always on. When the config leaves
+     `GlobalTimestampInterval` unset, HERMES sets it to 1 s, or to half the
+     frame length when frames are shorter than 2 s, and logs the value it
+     chose. HERMES refuses an interval of 0 or less, since that turns them off.
+   - The interval must be at most 13 s, a little under half the pixel clock's
+     26.84 s wrap. It must be at least 1 ms, SERVAL's own lower limit.
+   - In `AUTOTRIGSTART_TIMERSTOP` and `CONTINUOUS` modes, the trigger period
+     is the frame length, and each frame is its own raw file. There, the
+     interval must be at most half the trigger period, so every raw file holds
+     at least one global timestamp. Half, not all, because SERVAL writes global
+     timestamps up to about 18 ms off schedule.
+   - In those two modes the trigger period must be at least 100 ms. This
+     limits the frame length, not the exposure: a 2 s frame with a 10 ms
+     exposure is still a 2 s raw file.
+
+   In the externally triggered modes HERMES cannot know the frame length
+   before the run, so it checks only the first two rules there. Unpacking
+   handles a raw file with no global timestamp of its own (see "How the clocks
+   synchronize" in `unpacker.md`). The tested setting is 1 s global timestamps
+   with 2 s or 10 s frames.
 7. Load chip calibration files.
    Load the user-provided `.bpc` pixel configuration and `.dacs` DAC files with
    SERVAL `/config/load`. These files are generated outside HERMES by SoPhy or

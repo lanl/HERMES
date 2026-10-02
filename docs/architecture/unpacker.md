@@ -60,11 +60,18 @@ batched-input exception described after the list):
 - `--time-sort <true|false>` — sort output by canonical timestamp. Takes an
   explicit value and defaults to `true`. The Python runner passes
   `--time-sort false` to turn sorting off. Implemented.
+- `--previous-global-timestamp <canonical ticks>` — the last global timestamp
+  from the nearest earlier raw file of the same run. It is used only for a chip
+  that has no global timestamp of its own in this file (see "How the clocks
+  synchronize"). Like `--input-list`, this is not a user-facing option: only
+  the Python runner sets it, and only when it unpacks such a file a second
+  time. Use with `--input`, not with `--input-list`. Implemented.
 
 The unpacker also accepts `-h`/`--help` to print usage and `-v`/`--version` to
 print version information; both print and exit without unpacking.
 
-Do not add any option outside this list, apart from `--input-list`. The
+Do not add any option outside this list, apart from `--input-list` and
+`--previous-global-timestamp`. The
 measurement identifier and run label are the only run-identity inputs; in
 particular, do not add separate command options for category directories, a
 filename prefix, or a summary filename; the unpacker creates those from
@@ -347,6 +354,28 @@ time in canonical ticks; the number of periods added is the wrap count for that
 row. Wraps are counted separately for each chip and each packet category,
 because the counters differ in width and each chip carries its own heartbeat.
 
+This only works when a row is close to a global timestamp. A row less than
+half a wrap (about 13.4 s for the pixel counter) from the global timestamp it
+is compared with gets the right wrap count. A row further away gets one wrap
+too many or too few, with no error. The acquisition rules in `acquisition.md`
+keep global timestamps on and at most 13 s apart, so every row is close enough.
+
+A raw file with no global timestamp of its own, for a chip or for the whole
+file, uses the last global timestamp from the nearest earlier raw file of the
+same run instead. This works because the 48-bit timer does not reset between
+files. A run here is one raw data directory, which holds one measurement. The
+Python runner finds that timestamp and passes it with
+`--previous-global-timestamp` (see "Shared Analysis Directories" in
+`analysis.md` for when). The file's summary records the timestamp it used. A
+chip that has global timestamps of its own uses only those.
+
+This is only correct when the file's rows are less than 13.4 s after the
+earlier timestamp. The runner checks the gap from the earlier file's last
+global timestamp to the next later file's first one. When that gap is 13 s or
+more, the runner still writes the times and warns that they may be off by
+whole wraps. A file with no earlier global timestamp anywhere in its run keeps
+the current behavior: its rows are counted as failed, and the runner warns.
+
 Once every row carries its wrap count, all four streams share one absolute time
 axis measured in canonical ticks from the start of the run. Times from
 different streams can then be subtracted directly. A neutron time of flight, for
@@ -424,6 +453,9 @@ unpacking:
 timestamp_processing:
   heartbeat_pairs:
     number_of_beats: 0
+    first_timestamp_canonical: null
+    last_timestamp_canonical: null
+    previous_file_timestamp_canonical: null
   time_adjustments:
     pixel_packets: 0
     tdc_packets: 0
@@ -487,7 +519,13 @@ time, with megabytes calculated as `1,000,000` bytes.
 The TDC edge counts show how the de-duplicated triggers divide between TDC1 and
 TDC2 rising and falling edges; they sum to `tdc_timestamps` and match the TDC
 Parquet row counts. `heartbeat_pairs.number_of_beats` reports the paired
-heartbeat timestamps used for time adjustment. The `time_adjustments` counts
+heartbeat timestamps used for time adjustment.
+`first_timestamp_canonical` and `last_timestamp_canonical` are the earliest and
+latest of them, over all chips, or `null` when the file has none; the runner
+uses them to find the earlier timestamp for a later file.
+`previous_file_timestamp_canonical` is the value given with
+`--previous-global-timestamp`, or `null` when it was not given. The
+`time_adjustments` counts
 show how many pixel, TDC, and control packets received adjusted times and how
 many adjustments failed; the TDC count includes every decoded packet, including
 the per-chip duplicates removed before writing. `sorting.strategy` is either

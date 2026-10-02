@@ -60,10 +60,19 @@ _ACTIVE_STATUSES = ("DA_PREPARING", "DA_RECORDING", "DA_STOPPING")
 # no error. The longest interval HERMES accepts stays a little under half a wrap.
 _MAX_GLOBAL_TIMESTAMP_INTERVAL_S = 13.0
 
+# The global timestamp interval HERMES sends when the config leaves it unset.
+# One second is the tested setting.
+_DEFAULT_GLOBAL_TIMESTAMP_INTERVAL_S = 1.0
+
 # Trigger modes in which the trigger period sets how often a new raw file
-# starts. HERMES writes one raw file per frame, so in these modes an interval
-# longer than the trigger period leaves some files with no global timestamp.
+# starts. HERMES writes one raw file per frame, so in these modes the interval
+# must be at most half the trigger period for every file to hold a global
+# timestamp. Half, not all, because SERVAL writes them up to about 18 ms off
+# schedule.
 _TRIGGER_PERIOD_MODES = ("AUTOTRIGSTART_TIMERSTOP", "CONTINUOUS")
+
+# The shortest frame (trigger period) HERMES accepts in those modes.
+_MIN_TRIGGER_PERIOD_S = 0.1
 
 
 class ServalMeasurementError(Exception):
@@ -87,15 +96,17 @@ def build_effective_detector_config(
     the inline `detector_config`), otherwise the inline `detector_config`, or an
     empty configuration when neither is given. Then layer the `run_timing`
     values on top: trigger mode, exposure time, trigger period, and trigger
-    count (which maps to the detector's `n_triggers`). Raises ValueError when the
-    result is invalid, including a global timestamp interval that would give
-    wrong times (see `_check_global_timestamp_interval`).
+    count (which maps to the detector's `n_triggers`). When the global timestamp
+    interval is unset, HERMES fills it in (see `_with_global_timestamp_interval`).
+    Raises ValueError when the result is invalid, including global timestamp
+    settings that would give wrong times (see `_check_global_timestamp_interval`).
     """
     base = _load_base_config(config)
     timing = config.run_timing
     if timing is None:
-        _check_global_timestamp_interval(base)
-        return base
+        effective = _with_global_timestamp_interval(base)
+        _check_global_timestamp_interval(effective)
+        return effective
 
     updates: dict[str, object] = {}
     if timing.trigger_mode is not None:
@@ -112,31 +123,76 @@ def build_effective_detector_config(
     # to apply the cross-field rules (like the sequential dead-time rule) to the
     # effective config before it is sent to SERVAL.
     effective = DetectorConfiguration.model_validate(merged.model_dump())
+    effective = _with_global_timestamp_interval(effective)
     _check_global_timestamp_interval(effective)
     return effective
 
 
+def _with_global_timestamp_interval(
+    effective: DetectorConfiguration,
+) -> DetectorConfiguration:
+    """Fill in the global timestamp interval when the config leaves it unset.
+
+    Global timestamps are always on, so HERMES never leaves the interval to
+    whatever SERVAL last held (a freshly started SERVAL has them off). It uses
+    `_DEFAULT_GLOBAL_TIMESTAMP_INTERVAL_S`, or half the trigger period when the
+    trigger period sets the frame length and frames are shorter than twice that.
+    """
+    if effective.global_timestamp_interval_s is not None:
+        return effective
+    interval = _DEFAULT_GLOBAL_TIMESTAMP_INTERVAL_S
+    period = effective.trigger_period_s
+    if effective.trigger_mode in _TRIGGER_PERIOD_MODES and period is not None:
+        interval = min(interval, period / 2)
+    _MEASUREMENT_LOGGER.info(
+        "GlobalTimestampInterval is not set; HERMES uses {interval} s",
+        event_type="acquisition.serval.global_timestamp_interval_default",
+        interval=interval,
+        trigger_mode=effective.trigger_mode,
+        trigger_period_s=period,
+    )
+    return effective.model_copy(update={"global_timestamp_interval_s": interval})
+
+
 def _check_global_timestamp_interval(effective: DetectorConfiguration) -> None:
-    """Raise ValueError when the global timestamp interval would give wrong times.
+    """Raise ValueError when the global timestamp settings would give wrong times.
 
     Unpacking adds back the wraps a pixel or TDC time has lost by comparing it
-    with the global timestamp before it in the file. Two settings break this
-    without any error:
+    with the global timestamp before it. These settings break that:
 
+    - An interval of 0 or less, which turns global timestamps off.
     - An interval over `_MAX_GLOBAL_TIMESTAMP_INTERVAL_S`: pixels more than about
-      13.4 s after a global timestamp come out exactly 26.84 s early.
-    - An interval longer than the trigger period, in a mode where the trigger
-      period sets the frame length: some raw files get no global timestamp, and
-      their times come out hundreds of seconds off.
+      13.4 s after a global timestamp come out exactly 26.84 s early, with no
+      error.
+    - In a mode where the trigger period sets the frame length, a trigger period
+      under `_MIN_TRIGGER_PERIOD_S`, or an interval over half the trigger
+      period: some raw files could get no global timestamp of their own.
 
-    The SERVAL API accepts both, so this is a HERMES check, not a limit on the
-    detector configuration model (which also reads back what SERVAL holds). An
-    interval that is unset or <= 0 turns global timestamps off; the run warns
-    about that separately.
+    The SERVAL API accepts all of these, so this is a HERMES check, not a limit
+    on the detector configuration model (which also reads back what SERVAL
+    holds). That model already refuses an interval between 0 and 1 ms.
     """
+    period = effective.trigger_period_s
+    frames_from_period = (
+        effective.trigger_mode in _TRIGGER_PERIOD_MODES and period is not None
+    )
+    if frames_from_period and period < _MIN_TRIGGER_PERIOD_S:
+        msg = (
+            f"trigger period of {period} s is shorter than "
+            f"{_MIN_TRIGGER_PERIOD_S} s, the shortest frame HERMES accepts in "
+            f"{effective.trigger_mode} mode"
+        )
+        raise ValueError(msg)
     interval = effective.global_timestamp_interval_s
-    if interval is None or interval <= 0:
+    if interval is None:
         return
+    if interval <= 0:
+        msg = (
+            f"GlobalTimestampInterval of {interval} s turns global timestamps "
+            "off, and unpacking needs them to place pixel, TDC, and event times "
+            "on one time axis; leave it unset or use 1 s"
+        )
+        raise ValueError(msg)
     if interval > _MAX_GLOBAL_TIMESTAMP_INTERVAL_S:
         msg = (
             f"GlobalTimestampInterval of {interval} s is longer than "
@@ -146,18 +202,13 @@ def _check_global_timestamp_interval(effective: DetectorConfiguration) -> None:
             "such as 1 s"
         )
         raise ValueError(msg)
-    period = effective.trigger_period_s
-    if (
-        effective.trigger_mode in _TRIGGER_PERIOD_MODES
-        and period is not None
-        and period > 0
-        and interval > period
-    ):
+    if frames_from_period and interval > period / 2:
         msg = (
-            f"GlobalTimestampInterval of {interval} s is longer than the "
-            f"{period} s trigger period: HERMES writes one raw file per frame, so "
-            "some files would get no global timestamp and their times would be "
-            f"wrong; set it to at most {period} s"
+            f"GlobalTimestampInterval of {interval} s is longer than half the "
+            f"{period} s trigger period: HERMES writes one raw file per frame, "
+            "and SERVAL writes global timestamps a few ms off schedule, so some "
+            "files could get no global timestamp of their own; set it to at most "
+            f"{period / 2} s"
         )
         raise ValueError(msg)
 
@@ -284,7 +335,6 @@ def _apply_config(
     errors: list[str],
 ) -> DetectorConfiguration:
     """Send the configuration and read it back, warning on any difference."""
-    _warn_if_global_timestamps_disabled(effective, warnings)
     _MEASUREMENT_LOGGER.info(
         "Applying detector configuration",
         event_type="acquisition.serval.detector_config_apply",
@@ -292,6 +342,7 @@ def _apply_config(
         n_triggers=effective.n_triggers,
         exposure_time_s=effective.exposure_time_s,
         trigger_period_s=effective.trigger_period_s,
+        global_timestamp_interval_s=effective.global_timestamp_interval_s,
     )
     try:
         client.put_detector_config(effective)
@@ -307,47 +358,6 @@ def _apply_config(
 
     _warn_on_config_drift(effective, applied, warnings)
     return applied
-
-
-def _warn_if_global_timestamps_disabled(
-    effective: DetectorConfiguration,
-    warnings: list[str],
-) -> None:
-    """Warn when this run's configuration does not enable global timestamps.
-
-    SERVAL writes periodic global timestamps only when GlobalTimestampInterval
-    is a positive number of seconds. When this run leaves it unset HERMES sends
-    nothing for it, so SERVAL keeps whatever it had; when this run sets it to
-    zero or a negative value HERMES sends that and SERVAL turns them off. Either
-    way, unless SERVAL already has them on the raw `.tpx3` will have none, and
-    unpacking then cannot place pixel, TDC, and event times on one comparable
-    time axis for time-of-flight. This is a valid configuration, so it is a
-    warning, not a failure.
-    """
-    interval = effective.global_timestamp_interval_s
-    if interval is not None and interval > 0:
-        return
-    if interval is None:
-        cause = (
-            "; this run leaves GlobalTimestampInterval unset, so unless SERVAL "
-            "already has them on the raw .tpx3 will have none"
-        )
-    else:
-        cause = (
-            f"; this run sets GlobalTimestampInterval to {interval!r}, which turns "
-            "them off on SERVAL, so the raw .tpx3 will have none"
-        )
-    warning = (
-        "this run does not enable global timestamps" + cause + ", and unpacking "
-        "cannot place pixel, TDC, and event times on one comparable time axis for "
-        "time-of-flight"
-    )
-    warnings.append(warning)
-    _MEASUREMENT_LOGGER.warning(
-        warning,
-        event_type="acquisition.serval.global_timestamp_disabled",
-        global_timestamp_interval_s=interval,
-    )
 
 
 def _warn_on_config_drift(
