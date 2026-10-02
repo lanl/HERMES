@@ -45,10 +45,11 @@ _PROGRESS_LOG_INTERVAL_S = 5.0
 _START_TIMEOUT_S = 15.0
 
 # These apply only when the run does not set its own wait limit
-# (run_timing.max_wait_s). Then HERMES estimates a limit from the run's expected
-# duration and caps it at _MAX_WAIT_S; a run whose length cannot be computed (for
-# example a continuous run) waits _DEFAULT_WAIT_S before HERMES stops it.
-_MAX_WAIT_S = 300.0
+# (run_timing.max_wait_s). Then HERMES waits twice the run's expected length plus
+# _WAIT_MARGIN_S; a run whose length cannot be told from the detector
+# configuration (one whose frames wait for external or software triggers) waits
+# _DEFAULT_WAIT_S before HERMES stops it.
+_WAIT_MARGIN_S = 10.0
 _DEFAULT_WAIT_S = 300.0
 
 # Statuses that mean the camera is busy with the measurement (not idle).
@@ -276,20 +277,22 @@ def run_measurement(
             client, applied, warnings, errors, stop_reason="config_not_applied"
         )
 
+    wait_limit_s = _wait_limit_s(config.run_timing, applied)
     started_at = utc_now()
     stop_reason = "completed"
     try:
         client.measurement_start()
         _MEASUREMENT_LOGGER.info(
-            "Measurement started",
+            "Measurement started; HERMES waits up to {wait_limit_s:.0f} s for it "
+            "to finish",
             event_type="acquisition.serval.measurement_start",
-            trigger_mode=effective.trigger_mode,
-            n_triggers=effective.n_triggers,
-            exposure_time_s=effective.exposure_time_s,
+            trigger_mode=applied.trigger_mode,
+            n_triggers=applied.n_triggers,
+            exposure_time_s=applied.exposure_time_s,
+            trigger_period_s=applied.trigger_period_s,
+            wait_limit_s=wait_limit_s,
         )
-        stop_reason = _monitor(
-            client, _wait_limit_s(config.run_timing), warnings, on_poll
-        )
+        stop_reason = _monitor(client, wait_limit_s, warnings, on_poll)
     except ServalClientError as error:
         errors.append(str(error))
         stop_reason = "failed"
@@ -543,22 +546,41 @@ def _safe_stop(client: ServalClient, warnings: list[str]) -> None:
         )
 
 
-def _wait_limit_s(timing: ServalRunTiming | None) -> float:
+def _wait_limit_s(
+    timing: ServalRunTiming | None, applied: DetectorConfiguration
+) -> float:
+    """How long HERMES waits for the measurement before it stops it.
+
+    `run_timing.max_wait_s` when it is set. Otherwise twice the run's expected
+    length plus `_WAIT_MARGIN_S`, using the detector configuration SERVAL reports
+    after HERMES sent it (so timing from `detector_config`, `detector_config_file`,
+    or `run_timing` all count). When that length cannot be told, `_DEFAULT_WAIT_S`.
+    """
     if timing is not None and timing.max_wait_s is not None:
         return timing.max_wait_s
-    expected = _expected_duration_s(timing)
-    if expected is None:
-        return _DEFAULT_WAIT_S
-    return min(expected * 2 + 10.0, _MAX_WAIT_S)
+    expected = _expected_duration_s(applied)
+    if expected is not None:
+        return expected * 2 + _WAIT_MARGIN_S
+    _MEASUREMENT_LOGGER.warning(
+        "HERMES cannot tell how long a {trigger_mode} run takes, so it stops the "
+        "run after {wait_limit_s:.0f} s; set run_timing.max_wait_s for a longer run",
+        event_type="acquisition.serval.wait_limit_default",
+        trigger_mode=applied.trigger_mode,
+        wait_limit_s=_DEFAULT_WAIT_S,
+    )
+    return _DEFAULT_WAIT_S
 
 
-def _expected_duration_s(timing: ServalRunTiming | None) -> float | None:
-    """Estimate how long the run should take from its timing, if it can be told."""
-    if timing is None:
+def _expected_duration_s(applied: DetectorConfiguration) -> float | None:
+    """Estimate how long the run takes from the detector configuration.
+
+    This can be told only in the modes where the camera triggers itself every
+    trigger period: the trigger count times the trigger period. SERVAL takes a
+    trigger count of 0 as 1. In the other modes each frame waits for an external
+    or software trigger, so this returns None.
+    """
+    if applied.trigger_mode not in _TRIGGER_PERIOD_MODES:
         return None
-    count = timing.trigger_count
-    if count:
-        per_trigger = timing.trigger_period_s or timing.exposure_time_s
-        if per_trigger:
-            return count * per_trigger
-    return timing.exposure_time_s
+    if applied.n_triggers is None or not applied.trigger_period_s:
+        return None
+    return max(applied.n_triggers, 1) * applied.trigger_period_s

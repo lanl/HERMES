@@ -485,20 +485,84 @@ def test_run_measurement_times_out_and_stops(
     assert any("did not finish" in warning for warning in outcome.result.warnings)
 
 
+_AUTO_TRIGGER_CONFIG = DetectorConfiguration(
+    trigger_mode="AUTOTRIGSTART_TIMERSTOP",
+    exposure_time_s=0.1,
+    trigger_period_s=0.2,
+    n_triggers=5,
+)
+
+
 def test_wait_limit_uses_configured_max_wait_s() -> None:
-    # An explicit max_wait_s is used as-is, overriding both the ~11 s auto
-    # estimate and the 300 s cap, so a long run (like a full hour) is not cut
-    # off early.
-    timing = ServalRunTiming(
-        exposure_time_s=0.1, trigger_count=5, max_wait_s=7200.0
-    )
-    assert _wait_limit_s(timing) == 7200.0
+    # An explicit max_wait_s is used as-is, overriding the ~12 s estimate.
+    timing = ServalRunTiming(max_wait_s=7200.0)
+    assert _wait_limit_s(timing, _AUTO_TRIGGER_CONFIG) == 7200.0
 
 
 def test_wait_limit_estimates_from_duration_without_max_wait_s() -> None:
-    # Without an explicit limit HERMES estimates one: 5 triggers * 0.1 s * 2 + 10.
-    timing = ServalRunTiming(exposure_time_s=0.1, trigger_count=5)
-    assert _wait_limit_s(timing) == 11.0
+    # Without an explicit limit HERMES estimates one: 5 triggers * 0.2 s * 2 + 10.
+    assert _wait_limit_s(None, _AUTO_TRIGGER_CONFIG) == pytest.approx(12.0)
+
+
+def test_wait_limit_is_not_capped_for_a_long_run() -> None:
+    # Regression for #139: 31 triggers every 10.1 s is about 313 s, and the old
+    # 300 s cap stopped the run before its last frame.
+    applied = DetectorConfiguration(
+        trigger_mode="AUTOTRIGSTART_TIMERSTOP",
+        exposure_time_s=10.0,
+        trigger_period_s=10.1,
+        n_triggers=31,
+    )
+    assert _wait_limit_s(None, applied) == pytest.approx(31 * 10.1 * 2 + 10)
+
+
+def test_wait_limit_for_continuous_mode_uses_the_trigger_period() -> None:
+    applied = DetectorConfiguration(
+        trigger_mode="CONTINUOUS", trigger_period_s=2.0, n_triggers=100
+    )
+    assert _wait_limit_s(None, applied) == pytest.approx(410.0)
+
+
+def test_wait_limit_takes_a_trigger_count_of_zero_as_one() -> None:
+    # SERVAL sends max(1, nTriggers) to the camera, so 0 is one frame.
+    applied = _AUTO_TRIGGER_CONFIG.model_copy(update={"n_triggers": 0})
+    assert _wait_limit_s(None, applied) == pytest.approx(10.4)
+
+
+@pytest.mark.parametrize(
+    "trigger_mode", ["PEXSTART_TIMERSTOP", "SOFTWARESTART_SOFTWARESTOP", None]
+)
+def test_wait_limit_uses_the_default_when_the_length_cannot_be_told(
+    trigger_mode: str | None,
+) -> None:
+    # Frames that wait for an external or software trigger have no set length.
+    applied = _AUTO_TRIGGER_CONFIG.model_copy(update={"trigger_mode": trigger_mode})
+    assert _wait_limit_s(None, applied) == 300.0
+
+
+def test_run_measurement_waits_for_timing_set_in_detector_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Regression for #139: timing set in detector_config (not run_timing) was
+    # ignored, so this ~1,100 s run got a 12 s limit and was stopped as failed.
+    _install_fake_clock(monkeypatch)
+    raw = tmp_path / "raw"
+    # 1,100 s of recording at one poll every 0.5 s, then idle.
+    client = _FakeClient(["DA_RECORDING"] * 2200 + ["DA_IDLE"], raw_dir=raw)
+    config = _config(
+        detector_config=DetectorConfiguration(
+            trigger_mode="AUTOTRIGSTART_TIMERSTOP",
+            trigger_period_s=1.1,
+            n_triggers=1000,
+        ),
+        run_timing=ServalRunTiming(exposure_time_s=1.0),
+    )
+
+    outcome = run_measurement(client, config, raw)
+
+    assert outcome.result.stop_reason == "completed"
+    assert client.stopped is False
+    assert outcome.result.warnings == []
 
 
 def test_run_timing_rejects_non_positive_max_wait_s() -> None:
@@ -512,12 +576,16 @@ def test_run_measurement_honors_configured_max_wait_s(
     _install_fake_clock(monkeypatch)
     raw = tmp_path / "raw"
     raw.mkdir()
-    # The camera stays recording forever. The auto-estimated limit would be ~11 s,
+    # The camera stays recording forever. The estimated limit would be ~12 s,
     # but max_wait_s raises it, so HERMES stops the run only at the configured 50 s.
     client = _FakeClient(["DA_RECORDING"] * 1000, raw_dir=raw)
     config = _config(
         run_timing=ServalRunTiming(
-            exposure_time_s=0.1, trigger_count=5, max_wait_s=50.0
+            trigger_mode="AUTOTRIGSTART_TIMERSTOP",
+            exposure_time_s=0.1,
+            trigger_period_s=0.2,
+            trigger_count=5,
+            max_wait_s=50.0,
         )
     )
 

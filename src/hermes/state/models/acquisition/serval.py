@@ -340,7 +340,9 @@ class ServalRunTiming(StrictBaseModel):
     `n_triggers`. `max_wait_s` is a HERMES-side limit, not sent to the camera:
     it is the longest HERMES waits for the measurement to finish before it stops
     the measurement itself. When it is unset HERMES estimates a limit from the
-    run's expected duration instead.
+    run's expected duration in the detector configuration it sent, and waits
+    300 s when that cannot be told (when frames wait for external or software
+    triggers).
     """
 
     trigger_mode: DetectorTriggerMode | None = None
