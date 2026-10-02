@@ -22,7 +22,10 @@ from loguru import logger
 from hermes.runner.acquisition.serval.calibration import load_calibration
 from hermes.runner.acquisition.serval.client import ServalClient, ServalClientError
 from hermes.runner.acquisition.serval.destination import configure_raw_destination
-from hermes.runner.acquisition.serval.measurement import run_measurement
+from hermes.runner.acquisition.serval.measurement import (
+    build_effective_detector_config,
+    run_measurement,
+)
 from hermes.runner.acquisition.serval.server import (
     ServalServerError,
     start_serval,
@@ -86,6 +89,7 @@ def run_serval_acquisition(state_manager: StateManager) -> None:
         _refuse_raw_directory_with_old_files(
             state.environment.raw_data_directory.resolved_path
         )
+        _refuse_invalid_detector_config(acquisition)
 
     serval = acquisition.config.serval
     log_dir = (
@@ -212,6 +216,24 @@ def _refuse_raw_directory_with_old_files(raw_data_directory: Path | None) -> Non
         first_file=old_files[0].name,
     )
     raise ServalAcquisitionError(error)
+
+
+def _refuse_invalid_detector_config(acquisition: ServalAcquisitionState) -> None:
+    """Fail when the detector configuration this run would send is invalid.
+
+    Builds the same configuration the measurement sends to SERVAL, so a setting
+    that would be refused there (such as a global timestamp interval that gives
+    wrong times) stops the run before SERVAL is launched or calibration loaded.
+    """
+    try:
+        build_effective_detector_config(acquisition.config)
+    except ValueError as error:
+        _ACQUISITION_LOGGER.error(
+            "Refusing to measure: the detector configuration is invalid: {error}",
+            event_type="acquisition.serval.invalid_detector_config",
+            error=str(error),
+        )
+        raise ServalAcquisitionError(str(error)) from error
 
 
 def _run_measurement(

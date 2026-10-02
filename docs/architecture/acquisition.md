@@ -232,6 +232,14 @@ logs to reproduce or debug the run.
    an earlier run would be mixed into this one. HERMES refuses to start such a
    run before contacting SERVAL; choose a new run directory or move the old
    files away.
+   HERMES also refuses, before contacting SERVAL, a `GlobalTimestampInterval`
+   that would give wrong times with no error. Unpacking places each pixel time
+   using the global timestamp before it, and the pixel clock wraps every
+   26.84 s, so the interval must be at most 13 s (a little under half a wrap).
+   In `AUTOTRIGSTART_TIMERSTOP` and `CONTINUOUS` modes, where the trigger
+   period sets the frame length and each frame is its own raw file, the
+   interval must also be no longer than the trigger period, or some files get
+   no global timestamp. 1 s is the tested value.
 7. Load chip calibration files.
    Load the user-provided `.bpc` pixel configuration and `.dacs` DAC files with
    SERVAL `/config/load`. These files are generated outside HERMES by SoPhy or
