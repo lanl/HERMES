@@ -54,6 +54,17 @@ _DEFAULT_WAIT_S = 300.0
 # Statuses that mean the camera is busy with the measurement (not idle).
 _ACTIVE_STATUSES = ("DA_PREPARING", "DA_RECORDING", "DA_STOPPING")
 
+# Unpacking places each pixel time using the global timestamp before it. The
+# pixel clock wraps every 2**30 * 25 ns (about 26.84 s), so a pixel more than
+# half a wrap (about 13.42 s) after that timestamp comes out one wrap early, with
+# no error. The longest interval HERMES accepts stays a little under half a wrap.
+_MAX_GLOBAL_TIMESTAMP_INTERVAL_S = 13.0
+
+# Trigger modes in which the trigger period sets how often a new raw file
+# starts. HERMES writes one raw file per frame, so in these modes an interval
+# longer than the trigger period leaves some files with no global timestamp.
+_TRIGGER_PERIOD_MODES = ("AUTOTRIGSTART_TIMERSTOP", "CONTINUOUS")
+
 
 class ServalMeasurementError(Exception):
     """Raised when a measurement cannot be run at all."""
@@ -76,11 +87,14 @@ def build_effective_detector_config(
     the inline `detector_config`), otherwise the inline `detector_config`, or an
     empty configuration when neither is given. Then layer the `run_timing`
     values on top: trigger mode, exposure time, trigger period, and trigger
-    count (which maps to the detector's `n_triggers`).
+    count (which maps to the detector's `n_triggers`). Raises ValueError when the
+    result is invalid, including a global timestamp interval that would give
+    wrong times (see `_check_global_timestamp_interval`).
     """
     base = _load_base_config(config)
     timing = config.run_timing
     if timing is None:
+        _check_global_timestamp_interval(base)
         return base
 
     updates: dict[str, object] = {}
@@ -97,7 +111,55 @@ def build_effective_detector_config(
     # model_copy does not re-run validators, so validate the merged configuration
     # to apply the cross-field rules (like the sequential dead-time rule) to the
     # effective config before it is sent to SERVAL.
-    return DetectorConfiguration.model_validate(merged.model_dump())
+    effective = DetectorConfiguration.model_validate(merged.model_dump())
+    _check_global_timestamp_interval(effective)
+    return effective
+
+
+def _check_global_timestamp_interval(effective: DetectorConfiguration) -> None:
+    """Raise ValueError when the global timestamp interval would give wrong times.
+
+    Unpacking adds back the wraps a pixel or TDC time has lost by comparing it
+    with the global timestamp before it in the file. Two settings break this
+    without any error:
+
+    - An interval over `_MAX_GLOBAL_TIMESTAMP_INTERVAL_S`: pixels more than about
+      13.4 s after a global timestamp come out exactly 26.84 s early.
+    - An interval longer than the trigger period, in a mode where the trigger
+      period sets the frame length: some raw files get no global timestamp, and
+      their times come out hundreds of seconds off.
+
+    The SERVAL API accepts both, so this is a HERMES check, not a limit on the
+    detector configuration model (which also reads back what SERVAL holds). An
+    interval that is unset or <= 0 turns global timestamps off; the run warns
+    about that separately.
+    """
+    interval = effective.global_timestamp_interval_s
+    if interval is None or interval <= 0:
+        return
+    if interval > _MAX_GLOBAL_TIMESTAMP_INTERVAL_S:
+        msg = (
+            f"GlobalTimestampInterval of {interval} s is longer than "
+            f"{_MAX_GLOBAL_TIMESTAMP_INTERVAL_S} s: the pixel clock wraps every "
+            "26.84 s, so pixels more than about 13.4 s after a global timestamp "
+            "would come out 26.84 s early with no error; use a shorter interval, "
+            "such as 1 s"
+        )
+        raise ValueError(msg)
+    period = effective.trigger_period_s
+    if (
+        effective.trigger_mode in _TRIGGER_PERIOD_MODES
+        and period is not None
+        and period > 0
+        and interval > period
+    ):
+        msg = (
+            f"GlobalTimestampInterval of {interval} s is longer than the "
+            f"{period} s trigger period: HERMES writes one raw file per frame, so "
+            "some files would get no global timestamp and their times would be "
+            f"wrong; set it to at most {period} s"
+        )
+        raise ValueError(msg)
 
 
 def _load_base_config(config: ServalAcquisitionConfig) -> DetectorConfiguration:

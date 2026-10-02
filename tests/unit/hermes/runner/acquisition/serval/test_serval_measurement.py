@@ -192,6 +192,78 @@ def test_build_effective_detector_config_allows_compliant_sequential_timing() ->
     assert effective.trigger_period_s == 10.5
 
 
+def test_build_effective_detector_config_rejects_interval_over_half_a_pixel_wrap() -> None:
+    # Pixels more than about 13.4 s after a global timestamp would come out
+    # 26.84 s early, so an interval this long is refused even with long frames.
+    config = _config(
+        detector_config=DetectorConfiguration(global_timestamp_interval_s=20.0),
+        run_timing=ServalRunTiming(
+            trigger_mode="AUTOTRIGSTART_TIMERSTOP",
+            exposure_time_s=10.0,
+            trigger_period_s=50.0,
+        ),
+    )
+
+    with pytest.raises(ValueError, match="longer than 13.0 s"):
+        build_effective_detector_config(config)
+
+
+def test_build_effective_detector_config_rejects_interval_over_trigger_period() -> None:
+    # With one raw file per frame, an interval longer than the trigger period
+    # leaves some files with no global timestamp.
+    config = _config(
+        detector_config=DetectorConfiguration(global_timestamp_interval_s=11.0),
+        run_timing=ServalRunTiming(
+            trigger_mode="AUTOTRIGSTART_TIMERSTOP",
+            exposure_time_s=10.0,
+            trigger_period_s=10.1,
+        ),
+    )
+
+    with pytest.raises(ValueError, match="longer than the 10.1 s trigger period"):
+        build_effective_detector_config(config)
+
+
+def test_build_effective_detector_config_checks_interval_without_run_timing() -> None:
+    config = _config(
+        detector_config=DetectorConfiguration(global_timestamp_interval_s=14.0),
+    )
+
+    with pytest.raises(ValueError, match="GlobalTimestampInterval"):
+        build_effective_detector_config(config)
+
+
+@pytest.mark.parametrize(
+    ("interval_s", "trigger_mode", "trigger_period_s"),
+    [
+        # The tested setting: 1 s global timestamps, 10 s frames.
+        (1.0, "AUTOTRIGSTART_TIMERSTOP", 10.1),
+        # Equal to the trigger period.
+        (10.1, "AUTOTRIGSTART_TIMERSTOP", 10.1),
+        # Externally triggered frames have no trigger period to compare with.
+        (13.0, "PEXSTART_TIMERSTOP", 0.2),
+        # Turned off: the run warns about this separately.
+        (0.0, "AUTOTRIGSTART_TIMERSTOP", 0.2),
+        (None, "AUTOTRIGSTART_TIMERSTOP", 0.2),
+    ],
+)
+def test_build_effective_detector_config_accepts_safe_intervals(
+    interval_s: float | None, trigger_mode: str, trigger_period_s: float
+) -> None:
+    config = _config(
+        detector_config=DetectorConfiguration(global_timestamp_interval_s=interval_s),
+        run_timing=ServalRunTiming(
+            trigger_mode=trigger_mode,
+            exposure_time_s=0.1,
+            trigger_period_s=trigger_period_s,
+        ),
+    )
+
+    effective = build_effective_detector_config(config)
+
+    assert effective.global_timestamp_interval_s == interval_s
+
+
 def test_detector_configuration_enforces_sequential_dead_time() -> None:
     # The rule lives on the model itself, so an inline detector_config is checked
     # at construction, not only once it reaches SERVAL.

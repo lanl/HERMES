@@ -147,6 +147,7 @@ def _state_manager(
     program_path: Path | None = None,
     raw_data_directory: Path | None = None,
     calibration_files: CalibrationFiles | None = None,
+    detector_config: DetectorConfiguration | None = None,
     run_timing: ServalRunTiming | None = None,
 ) -> StateManager:
     environment_kwargs: dict[str, object] = {
@@ -165,6 +166,7 @@ def _state_manager(
                     program_path=program_path,
                 ),
                 calibration_files=calibration_files,
+                detector_config=detector_config,
                 run_timing=run_timing,
             ),
         ),
@@ -410,6 +412,39 @@ def test_refuses_to_measure_into_a_raw_directory_with_old_files(
     # It refused before launching SERVAL or touching the detector.
     assert started == []
     assert client._put_destination is None
+    assert client.started is False
+    assert state_manager.get_state().acquisition.result is None
+
+
+def test_refuses_to_measure_with_global_timestamp_interval_over_trigger_period(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _FakeAcquisitionClient(server_up=False)
+    _patch_client(monkeypatch, client)
+    started: list[str] = []
+    monkeypatch.setattr(
+        run_module, "start_serval", lambda *_a, **_k: started.append("start")
+    )
+
+    state_manager = _state_manager(
+        tmp_path,
+        raw_data_directory=tmp_path / "raw",
+        detector_config=DetectorConfiguration(global_timestamp_interval_s=1.0),
+        run_timing=ServalRunTiming(
+            trigger_mode="AUTOTRIGSTART_TIMERSTOP",
+            exposure_time_s=0.1,
+            trigger_period_s=0.2,
+            trigger_count=3,
+        ),
+    )
+    with pytest.raises(ServalAcquisitionError, match="trigger period"):
+        run_serval_acquisition(state_manager)
+
+    # It refused before launching SERVAL or touching the detector.
+    assert started == []
+    assert client._put_destination is None
+    assert client.put_detector_config_arg is None
     assert client.started is False
     assert state_manager.get_state().acquisition.result is None
 
