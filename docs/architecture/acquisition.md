@@ -295,6 +295,13 @@ logs to reproduce or debug the run.
 13. Snapshot final acquisition state.
     Read final `/dashboard` and `/detector/health` data. Record completion
     status, counts, warnings, errors, and any stop reason.
+    SERVAL counts a frame as dropped when it cannot build a complete frame from
+    the readout, and leaves it out of `FrameCount`. In the runs seen so far, a
+    dropped frame's raw file had no end-of-readout word (`0x71B0`). Its raw file
+    is still written. When the camera finishes on its own but SERVAL reports 0
+    frames, as when every frame was dropped, HERMES records an error and the
+    run is `failed`. When some frames were dropped, HERMES records a warning
+    and the run can still be `completed`.
 14. Discover and record output files.
     Locate raw `.tpx3` files and any preview or image files, then record paths,
     sizes, timestamps, and other useful metadata in the HERMES record.

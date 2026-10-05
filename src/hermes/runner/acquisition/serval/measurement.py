@@ -359,6 +359,8 @@ def run_measurement(
         frames=measurement.frame_count if measurement else None,
         dropped=measurement.dropped_frames if measurement else None,
     )
+    if measurement is not None:
+        _check_frames(stop_reason, measurement, warnings, errors)
 
     result = ServalAcquisitionResult(
         started_at=started_at,
@@ -518,6 +520,48 @@ def _read_measurement(client: ServalClient):
             error=str(error),
         )
         return None
+
+
+def _check_frames(
+    stop_reason: str,
+    measurement: ServalDashboardMeasurement,
+    warnings: list[str],
+    errors: list[str],
+) -> None:
+    """Fail a finished measurement with no complete frames; warn on dropped ones.
+
+    SERVAL counts a frame as dropped when it cannot build a complete frame from
+    the readout (in the runs seen so far, its raw file had no end-of-readout
+    word), and leaves it out of `FrameCount`. Its raw file is still written,
+    but a measurement the camera finished with no complete frames did not work,
+    so that is an error.
+    """
+    frames = measurement.frame_count
+    dropped = measurement.dropped_frames or 0
+    if stop_reason == "completed" and frames == 0:
+        error = (
+            f"the measurement finished with no complete frames: SERVAL reports "
+            f"0 frames and {dropped} dropped"
+        )
+        errors.append(error)
+        _MEASUREMENT_LOGGER.error(
+            "Measurement failed: {error}",
+            event_type="acquisition.serval.no_frames",
+            error=error,
+            dropped_frames=dropped,
+        )
+    elif dropped > 0:
+        warning = (
+            f"SERVAL reports {dropped} dropped frames (frames whose readout did "
+            f"not complete) and {frames} complete frames"
+        )
+        warnings.append(warning)
+        _MEASUREMENT_LOGGER.warning(
+            warning,
+            event_type="acquisition.serval.dropped_frames",
+            frames=frames,
+            dropped_frames=dropped,
+        )
 
 
 def _not_started_outcome(

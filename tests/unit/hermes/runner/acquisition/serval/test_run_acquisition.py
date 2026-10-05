@@ -54,6 +54,7 @@ class _FakeAcquisitionClient:
         measurement_status: str = "DA_IDLE",
         measurement_statuses: list[str] | None = None,
         frame_count: int = 0,
+        dropped_frames: int = 0,
         raw_dir: Path | None = None,
         tpx3_names: tuple[str, ...] = (),
     ) -> None:
@@ -64,6 +65,7 @@ class _FakeAcquisitionClient:
             list(measurement_statuses) if measurement_statuses is not None else None
         )
         self._frame_count = frame_count
+        self._dropped_frames = dropped_frames
         self._raw_dir = raw_dir
         self._tpx3_names = tpx3_names
         self._put_destination: DestinationConfiguration | None = None
@@ -86,7 +88,9 @@ class _FakeAcquisitionClient:
         return ServalDashboard(
             server=ServalDashboardServer(software_version="3.3.0"),
             measurement=ServalDashboardMeasurement(
-                status=status, frame_count=self._frame_count, dropped_frames=0
+                status=status,
+                frame_count=self._frame_count,
+                dropped_frames=self._dropped_frames,
             ),
             detector=ServalDashboardDetector(detector_type="Tpx3"),
         )
@@ -387,6 +391,40 @@ def test_takes_a_measurement_when_run_timing_is_set(
     assert client.started is True
     assert client.put_detector_config_arg is not None
     assert client.put_detector_config_arg.n_triggers == 5
+
+
+def test_a_measurement_with_every_frame_dropped_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    raw_dir = tmp_path / "raw"
+    client = _FakeAcquisitionClient(
+        server_up=True,
+        measurement_statuses=["DA_IDLE", "DA_RECORDING", "DA_IDLE"],
+        frame_count=0,
+        dropped_frames=3,
+        raw_dir=raw_dir,
+        tpx3_names=("run_0.tpx3",),
+    )
+    _patch_client(monkeypatch, client)
+    monkeypatch.setattr(run_module, "start_serval", lambda *_a, **_k: None)
+    monkeypatch.setattr(run_module, "stop_serval", lambda *_a, **_k: None)
+    monkeypatch.setattr(measurement_module.time, "sleep", lambda _s: None)
+
+    state_manager = _state_manager(
+        tmp_path,
+        raw_data_directory=raw_dir,
+        run_timing=ServalRunTiming(exposure_time_s=0.1, trigger_count=3),
+    )
+    run_serval_acquisition(state_manager)
+
+    # The camera finished on its own, but no frame was complete.
+    acquisition = state_manager.get_state().acquisition
+    assert acquisition.status == "failed"
+    assert acquisition.result is not None
+    assert acquisition.result.stop_reason == "completed"
+    assert acquisition.result.dropped_frames == 3
+    assert len(acquisition.result.errors) == 1
 
 
 def test_refuses_to_measure_into_a_raw_directory_with_old_files(
