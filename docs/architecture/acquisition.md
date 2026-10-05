@@ -285,6 +285,18 @@ logs to reproduce or debug the run.
     workflow fails, times out, or is explicitly stopped. Track frame count,
     dropped frames, elapsed time, time left, event rates, notifications, and
     health changes.
+    SERVAL clears its notices (`Server.Notifications`) when a measurement
+    starts, so every notice seen after the start belongs to this run. HERMES
+    logs each new notice once, as a warning when its type is `severe` or
+    `error`. When free disk space falls below SERVAL's limit (100 MB plus about
+    two seconds of writing), SERVAL stops writing raw files, sets
+    `DiskLimitReached` for that directory, and adds a `REF_ID_DISK_FULL` notice.
+    If space is freed later it resumes writing and adds a
+    `REF_ID_DISK_SPACE_FREED` notice, also of type `severe`. Once the
+    measurement ends, HERMES records an error, so the run is `failed`, when a
+    `REF_ID_DISK_FULL` notice was raised or `DiskLimitReached` is still set:
+    the raw files are missing the data SERVAL did not write. Every other
+    `severe` or `error` notice is recorded as a warning.
     Once the measurement has started, HERMES never leaves the camera recording
     on its own. When Ctrl-C or an error HERMES did not expect ends the run, it
     calls `/measurement/stop`, records the final state, the raw files written
