@@ -106,6 +106,32 @@ def test_serval_dashboard_rejects_invalid_measurement_status() -> None:
         )
 
 
+def test_serval_dashboard_ignores_fields_hermes_does_not_know() -> None:
+    # A newer SERVAL may add fields or notification types; reading the
+    # dashboard mid-run must not fail on them.
+    dashboard = ServalDashboard.model_validate(
+        {
+            "Server": {
+                "SoftwareVersion": "3.4.0",
+                "NewServerField": True,
+                "Notifications": [
+                    {"Type": "warning", "Domain": "network", "NewField": 1}
+                ],
+            },
+            "Measurement": {"Status": "DA_RECORDING", "NewRate": 5},
+            "NewSection": {},
+        }
+    )
+
+    assert dashboard.server.notifications[0].type == "warning"
+    assert dashboard.server.notifications[0].domain == "network"
+    assert dashboard.measurement is not None
+    assert dashboard.measurement.status == "DA_RECORDING"
+    dumped = dashboard.model_dump(by_alias=True)
+    assert "NewSection" not in dumped
+    assert "NewRate" not in dumped["Measurement"]
+
+
 def test_destination_configuration_validates_native_serval_payload() -> None:
     destination = DestinationConfiguration.model_validate(
         {

@@ -61,8 +61,10 @@ run_directory/
 `state.jsonl`, `acquisition.serval.jsonl`, and `analysis.jsonl` are Loguru file
 sinks. `HERMES-workflow.jsonl` is written directly by the `Workflow` class after
 the run, not through a Loguru sink, so the workflow domain has no file sink and
-its events reach only the console. `HERMES_record.yaml` is the one saved record;
-there is no separate initial and final snapshot.
+its events reach only the console. The record and this log are written also when
+Ctrl-C or an error ends the run; the log then closes with `workflow_stopped` or
+`workflow_failed` instead of `workflow_completed`. `HERMES_record.yaml` is the
+one saved record; there is no separate initial and final snapshot.
 
 ## Startup Configuration
 

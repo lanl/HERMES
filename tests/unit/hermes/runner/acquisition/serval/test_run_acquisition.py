@@ -148,6 +148,7 @@ def _state_manager(
     raw_data_directory: Path | None = None,
     calibration_files: CalibrationFiles | None = None,
     detector_config: DetectorConfiguration | None = None,
+    detector_config_file: Path | None = None,
     run_timing: ServalRunTiming | None = None,
 ) -> StateManager:
     environment_kwargs: dict[str, object] = {
@@ -167,6 +168,7 @@ def _state_manager(
                 ),
                 calibration_files=calibration_files,
                 detector_config=detector_config,
+                detector_config_file=detector_config_file,
                 run_timing=run_timing,
             ),
         ),
@@ -449,6 +451,185 @@ def test_refuses_to_measure_with_global_timestamp_interval_over_half_the_trigger
     assert state_manager.get_state().acquisition.result is None
 
 
+def test_refuses_to_measure_with_a_missing_detector_config_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _FakeAcquisitionClient(server_up=False)
+    _patch_client(monkeypatch, client)
+    started: list[str] = []
+    monkeypatch.setattr(
+        run_module, "start_serval", lambda *_a, **_k: started.append("start")
+    )
+
+    state_manager = _state_manager(
+        tmp_path,
+        raw_data_directory=tmp_path / "raw",
+        detector_config_file=tmp_path / "missing.json",
+        run_timing=ServalRunTiming(exposure_time_s=0.1, trigger_count=3),
+    )
+    with pytest.raises(
+        ServalAcquisitionError, match="cannot read detector_config_file"
+    ):
+        run_serval_acquisition(state_manager)
+
+    # It refused before launching SERVAL, so the status never became running.
+    assert started == []
+    assert client.started is False
+    assert state_manager.get_state().acquisition.status == "planned"
+
+
+def test_ctrl_c_stops_the_camera_and_records_the_run(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    raw_dir = tmp_path / "raw"
+    client = _FakeAcquisitionClient(
+        server_up=True,
+        measurement_statuses=["DA_IDLE"] + ["DA_RECORDING"] * 1000,
+        frame_count=2,
+        raw_dir=raw_dir,
+        tpx3_names=("run_0.tpx3",),
+    )
+    _patch_client(monkeypatch, client)
+    polls: list[int] = []
+
+    def press_ctrl_c(_seconds: float) -> None:
+        polls.append(1)
+        if len(polls) == 3:
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr(measurement_module.time, "sleep", press_ctrl_c)
+
+    state_manager = _state_manager(
+        tmp_path,
+        raw_data_directory=raw_dir,
+        run_timing=ServalRunTiming(exposure_time_s=0.1, trigger_count=5),
+    )
+    with pytest.raises(KeyboardInterrupt):
+        run_serval_acquisition(state_manager)
+
+    # HERMES stopped the camera, and the record says what happened rather
+    # than leaving the status at running.
+    assert client.stopped is True
+    assert client.closed is True
+    acquisition = state_manager.get_state().acquisition
+    assert acquisition.status == "stopped"
+    assert acquisition.result is not None
+    assert acquisition.result.stop_reason == "interrupted"
+    assert acquisition.result.frames == 2
+    assert len(acquisition.result.output_files) == 1
+    assert acquisition.final_detector_snapshot is not None
+
+
+def test_ctrl_c_before_the_camera_starts_records_the_run_as_stopped(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    raw_dir = tmp_path / "raw"
+    client = _FakeAcquisitionClient(server_up=True, raw_dir=raw_dir)
+    _patch_client(monkeypatch, client)
+
+    def press_ctrl_c(_config: DetectorConfiguration) -> None:
+        raise KeyboardInterrupt
+
+    client.put_detector_config = press_ctrl_c
+
+    state_manager = _state_manager(
+        tmp_path,
+        raw_data_directory=raw_dir,
+        run_timing=ServalRunTiming(exposure_time_s=0.1, trigger_count=5),
+    )
+    with pytest.raises(KeyboardInterrupt):
+        run_serval_acquisition(state_manager)
+
+    assert client.started is False
+    assert state_manager.get_state().acquisition.status == "stopped"
+
+
+def test_second_ctrl_c_while_stopping_still_records_and_stops_again(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    raw_dir = tmp_path / "raw"
+    client = _FakeAcquisitionClient(
+        server_up=True,
+        measurement_statuses=["DA_IDLE"] + ["DA_RECORDING"] * 1000,
+        raw_dir=raw_dir,
+    )
+    _patch_client(monkeypatch, client)
+    polls: list[int] = []
+
+    def press_ctrl_c(_seconds: float) -> None:
+        polls.append(1)
+        if len(polls) == 3:
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr(measurement_module.time, "sleep", press_ctrl_c)
+
+    # The user presses Ctrl-C again while HERMES is asking SERVAL to stop.
+    stop_requests: list[int] = []
+
+    def stop_pressed_again() -> httpx.Response:
+        stop_requests.append(1)
+        if len(stop_requests) == 1:
+            raise KeyboardInterrupt
+        return httpx.Response(200, text="Successfully stopped measurement.")
+
+    client.measurement_stop = stop_pressed_again
+
+    state_manager = _state_manager(
+        tmp_path,
+        raw_data_directory=raw_dir,
+        run_timing=ServalRunTiming(exposure_time_s=0.1, trigger_count=5),
+    )
+    with pytest.raises(KeyboardInterrupt):
+        run_serval_acquisition(state_manager)
+
+    # HERMES asked SERVAL to stop once more, and the record does not say the
+    # measurement is still running.
+    assert len(stop_requests) == 2
+    assert client.closed is True
+    assert state_manager.get_state().acquisition.status == "stopped"
+
+
+def test_unexpected_error_mid_measurement_stops_the_camera_and_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    raw_dir = tmp_path / "raw"
+    client = _FakeAcquisitionClient(
+        server_up=True,
+        measurement_statuses=["DA_IDLE"] + ["DA_RECORDING"] * 1000,
+        raw_dir=raw_dir,
+    )
+    _patch_client(monkeypatch, client)
+    polls: list[int] = []
+
+    def fail_on_third_poll(_seconds: float) -> None:
+        polls.append(1)
+        if len(polls) == 3:
+            raise RuntimeError("something HERMES did not expect")
+
+    monkeypatch.setattr(measurement_module.time, "sleep", fail_on_third_poll)
+
+    state_manager = _state_manager(
+        tmp_path,
+        raw_data_directory=raw_dir,
+        run_timing=ServalRunTiming(exposure_time_s=0.1, trigger_count=5),
+    )
+    with pytest.raises(RuntimeError, match="did not expect"):
+        run_serval_acquisition(state_manager)
+
+    assert client.stopped is True
+    acquisition = state_manager.get_state().acquisition
+    assert acquisition.status == "failed"
+    assert acquisition.result.stop_reason == "failed"
+    assert acquisition.result.errors == [
+        "RuntimeError: something HERMES did not expect"
+    ]
+
+
 def test_configure_only_run_ignores_old_raw_files(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -574,6 +755,34 @@ def test_interleaved_analysis_waits_while_a_raw_file_grows(
     on_poll(None)
     on_poll(None)
     assert len(calls) == 2
+
+
+def test_interleaved_analysis_skips_a_poll_when_a_raw_file_cannot_be_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    manager = _both_state_manager(tmp_path)
+    calls: list[int] = []
+    monkeypatch.setattr(run_module, "run_analysis", lambda _sm: calls.append(1))
+
+    on_poll = run_module._interleaved_analysis_callback(manager, raw_dir)
+    assert on_poll is not None
+
+    # A file that is listed but whose size cannot be read, like one that
+    # vanished between the listing and the size read.
+    broken = raw_dir / "gone.tpx3"
+    broken.symlink_to(raw_dir / "missing")
+    on_poll(None)
+    on_poll(None)
+    assert calls == []
+
+    # Once the files can be read again, the analysis runs as usual.
+    broken.unlink()
+    (raw_dir / "a.tpx3").write_bytes(b"x")
+    on_poll(None)
+    on_poll(None)
+    assert len(calls) == 1
 
 
 def test_no_interleaved_callback_without_a_hermes_analysis(

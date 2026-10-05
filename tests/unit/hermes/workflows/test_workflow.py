@@ -457,3 +457,62 @@ def test_run_rejects_a_record_with_nothing_to_run(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="neither acquisition nor analysis"):
         workflow.run()
+
+
+def test_run_saves_the_record_and_log_when_ctrl_c_stops_it(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workflow = Workflow(_acquisition_record(tmp_path))
+
+    def interrupted_acquisition(state_manager: StateManager) -> None:
+        change = state_manager.propose_change(
+            "acquisition.status",
+            "stopped",
+            origin="trusted_workflow",
+            proposer="test_acquisition",
+        )
+        state_manager.apply_change(change.change_id)
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(
+        "hermes.workflows.workflow.run_serval_acquisition",
+        interrupted_acquisition,
+    )
+
+    with pytest.raises(KeyboardInterrupt):
+        workflow.run()
+
+    record_text = (tmp_path / "HERMES_record.yaml").read_text()
+    assert "status: stopped" in record_text
+    log_file = tmp_path / "HERMES-workflow.jsonl"
+    lines = [json.loads(line) for line in log_file.read_text().splitlines()]
+    assert [line["event"] for line in lines] == [
+        "HERMES_record_initialized",
+        "workflow_initialized",
+        "workflow_stopped",
+    ]
+
+
+def test_run_saves_the_record_and_log_when_an_error_ends_it(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workflow = Workflow(_acquisition_record(tmp_path))
+
+    def failing_acquisition(_state_manager: StateManager) -> None:
+        raise RuntimeError("SERVAL went away")
+
+    monkeypatch.setattr(
+        "hermes.workflows.workflow.run_serval_acquisition",
+        failing_acquisition,
+    )
+
+    with pytest.raises(RuntimeError, match="SERVAL went away"):
+        workflow.run()
+
+    assert (tmp_path / "HERMES_record.yaml").exists()
+    log_file = tmp_path / "HERMES-workflow.jsonl"
+    lines = [json.loads(line) for line in log_file.read_text().splitlines()]
+    assert lines[-1]["event"] == "workflow_failed"
+    assert lines[-1]["error"] == "RuntimeError: SERVAL went away"

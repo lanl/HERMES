@@ -633,3 +633,77 @@ def test_run_measurement_calls_on_poll_each_poll(
 
     # One call per dashboard poll, including the final idle read that ends it.
     assert seen == ["DA_RECORDING", "DA_RECORDING", "DA_IDLE"]
+
+
+def test_run_measurement_stops_the_camera_on_ctrl_c(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _install_fake_clock(monkeypatch)
+    raw = tmp_path / "raw"
+    client = _FakeClient(
+        ["DA_RECORDING"] * 1000, raw_dir=raw, tpx3_names=("a.tpx3",)
+    )
+    config = _config(
+        run_timing=ServalRunTiming(exposure_time_s=0.1, trigger_count=5)
+    )
+    polls: list[int] = []
+
+    def press_ctrl_c(_measurement: ServalDashboardMeasurement | None) -> None:
+        polls.append(1)
+        if len(polls) == 3:
+            raise KeyboardInterrupt
+
+    outcome = run_measurement(client, config, raw, press_ctrl_c)
+
+    # HERMES stopped the camera and still gathered what it recorded, and hands
+    # Ctrl-C back for the caller to raise once the outcome is recorded.
+    assert client.stopped is True
+    assert isinstance(outcome.exception, KeyboardInterrupt)
+    assert outcome.result.stop_reason == "interrupted"
+    assert outcome.result.errors == []
+    assert [file.path.name for file in outcome.result.output_files] == ["a.tpx3"]
+    assert outcome.final_dashboard is not None
+
+
+def test_run_measurement_stops_the_camera_on_an_unreadable_dashboard(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _install_fake_clock(monkeypatch)
+    raw = tmp_path / "raw"
+    client = _FakeClient(["DA_RECORDING"] * 1000, raw_dir=raw)
+    config = _config(
+        run_timing=ServalRunTiming(exposure_time_s=0.1, trigger_count=5)
+    )
+    read_dashboard = client.get_dashboard
+    polls: list[int] = []
+
+    def get_dashboard() -> ServalDashboard:
+        polls.append(1)
+        if len(polls) == 2:
+            # A reply HERMES cannot read raises ValidationError, not
+            # ServalClientError.
+            return ServalDashboard.model_validate(
+                {"Server": {}, "Measurement": {"Status": "RUNNING"}}
+            )
+        return read_dashboard()
+
+    client.get_dashboard = get_dashboard
+
+    outcome = run_measurement(client, config, raw)
+
+    assert client.stopped is True
+    assert isinstance(outcome.exception, ValueError)
+    assert outcome.result.stop_reason == "failed"
+    assert outcome.result.errors[0].startswith("ValidationError: ")
+
+
+def test_build_effective_detector_config_refuses_a_missing_file(
+    tmp_path: Path,
+) -> None:
+    config = _config(
+        detector_config_file=tmp_path / "missing.json",
+        run_timing=ServalRunTiming(trigger_count=3),
+    )
+
+    with pytest.raises(ValueError, match="cannot read detector_config_file"):
+        build_effective_detector_config(config)
