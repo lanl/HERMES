@@ -81,11 +81,17 @@ class ServalMeasurementError(Exception):
 
 
 class MeasurementOutcome(NamedTuple):
-    """What one measurement produced, for the run to record."""
+    """What one measurement produced, for the run to record.
+
+    `exception` is set when Ctrl-C or an error HERMES did not expect ended the
+    measurement early. HERMES has already stopped the camera by then; the caller
+    records the outcome and then raises `exception` again.
+    """
 
     result: ServalAcquisitionResult
     final_snapshot: DetectorSnapshot
     final_dashboard: ServalDashboard
+    exception: BaseException | None = None
 
 
 def build_effective_detector_config(
@@ -99,8 +105,9 @@ def build_effective_detector_config(
     values on top: trigger mode, exposure time, trigger period, and trigger
     count (which maps to the detector's `n_triggers`). When the global timestamp
     interval is unset, HERMES fills it in (see `_with_global_timestamp_interval`).
-    Raises ValueError when the result is invalid, including global timestamp
-    settings that would give wrong times (see `_check_global_timestamp_interval`).
+    Raises ValueError when `detector_config_file` cannot be read or the result is
+    invalid, including global timestamp settings that would give wrong times (see
+    `_check_global_timestamp_interval`).
     """
     base = _load_base_config(config)
     timing = config.run_timing
@@ -216,7 +223,14 @@ def _check_global_timestamp_interval(effective: DetectorConfiguration) -> None:
 
 def _load_base_config(config: ServalAcquisitionConfig) -> DetectorConfiguration:
     if config.detector_config_file is not None:
-        text = config.detector_config_file.read_text()
+        try:
+            text = config.detector_config_file.read_text()
+        except OSError as error:
+            msg = (
+                f"cannot read detector_config_file {config.detector_config_file}: "
+                f"{error.strerror or error}"
+            )
+            raise ValueError(msg) from error
         return DetectorConfiguration.model_validate(json.loads(text))
     if config.detector_config is not None:
         return config.detector_config
@@ -237,6 +251,11 @@ def run_measurement(
     measurement and read a final snapshot, even when a step fails, so the record
     reflects what happened. The run's status is decided by the caller from the
     result's `errors` and `stop_reason`.
+
+    Ctrl-C or an error HERMES did not expect while the camera records does not
+    leave it recording: HERMES stops the measurement, gathers what it made, and
+    returns the outcome with the error in `exception` (stop reason `interrupted`
+    for Ctrl-C, `failed` otherwise) for the caller to record and raise again.
 
     ``on_poll``, when given, is called once per dashboard poll with the current
     measurement (or ``None`` when that poll's read failed). The caller uses this
@@ -280,6 +299,7 @@ def run_measurement(
     wait_limit_s = _wait_limit_s(config.run_timing, applied)
     started_at = utc_now()
     stop_reason = "completed"
+    exception: BaseException | None = None
     try:
         client.measurement_start()
         _MEASUREMENT_LOGGER.info(
@@ -301,6 +321,28 @@ def run_measurement(
             event_type="acquisition.serval.measurement_failed",
             error=str(error),
         )
+        _safe_stop(client, warnings)
+    except BaseException as error:
+        # Ctrl-C, or an error HERMES did not expect (such as a dashboard it
+        # cannot read). Stop the camera so it does not keep recording, and keep
+        # the error for the caller to raise once the outcome is recorded.
+        exception = error
+        if isinstance(error, KeyboardInterrupt):
+            stop_reason = "interrupted"
+            warnings.append("measurement was interrupted (Ctrl-C); stopping it")
+            _MEASUREMENT_LOGGER.warning(
+                "Measurement interrupted (Ctrl-C); stopping it",
+                event_type="acquisition.serval.measurement_interrupted",
+            )
+        else:
+            stop_reason = "failed"
+            errors.append(f"{type(error).__name__}: {error}")
+            _MEASUREMENT_LOGGER.error(
+                "Measurement failed to run: {error_type}: {error}",
+                event_type="acquisition.serval.measurement_failed",
+                error_type=type(error).__name__,
+                error=str(error),
+            )
         _safe_stop(client, warnings)
     completed_at = utc_now()
 
@@ -328,7 +370,7 @@ def run_measurement(
         errors=errors,
         output_files=output_files,
     )
-    return MeasurementOutcome(result, final_snapshot, final_dashboard)
+    return MeasurementOutcome(result, final_snapshot, final_dashboard, exception)
 
 
 def _apply_config(
@@ -337,7 +379,11 @@ def _apply_config(
     warnings: list[str],
     errors: list[str],
 ) -> DetectorConfiguration:
-    """Send the configuration and read it back, warning on any difference."""
+    """Send the configuration and read it back, warning on any difference.
+
+    A reply HERMES cannot read (bad JSON or values its models refuse) counts as
+    not applied, like a failed request.
+    """
     _MEASUREMENT_LOGGER.info(
         "Applying detector configuration",
         event_type="acquisition.serval.detector_config_apply",
@@ -350,7 +396,7 @@ def _apply_config(
     try:
         client.put_detector_config(effective)
         applied = client.get_detector_config()
-    except ServalClientError as error:
+    except (ServalClientError, ValueError) as error:
         errors.append(str(error))
         _MEASUREMENT_LOGGER.error(
             "Could not apply detector configuration: {error}",
@@ -507,13 +553,17 @@ def _read_final_state(
     applied: DetectorConfiguration | None,
     warnings: list[str],
 ) -> tuple[ServalDashboard | None, DetectorSnapshot]:
-    """Read the final dashboard and health for the record, tolerating failures."""
+    """Read the final dashboard and health for the record, tolerating failures.
+
+    A reply HERMES cannot read (bad JSON or values its models refuse) raises a
+    ValueError; that is tolerated too, so the outcome is still recorded.
+    """
     dashboard: ServalDashboard | None = None
     health = None
     try:
         dashboard = client.get_dashboard()
         health = client.get_detector_health()
-    except ServalClientError as error:
+    except (ServalClientError, ValueError) as error:
         warnings.append(f"could not read the final detector state: {error}")
         _MEASUREMENT_LOGGER.warning(
             "Could not read the final detector state: {error}",

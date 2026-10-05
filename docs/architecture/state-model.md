@@ -69,7 +69,8 @@ The YAML may omit a field only when its Pydantic model declares a default or a
 nested models. A field without a declared default remains required; the YAML
 loader must not guess a value for it.
 
-All HERMES state models reject unknown fields. When an `analysis` or
+All HERMES state models reject unknown fields, except the SERVAL `/dashboard`
+models described below. When an `analysis` or
 `acquisition` section is supplied, users should include its `mode`. The mode
 selects the program-specific Pydantic model. In particular, `analysis.mode` is
 required for Pydantic to choose between HERMES and EMPIR analysis.
@@ -562,7 +563,11 @@ is useful for diagnosing a load failure. Large or unrelated response bodies
 should remain in bounded acquisition logs rather than the HERMES record.
 
 ServalDashboard should model the SERVAL `/dashboard` response with aliases for
-the backend JSON keys and Pythonic field names in HERMES code:
+the backend JSON keys and Pythonic field names in HERMES code. HERMES reads the
+dashboard over and over while the camera records, so these models ignore fields
+HERMES does not know, and keep a notification's type and domain as plain text.
+A newer SERVAL that adds a field or a notification type then cannot stop a run.
+Fields HERMES does know, such as the measurement status, are still checked:
 
 ```python
 ServalDashboard
@@ -577,6 +582,13 @@ ServalDashboardServer
   software_build: str | None
   disk_space: list[ServalDashboardDiskSpace]
   notifications: list[ServalDashboardNotification]
+
+ServalDashboardNotification
+  type: str | None
+  domain: str | None
+  message: str | None
+  reference_id: str | None
+  timestamp: int | None
 
 ServalDashboardDiskSpace
   message: str | None

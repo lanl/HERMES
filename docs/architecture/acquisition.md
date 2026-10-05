@@ -231,7 +231,8 @@ logs to reproduce or debug the run.
    result and `auto` unpacking take every `.tpx3` file there, so files left by
    an earlier run would be mixed into this one. HERMES refuses to start such a
    run before contacting SERVAL; choose a new run directory or move the old
-   files away.
+   files away. It also refuses, before contacting SERVAL, a run whose
+   `detector_config_file` is missing or cannot be read.
    A run that takes a measurement must also meet these global timestamp
    rules. HERMES checks them before contacting SERVAL. Unpacking needs global
    timestamps to place pixel, TDC, and event times on one time axis, and the
@@ -284,6 +285,13 @@ logs to reproduce or debug the run.
     workflow fails, times out, or is explicitly stopped. Track frame count,
     dropped frames, elapsed time, time left, event rates, notifications, and
     health changes.
+    Once the measurement has started, HERMES never leaves the camera recording
+    on its own. When Ctrl-C or an error HERMES did not expect ends the run, it
+    calls `/measurement/stop`, records the final state, the raw files written
+    so far, and a stop reason (`interrupted` for Ctrl-C, with status
+    `stopped`; `failed` otherwise), and then raises the error again. A second
+    Ctrl-C while HERMES stops the camera still records the status and asks
+    SERVAL to stop once more.
 13. Snapshot final acquisition state.
     Read final `/dashboard` and `/detector/health` data. Record completion
     status, counts, warnings, errors, and any stop reason.

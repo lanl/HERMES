@@ -223,7 +223,8 @@ def _refuse_invalid_detector_config(acquisition: ServalAcquisitionState) -> None
 
     Builds the same configuration the measurement sends to SERVAL, so a setting
     that would be refused there (such as a global timestamp interval that gives
-    wrong times) stops the run before SERVAL is launched or calibration loaded.
+    wrong times), or a `detector_config_file` that is missing or cannot be read,
+    stops the run before SERVAL is launched or calibration loaded.
     """
     try:
         build_effective_detector_config(acquisition.config)
@@ -247,7 +248,11 @@ def _run_measurement(
     A measurement needs somewhere to write, so a run that asks for one without a
     raw data directory is a configuration error. The measurement itself records
     its own outcome; the run status is `completed` only when the camera finished
-    on its own with no errors, and `failed` otherwise.
+    on its own with no errors, `stopped` when Ctrl-C ended it, and `failed`
+    otherwise. When Ctrl-C or an unexpected error ended the measurement, that
+    error is raised again once the outcome is recorded. A second Ctrl-C while
+    HERMES stops the camera still records the status and asks SERVAL to stop
+    again before it is raised.
     """
     if raw_data_directory is None:
         msg = (
@@ -267,9 +272,26 @@ def _run_measurement(
     )
 
     on_poll = _interleaved_analysis_callback(state_manager, raw_data_directory)
-    outcome = run_measurement(
-        client, acquisition.config, raw_data_directory, on_poll
-    )
+    try:
+        outcome = run_measurement(
+            client, acquisition.config, raw_data_directory, on_poll
+        )
+    except BaseException as error:
+        # Ended before run_measurement could return an outcome: Ctrl-C before
+        # the camera started, or a second Ctrl-C while HERMES was stopping it.
+        # Record the status first, so the record does not say the measurement
+        # is still running, then ask SERVAL to stop once more. SERVAL answers
+        # "No measurement is running." when the camera is already idle.
+        _record(
+            state_manager,
+            "acquisition.status",
+            "stopped" if isinstance(error, KeyboardInterrupt) else "failed",
+            justification=(
+                f"the measurement ended before its outcome was recorded: {error!r}"
+            ),
+        )
+        _stop_measurement(client)
+        raise
 
     _record(
         state_manager,
@@ -291,15 +313,32 @@ def _run_measurement(
         justification="recorded the measurement result",
     )
 
-    succeeded = (
-        not outcome.result.errors and outcome.result.stop_reason == "completed"
-    )
+    if outcome.result.stop_reason == "interrupted":
+        status = "stopped"
+    elif not outcome.result.errors and outcome.result.stop_reason == "completed":
+        status = "completed"
+    else:
+        status = "failed"
     _record(
         state_manager,
         "acquisition.status",
-        "completed" if succeeded else "failed",
+        status,
         justification="finished the measurement",
     )
+    if outcome.exception is not None:
+        raise outcome.exception
+
+
+def _stop_measurement(client: ServalClient) -> None:
+    """Ask SERVAL to stop the measurement, logging (not raising) any failure."""
+    try:
+        client.measurement_stop()
+    except ServalClientError as error:
+        _ACQUISITION_LOGGER.warning(
+            "Could not stop the measurement: {error}",
+            event_type="acquisition.serval.measurement_stop_failed",
+            error=str(error),
+        )
 
 
 def _interleaved_analysis_callback(
@@ -326,10 +365,21 @@ def _interleaved_analysis_callback(
 
     def on_poll(measurement: ServalDashboardMeasurement | None) -> None:
         nonlocal previous_sizes, analyzed_sizes
-        current_sizes = {
-            path: path.stat().st_size
-            for path in raw_data_directory.glob("*.tpx3")
-        }
+        try:
+            current_sizes = {
+                path: path.stat().st_size
+                for path in raw_data_directory.glob("*.tpx3")
+            }
+        except OSError as error:
+            # A file can vanish between the listing and its size read; try
+            # again on the next poll rather than stop the recording.
+            _ACQUISITION_LOGGER.warning(
+                "Could not read the raw file sizes; trying again on the next "
+                "poll: {error}",
+                event_type="acquisition.serval.raw_file_sizes_unreadable",
+                error=str(error),
+            )
+            return
         unchanged = current_sizes == previous_sizes
         previous_sizes = current_sizes
         if not unchanged or current_sizes == analyzed_sizes:

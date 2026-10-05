@@ -80,20 +80,39 @@ class Workflow:
         SERVAL acquisition. A record configuring both records while it acquires:
         the acquisition unpacks each raw file as SERVAL finishes it, then a final
         analysis pass picks up anything the last frames left. Either way the
-        record is saved and the workflow log written. A record configuring
-        neither raises ValueError.
+        record is saved and the workflow log written, also when Ctrl-C or an
+        error ends the run early; the error is then raised again. A record
+        configuring neither raises ValueError.
         """
         record = self._state_manager.get_state()
         if record.acquisition is None and record.analysis is None:
             raise ValueError(
                 "the record configures neither acquisition nor analysis to run"
             )
-        if record.acquisition is not None:
-            self.run_acquisition()
-        if record.analysis is not None:
-            self.run_analysis()
-        self._save_record()
-        self._write_workflow_log()
+        error: BaseException | None = None
+        try:
+            if record.acquisition is not None:
+                self.run_acquisition()
+            if record.analysis is not None:
+                self.run_analysis()
+        except BaseException as caught:
+            error = caught
+            if isinstance(caught, KeyboardInterrupt):
+                _WORKFLOW_LOGGER.warning(
+                    "Workflow stopped by Ctrl-C; saving the record",
+                    event_type="workflow.stopped",
+                )
+            else:
+                _WORKFLOW_LOGGER.error(
+                    "Workflow failed: {error_type}: {error}; saving the record",
+                    event_type="workflow.failed",
+                    error_type=type(caught).__name__,
+                    error=str(caught),
+                )
+            raise
+        finally:
+            self._save_record()
+            self._write_workflow_log(error)
         return self.record
 
     def _run_directory(self) -> Path:
@@ -111,14 +130,16 @@ class Workflow:
             record, self._run_directory() / "HERMES_record.yaml"
         )
 
-    def _write_workflow_log(self) -> None:
+    def _write_workflow_log(self, error: BaseException | None = None) -> None:
         """Write the run's workflow log to <log_directory>/HERMES-workflow.jsonl (or the run directory if unset).
 
         The log is one JSON object per line: the record file that started the
         run, the stages the run configured, one line per finished analysis step,
-        and a closing line. Paths are written relative to the current directory
-        so the log reads the same wherever the run directory sits. The file is
-        rewritten from scratch on every run.
+        and a closing line. The closing line is `workflow_completed`, or
+        `workflow_stopped` when Ctrl-C ended the run, or `workflow_failed` with
+        the error when an error ended it. Paths are written relative to the
+        current directory so the log reads the same wherever the run directory
+        sits. The file is rewritten from scratch on every run.
         """
         record = self._state_manager.get_state()
         record_path = self._run_directory() / "HERMES_record.yaml"
@@ -134,9 +155,23 @@ class Workflow:
             {"event": "workflow_initialized", "stages": stages, "time": now},
         ]
         lines.extend(self._stage_completed_lines())
-        lines.append(
-            {"event": "workflow_completed", "stages": stages, "time": now}
-        )
+        if error is None:
+            lines.append(
+                {"event": "workflow_completed", "stages": stages, "time": now}
+            )
+        elif isinstance(error, KeyboardInterrupt):
+            lines.append(
+                {"event": "workflow_stopped", "stages": stages, "time": now}
+            )
+        else:
+            lines.append(
+                {
+                    "event": "workflow_failed",
+                    "stages": stages,
+                    "error": f"{type(error).__name__}: {error}",
+                    "time": now,
+                }
+            )
 
         log_dir = (
             record.environment.log_directory.resolved_path

@@ -30,8 +30,6 @@ ServalMeasurementStatus = Literal[
     "DA_RECORDING",
     "DA_STOPPING",
 ]
-ServalNotificationType = Literal["update", "info", "severe", "error"]
-ServalNotificationDomain = Literal["server", "detector", "chip"]
 ServalDestinationFormat = Literal["tiff", "pgm", "png", "jsonimage", "jsonhisto"]
 ServalDestinationMode = Literal["count", "tot", "toa", "tof", "count_fb"]
 ServalRawSplitStrategy = Literal["single_file", "frame", "SINGLE_FILE", "FRAME"]
@@ -53,7 +51,18 @@ class ServalApiModel(StrictBaseModel):
     )
 
 
-class ServalDashboardDiskSpace(ServalApiModel):
+class ServalDashboardModel(ServalApiModel):
+    """Base for the `/dashboard` models, which ignore fields HERMES does not know.
+
+    HERMES reads the dashboard over and over while the camera records, so a
+    field that a newer SERVAL adds must not stop the run. Fields HERMES does
+    know are still checked.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+
+class ServalDashboardDiskSpace(ServalDashboardModel):
     message: str | None = Field(default=None, alias="Message")
     path: str | None = Field(default=None, alias="Path")
     free_space: int | None = Field(default=None, ge=0, alias="FreeSpace")
@@ -62,15 +71,17 @@ class ServalDashboardDiskSpace(ServalApiModel):
     disk_limit_reached: bool | None = Field(default=None, alias="DiskLimitReached")
 
 
-class ServalDashboardNotification(ServalApiModel):
-    type: ServalNotificationType | None = Field(default=None, alias="Type")
-    domain: ServalNotificationDomain | None = Field(default=None, alias="Domain")
+class ServalDashboardNotification(ServalDashboardModel):
+    # Kept as plain text: a notification type or domain that a newer SERVAL
+    # adds must not stop the run.
+    type: str | None = Field(default=None, alias="Type")
+    domain: str | None = Field(default=None, alias="Domain")
     message: str | None = Field(default=None, alias="Message")
     reference_id: str | None = Field(default=None, alias="ReferenceID")
     timestamp: int | None = Field(default=None, ge=0, alias="Timestamp")
 
 
-class ServalDashboardServer(ServalApiModel):
+class ServalDashboardServer(ServalDashboardModel):
     software_version: str | None = Field(default=None, alias="SoftwareVersion")
     software_timestamp: str | None = Field(default=None, alias="SoftwareTimestamp")
     software_commit: str | None = Field(default=None, alias="SoftwareCommit")
@@ -85,7 +96,7 @@ class ServalDashboardServer(ServalApiModel):
     )
 
 
-class ServalDashboardMeasurement(ServalApiModel):
+class ServalDashboardMeasurement(ServalDashboardModel):
     start_date_time_ms: int | None = Field(default=None, ge=0, alias="StartDateTime")
     time_left_s: float | None = Field(default=None, ge=0, alias="TimeLeft")
     elapsed_time_s: float | None = Field(default=None, ge=0, alias="ElapsedTime")
@@ -97,11 +108,11 @@ class ServalDashboardMeasurement(ServalApiModel):
     tdc2_event_rate: int | None = Field(default=None, ge=0, alias="Tdc2EventRate")
 
 
-class ServalDashboardDetector(ServalApiModel):
+class ServalDashboardDetector(ServalDashboardModel):
     detector_type: str | None = Field(default=None, alias="DetectorType")
 
 
-class ServalDashboard(ServalApiModel):
+class ServalDashboard(ServalDashboardModel):
     server: ServalDashboardServer = Field(alias="Server")
     measurement: ServalDashboardMeasurement | None = Field(
         default=None,
