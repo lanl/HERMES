@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 import pytest
+from loguru import logger
 
 from hermes.state.models.analysis.hermes_tpx3_spidr import (
     HermesTpx3AnalysisState,
@@ -19,6 +20,7 @@ from hermes.state.models.analysis.hermes_tpx3_spidr import (
 )
 from hermes.state.models.acquisition.serval import (
     ServalAcquisitionConfig,
+    ServalAcquisitionResult,
     ServalAcquisitionState,
     ServalServer,
 )
@@ -490,8 +492,11 @@ def test_run_saves_the_record_and_log_when_ctrl_c_stops_it(
     assert [line["event"] for line in lines] == [
         "HERMES_record_initialized",
         "workflow_initialized",
+        "stage_completed",
         "workflow_stopped",
     ]
+    assert lines[2]["stage"] == "acquisition"
+    assert lines[2]["status"] == "stopped"
 
 
 def test_run_saves_the_record_and_log_when_an_error_ends_it(
@@ -516,3 +521,170 @@ def test_run_saves_the_record_and_log_when_an_error_ends_it(
     lines = [json.loads(line) for line in log_file.read_text().splitlines()]
     assert lines[-1]["event"] == "workflow_failed"
     assert lines[-1]["error"] == "RuntimeError: SERVAL went away"
+    # The acquisition ended before it recorded a status.
+    assert lines[2]["stage"] == "acquisition"
+    assert lines[2]["status"] == "planned"
+
+
+
+def _set(state_manager: StateManager, path: str, value: object) -> None:
+    change = state_manager.propose_change(
+        path, value, origin="trusted_workflow", proposer="test"
+    )
+    state_manager.apply_change(change.change_id)
+
+
+def _complete_unpacking(status: str):
+    """A fake analysis that records every raw file with the given status."""
+
+    def complete_analysis(
+        state_manager: StateManager,
+        *,
+        overwrite: bool = False,
+    ) -> list[FileReference]:
+        analysis = state_manager.get_state().analysis
+        _set(
+            state_manager,
+            "analysis.unpacking.results",
+            [
+                HermesTpx3UnpackingResult(input_file=raw_file, status=status)
+                for raw_file in analysis.unpacking.tpx3_files
+            ],
+        )
+        return analysis.unpacking.tpx3_files
+
+    return complete_analysis
+
+
+def test_run_logs_a_completed_acquisition(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workflow = Workflow(_acquisition_record(tmp_path))
+
+    def complete_acquisition(state_manager: StateManager) -> None:
+        _set(
+            state_manager,
+            "acquisition.result",
+            ServalAcquisitionResult(
+                stop_reason="completed", frames=6, dropped_frames=0
+            ),
+        )
+        _set(state_manager, "acquisition.status", "completed")
+
+    monkeypatch.setattr(
+        "hermes.workflows.workflow.run_serval_acquisition",
+        complete_acquisition,
+    )
+
+    workflow.run()
+
+    log_file = tmp_path / "HERMES-workflow.jsonl"
+    lines = [json.loads(line) for line in log_file.read_text().splitlines()]
+    assert [line["event"] for line in lines] == [
+        "HERMES_record_initialized",
+        "workflow_initialized",
+        "stage_completed",
+        "workflow_completed",
+    ]
+    acquisition_line = lines[2]
+    assert acquisition_line["stage"] == "acquisition"
+    assert acquisition_line["status"] == "success"
+    assert acquisition_line["stop_reason"] == "completed"
+    assert acquisition_line["frames"] == 6
+    assert acquisition_line["dropped_frames"] == 0
+    assert acquisition_line["errors"] == []
+
+
+def test_run_analyzes_and_fails_the_log_after_a_failed_acquisition(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    record = _record(tmp_path).model_copy(
+        update={"acquisition": _acquisition_record(tmp_path).acquisition}
+    )
+    workflow = Workflow(record)
+
+    def timed_out_acquisition(state_manager: StateManager) -> None:
+        _set(
+            state_manager,
+            "acquisition.result",
+            ServalAcquisitionResult(
+                stop_reason="stopped_after_timeout",
+                frames=4,
+                dropped_frames=1,
+                errors=["the camera did not finish"],
+            ),
+        )
+        _set(state_manager, "acquisition.status", "failed")
+
+    monkeypatch.setattr(
+        "hermes.workflows.workflow.run_serval_acquisition",
+        timed_out_acquisition,
+    )
+    monkeypatch.setattr(
+        "hermes.workflows.workflow.run_analysis",
+        _complete_unpacking("completed"),
+    )
+
+    records: list[dict] = []
+    sink_id = logger.add(lambda message: records.append(message.record))
+    try:
+        workflow.run()
+    finally:
+        logger.remove(sink_id)
+
+    # The raw files the failed acquisition wrote are still unpacked, with a
+    # warning that they may be incomplete.
+    assert [
+        result.status for result in workflow.record.analysis.unpacking.results
+    ] == ["completed"]
+    warnings = [
+        record
+        for record in records
+        if record["extra"].get("event_type")
+        == "workflow.analysis_after_failed_acquisition"
+    ]
+    assert len(warnings) == 1
+    assert warnings[0]["level"].name == "WARNING"
+    assert warnings[0]["extra"]["stop_reason"] == "stopped_after_timeout"
+
+    log_file = tmp_path / "HERMES-workflow.jsonl"
+    lines = [json.loads(line) for line in log_file.read_text().splitlines()]
+    assert [line["event"] for line in lines] == [
+        "HERMES_record_initialized",
+        "workflow_initialized",
+        "stage_completed",
+        "stage_completed",
+        "workflow_failed",
+    ]
+    acquisition_line = lines[2]
+    assert acquisition_line["stage"] == "acquisition"
+    assert acquisition_line["status"] == "failed"
+    assert acquisition_line["stop_reason"] == "stopped_after_timeout"
+    assert acquisition_line["frames"] == 4
+    assert acquisition_line["dropped_frames"] == 1
+    assert acquisition_line["errors"] == ["the camera did not finish"]
+    assert lines[3]["stage"] == "unpacking"
+    assert lines[3]["status"] == "success"
+    assert lines[-1]["failed_stages"] == ["acquisition"]
+    assert "error" not in lines[-1]
+
+
+def test_run_fails_the_log_when_an_analysis_file_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workflow = Workflow(_record(tmp_path))
+    monkeypatch.setattr(
+        "hermes.workflows.workflow.run_analysis",
+        _complete_unpacking("failed"),
+    )
+
+    workflow.run()
+
+    log_file = tmp_path / "HERMES-workflow.jsonl"
+    lines = [json.loads(line) for line in log_file.read_text().splitlines()]
+    assert lines[2]["status"] == "failed"
+    assert lines[-1]["event"] == "workflow_failed"
+    assert lines[-1]["failed_stages"] == ["unpacking"]

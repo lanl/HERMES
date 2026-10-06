@@ -17,6 +17,7 @@ from hermes.runner.analysis.hermes.unpacker import (
 from hermes.runner.acquisition.serval.run import run_serval_acquisition
 from hermes.runner.analysis.run import run_analysis
 from hermes.logging import configure_logging
+from hermes.state.models.acquisition.serval import ServalAcquisitionResult
 from hermes.state.models.analysis.hermes_tpx3_spidr import HermesTpx3AnalysisState
 from hermes.state.models.shared_models import FileReference, utc_now
 from hermes.state.state import HermesRecord
@@ -27,7 +28,8 @@ from hermes.state_service.state_manager import StateManager
 _WORKFLOW_LOGGER = logger.bind(domain="workflow")
 
 # A finished analysis step records "completed"/"skipped"/"failed"; the workflow
-# log reports a completed step as "success".
+# log reports a completed step, or a completed acquisition, as "success". Any
+# other acquisition status ("configured", "stopped", ...) is written as-is.
 _STAGE_STATUS = {"completed": "success", "skipped": "skipped", "failed": "failed"}
 
 
@@ -79,10 +81,11 @@ class Workflow:
         Analysis-only records run analysis; acquisition-only records run the
         SERVAL acquisition. A record configuring both records while it acquires:
         the acquisition unpacks each raw file as SERVAL finishes it, then a final
-        analysis pass picks up anything the last frames left. Either way the
-        record is saved and the workflow log written, also when Ctrl-C or an
-        error ends the run early; the error is then raised again. A record
-        configuring neither raises ValueError.
+        analysis pass picks up anything the last frames left. That pass also
+        runs after a failed acquisition, with a warning that the raw files may
+        be incomplete. Either way the record is saved and the workflow log
+        written, also when Ctrl-C or an error ends the run early; the error is
+        then raised again. A record configuring neither raises ValueError.
         """
         record = self._state_manager.get_state()
         if record.acquisition is None and record.analysis is None:
@@ -94,6 +97,16 @@ class Workflow:
             if record.acquisition is not None:
                 self.run_acquisition()
             if record.analysis is not None:
+                acquisition = self.record.acquisition
+                if acquisition is not None and acquisition.status == "failed":
+                    result = acquisition.result or ServalAcquisitionResult()
+                    _WORKFLOW_LOGGER.warning(
+                        "The acquisition failed ({stop_reason}); analyzing the "
+                        "raw files it wrote, which may be incomplete",
+                        event_type="workflow.analysis_after_failed_acquisition",
+                        stop_reason=result.stop_reason,
+                        errors=result.errors,
+                    )
                 self.run_analysis()
         except BaseException as caught:
             error = caught
@@ -134,12 +147,14 @@ class Workflow:
         """Write the run's workflow log to <log_directory>/HERMES-workflow.jsonl (or the run directory if unset).
 
         The log is one JSON object per line: the record file that started the
-        run, the stages the run configured, one line per finished analysis step,
-        and a closing line. The closing line is `workflow_completed`, or
-        `workflow_stopped` when Ctrl-C ended the run, or `workflow_failed` with
-        the error when an error ended it. Paths are written relative to the
-        current directory so the log reads the same wherever the run directory
-        sits. The file is rewritten from scratch on every run.
+        run, the stages the run configured, one line for the acquisition when
+        one is configured, one line per finished analysis step, and a closing
+        line. The closing line is `workflow_stopped` when Ctrl-C ended the run;
+        `workflow_failed` when an error ended it (with the error) or any stage
+        ended `failed` (listed in `failed_stages`); and `workflow_completed`
+        otherwise. Paths are written relative to the current directory so the
+        log reads the same wherever the run directory sits. The file is
+        rewritten from scratch on every run.
         """
         record = self._state_manager.get_state()
         record_path = self._run_directory() / "HERMES_record.yaml"
@@ -154,23 +169,30 @@ class Workflow:
             },
             {"event": "workflow_initialized", "stages": stages, "time": now},
         ]
-        lines.extend(self._stage_completed_lines())
-        if error is None:
-            lines.append(
-                {"event": "workflow_completed", "stages": stages, "time": now}
+        stage_lines = self._acquisition_lines() + self._stage_completed_lines()
+        lines.extend(stage_lines)
+        failed_stages = list(
+            dict.fromkeys(
+                line["stage"] for line in stage_lines if line["status"] == "failed"
             )
-        elif isinstance(error, KeyboardInterrupt):
+        )
+        if isinstance(error, KeyboardInterrupt):
             lines.append(
                 {"event": "workflow_stopped", "stages": stages, "time": now}
             )
+        elif error is not None or failed_stages:
+            failed_line = {
+                "event": "workflow_failed",
+                "stages": stages,
+                "failed_stages": failed_stages,
+            }
+            if error is not None:
+                failed_line["error"] = f"{type(error).__name__}: {error}"
+            failed_line["time"] = now
+            lines.append(failed_line)
         else:
             lines.append(
-                {
-                    "event": "workflow_failed",
-                    "stages": stages,
-                    "error": f"{type(error).__name__}: {error}",
-                    "time": now,
-                }
+                {"event": "workflow_completed", "stages": stages, "time": now}
             )
 
         log_dir = (
@@ -199,6 +221,37 @@ class Workflow:
         if analysis.event_reconstruction is not None:
             stages.append("event_reconstruction")
         return stages
+
+    def _acquisition_lines(self) -> list[dict]:
+        """The acquisition's log line, when the record configures one.
+
+        The line carries the acquisition status, why the measurement stopped,
+        SERVAL's frame counts, and any errors, so the log shows a failed
+        acquisition without opening the record. A status of `planned` means the
+        acquisition ended before it recorded a status. Runs that take no
+        measurement (connect-only or configure-only) leave the measurement
+        fields empty, and their start and stop are the time the log is written.
+        """
+        acquisition = self._state_manager.get_state().acquisition
+        if acquisition is None:
+            return []
+        result = acquisition.result or ServalAcquisitionResult()
+        now = utc_now()
+        return [
+            {
+                "event": "stage_completed",
+                "stage": "acquisition",
+                "status": _STAGE_STATUS.get(
+                    acquisition.status, acquisition.status
+                ),
+                "stop_reason": result.stop_reason,
+                "frames": result.frames,
+                "dropped_frames": result.dropped_frames,
+                "errors": result.errors,
+                "start": (result.started_at or now).isoformat(),
+                "stop": (result.completed_at or now).isoformat(),
+            }
+        ]
 
     def _stage_completed_lines(self) -> list[dict]:
         """One log line per finished analysis step, in stage then file order."""
