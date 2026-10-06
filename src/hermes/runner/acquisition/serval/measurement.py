@@ -45,6 +45,13 @@ _PROGRESS_LOG_INTERVAL_S = 5.0
 # does (and produces no frames) within this window, HERMES stops waiting.
 _START_TIMEOUT_S = 15.0
 
+# When SERVAL has not answered a dashboard read for _NO_ANSWER_WARN_S, HERMES
+# warns. When it has not answered for _LOST_CONTACT_S, HERMES stops trying, asks
+# SERVAL to stop the measurement, and ends the run as "lost_contact". Both count
+# from the first failed read since the last one that worked.
+_NO_ANSWER_WARN_S = 10.0
+_LOST_CONTACT_S = 60.0
+
 # These apply only when the run does not set its own wait limit
 # (run_timing.max_wait_s). Then HERMES waits twice the run's expected length plus
 # _WAIT_MARGIN_S; a run whose length cannot be told from the detector
@@ -471,23 +478,65 @@ def _monitor(
 
     Returns "completed" when the camera returned to idle on its own,
     "stopped_after_timeout" when the wait limit was reached and HERMES stopped
-    the measurement, or "no_activity" when the camera never left idle and made
-    no frames within the start window. Notices and disk-limit readings are
-    retained for `_check_notifications`, even if the final dashboard read
-    fails. Each notice SERVAL adds is logged once, when it first appears.
-    Transient dashboard read failures are tolerated: the poll simply retries
-    until the deadline. When ``on_poll`` is given it is called with the
-    measurement each poll, before the idle/timeout checks, so the caller can act
-    on new frames as they land.
+    the measurement, "no_activity" when the camera never left idle and made no
+    frames within the start window (HERMES then stops it too, in case it did
+    start), or "lost_contact" when SERVAL stopped answering. Notices and
+    disk-limit readings are retained for `_check_notifications`, even if the
+    final dashboard read fails. Each notice SERVAL adds is logged once, when it
+    first appears.
+
+    A failed dashboard read is retried on the next poll. After
+    `_NO_ANSWER_WARN_S` with no answer HERMES warns; if SERVAL then answers
+    again, the measurement carries on and the result gets a warning saying how
+    long it did not answer. After `_LOST_CONTACT_S` with no answer, or when the
+    wait limit is reached while HERMES is already warning, HERMES asks SERVAL to
+    stop the measurement and returns "lost_contact", so a run that could not see
+    the camera is not blamed on the camera. When ``on_poll`` is given it is
+    called with the measurement each poll (None when the read failed), before
+    the idle/timeout checks, so the caller can act on new frames as they land.
     """
     start = time.monotonic()
     deadline = start + wait_limit_s
     start_deadline = start + min(_START_TIMEOUT_S, wait_limit_s)
     last_progress_log = start
     seen_active = False
+    # When the first failed read since the last one that worked was sent, and
+    # how many reads in a row have failed since then. A read to a SERVAL that
+    # hangs takes the client's full timeout, so the time is taken before it.
+    first_failed_read_at: float | None = None
+    failed_reads = 0
+    warned_no_answer = False
 
     while True:
+        read_sent_at = time.monotonic()
         dashboard = _read_dashboard(client)
+        read_at = time.monotonic()
+        if dashboard is None:
+            failed_reads += 1
+            if first_failed_read_at is None:
+                first_failed_read_at = read_sent_at
+        elif first_failed_read_at is not None:
+            if warned_no_answer:
+                warning = (
+                    f"SERVAL did not answer for {read_at - first_failed_read_at:.0f} s "
+                    f"({failed_reads} dashboard reads in a row failed) during the "
+                    "measurement; it answered again and the measurement continued"
+                )
+                warnings.append(warning)
+                _MEASUREMENT_LOGGER.warning(
+                    warning,
+                    event_type="acquisition.serval.answering_again",
+                    failed_reads=failed_reads,
+                )
+            first_failed_read_at = None
+            failed_reads = 0
+            warned_no_answer = False
+        no_answer_s = (
+            read_at - first_failed_read_at
+            if first_failed_read_at is not None
+            else 0.0
+        )
+
         measurement = dashboard.measurement if dashboard is not None else None
         if dashboard is not None:
             _add_dashboard_observations(
@@ -506,20 +555,40 @@ def _monitor(
         if status == "DA_IDLE" and seen_active:
             return "completed"
 
+        if no_answer_s >= _LOST_CONTACT_S:
+            return _lost_contact(client, no_answer_s, failed_reads, warnings)
+        if no_answer_s >= _NO_ANSWER_WARN_S and not warned_no_answer:
+            warned_no_answer = True
+            _MEASUREMENT_LOGGER.warning(
+                "SERVAL has not answered for {no_answer_s:.0f} s ({failed_reads} "
+                "dashboard reads in a row failed); HERMES keeps trying until "
+                "{limit_s:.0f} s",
+                event_type="acquisition.serval.not_answering",
+                no_answer_s=no_answer_s,
+                failed_reads=failed_reads,
+                limit_s=_LOST_CONTACT_S,
+            )
+
         now = time.monotonic()
         # Decide "never started" before "timed out": when the camera never left
         # idle and made no frames, that is the more accurate reason even if the
-        # wait limit was reached at the same time.
-        if not seen_active and now >= start_deadline:
+        # wait limit was reached at the same time. Only a dashboard HERMES read
+        # can say the camera is idle; a failed read says nothing about it.
+        if not seen_active and dashboard is not None and now >= start_deadline:
             warning = "measurement never left the idle state and made no frames"
             warnings.append(warning)
             _MEASUREMENT_LOGGER.warning(
                 warning,
                 event_type="acquisition.serval.measurement_no_activity",
             )
+            # SERVAL answers "No measurement is running." when the camera is
+            # idle, so this is safe, and it stops a camera that did start.
+            _safe_stop(client, warnings)
             return "no_activity"
 
         if now >= deadline:
+            if warned_no_answer:
+                return _lost_contact(client, no_answer_s, failed_reads, warnings)
             warning = f"measurement did not finish within {wait_limit_s:.0f} s; stopping it"
             warnings.append(warning)
             _MEASUREMENT_LOGGER.warning(
@@ -545,6 +614,34 @@ def _monitor(
             last_progress_log = now
 
         time.sleep(_POLL_INTERVAL_S)
+
+
+def _lost_contact(
+    client: ServalClient,
+    no_answer_s: float,
+    failed_reads: int,
+    warnings: list[str],
+) -> str:
+    """Record that SERVAL stopped answering, ask it to stop, and say so.
+
+    The stop request will usually fail too; `_safe_stop` then adds a warning
+    that the measurement could not be stopped, since the camera may still be
+    recording.
+    """
+    warning = (
+        f"lost contact with SERVAL: it did not answer for {no_answer_s:.0f} s "
+        f"({failed_reads} dashboard reads in a row failed); asking it to stop "
+        "the measurement"
+    )
+    warnings.append(warning)
+    _MEASUREMENT_LOGGER.error(
+        warning,
+        event_type="acquisition.serval.lost_contact",
+        no_answer_s=no_answer_s,
+        failed_reads=failed_reads,
+    )
+    _safe_stop(client, warnings)
+    return "lost_contact"
 
 
 def _read_dashboard(client: ServalClient) -> ServalDashboard | None:
