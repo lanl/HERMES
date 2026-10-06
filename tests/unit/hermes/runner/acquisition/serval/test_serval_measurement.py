@@ -740,6 +740,79 @@ def test_run_measurement_fails_when_serval_runs_out_of_disk_space(
     ]
 
 
+def test_run_measurement_keeps_disk_full_notice_when_final_dashboard_read_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _install_fake_clock(monkeypatch)
+    raw = tmp_path / "raw"
+    client = _FakeClient(
+        ["DA_RECORDING", "DA_IDLE"],
+        notifications=(_DISK_FULL_NOTICE,),
+        raw_dir=raw,
+    )
+    config = _config(
+        run_timing=ServalRunTiming(exposure_time_s=0.1, trigger_count=5)
+    )
+    read_dashboard = client.get_dashboard
+    dashboard_reads = 0
+
+    def get_dashboard() -> ServalDashboard:
+        nonlocal dashboard_reads
+        dashboard_reads += 1
+        if dashboard_reads == 3:
+            raise ServalClientError("final dashboard unavailable")
+        return read_dashboard()
+
+    client.get_dashboard = get_dashboard
+
+    outcome = run_measurement(client, config, raw)
+
+    assert outcome.final_dashboard is None
+    assert outcome.result.errors == [
+        "SERVAL ran out of disk space and stopped writing raw files: "
+        + _DISK_FULL_NOTICE.message
+    ]
+    assert outcome.result.warnings == [
+        "could not read the final detector state: final dashboard unavailable"
+    ]
+
+
+def test_run_measurement_keeps_disk_limit_when_final_dashboard_read_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _install_fake_clock(monkeypatch)
+    raw = tmp_path / "raw"
+    client = _FakeClient(
+        ["DA_RECORDING", "DA_IDLE"],
+        disk_space=(
+            ServalDashboardDiskSpace(path="/data/raw", disk_limit_reached=True),
+        ),
+        raw_dir=raw,
+    )
+    config = _config(
+        run_timing=ServalRunTiming(exposure_time_s=0.1, trigger_count=5)
+    )
+    read_dashboard = client.get_dashboard
+    dashboard_reads = 0
+
+    def get_dashboard() -> ServalDashboard:
+        nonlocal dashboard_reads
+        dashboard_reads += 1
+        if dashboard_reads == 3:
+            raise ServalClientError("final dashboard unavailable")
+        return read_dashboard()
+
+    client.get_dashboard = get_dashboard
+
+    outcome = run_measurement(client, config, raw)
+
+    assert outcome.final_dashboard is None
+    assert outcome.result.errors == [
+        "SERVAL ran out of disk space and stopped writing raw files: "
+        "DiskLimitReached is set for /data/raw"
+    ]
+
+
 def test_run_measurement_fails_when_the_disk_limit_is_reached(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -305,6 +305,8 @@ def run_measurement(
     started_at = utc_now()
     stop_reason = "completed"
     exception: BaseException | None = None
+    observed_notifications: list[ServalDashboardNotification] = []
+    observed_disk_limit_paths: set[str] = set()
     try:
         client.measurement_start()
         _MEASUREMENT_LOGGER.info(
@@ -317,7 +319,14 @@ def run_measurement(
             trigger_period_s=applied.trigger_period_s,
             wait_limit_s=wait_limit_s,
         )
-        stop_reason = _monitor(client, wait_limit_s, warnings, on_poll)
+        stop_reason = _monitor(
+            client,
+            wait_limit_s,
+            warnings,
+            observed_notifications,
+            observed_disk_limit_paths,
+            on_poll,
+        )
     except ServalClientError as error:
         errors.append(str(error))
         stop_reason = "failed"
@@ -367,7 +376,15 @@ def run_measurement(
     if measurement is not None:
         _check_frames(stop_reason, measurement, warnings, errors)
     if final_dashboard is not None:
-        _check_notifications(final_dashboard, warnings, errors)
+        _add_dashboard_observations(
+            final_dashboard,
+            observed_notifications,
+            observed_disk_limit_paths,
+            log_notifications=False,
+        )
+    _check_notifications(
+        observed_notifications, observed_disk_limit_paths, warnings, errors
+    )
 
     result = ServalAcquisitionResult(
         started_at=started_at,
@@ -446,6 +463,8 @@ def _monitor(
     client: ServalClient,
     wait_limit_s: float,
     warnings: list[str],
+    observed_notifications: list[ServalDashboardNotification],
+    observed_disk_limit_paths: set[str],
     on_poll: Callable[[ServalDashboardMeasurement | None], None] | None = None,
 ) -> str:
     """Watch the dashboard until the measurement is idle again or times out.
@@ -453,28 +472,30 @@ def _monitor(
     Returns "completed" when the camera returned to idle on its own,
     "stopped_after_timeout" when the wait limit was reached and HERMES stopped
     the measurement, or "no_activity" when the camera never left idle and made
-    no frames within the start window. Each notice SERVAL adds is logged once,
-    when it first appears; `_check_notifications` checks them all at the end.
+    no frames within the start window. Notices and disk-limit readings are
+    retained for `_check_notifications`, even if the final dashboard read
+    fails. Each notice SERVAL adds is logged once, when it first appears.
     Transient dashboard read failures are tolerated: the poll simply retries
     until the deadline. When ``on_poll`` is given it is called with the
-    measurement each poll, before the idle/timeout checks, so the caller can
-    act on new frames as they land.
+    measurement each poll, before the idle/timeout checks, so the caller can act
+    on new frames as they land.
     """
     start = time.monotonic()
     deadline = start + wait_limit_s
     start_deadline = start + min(_START_TIMEOUT_S, wait_limit_s)
     last_progress_log = start
     seen_active = False
-    notifications_seen = 0
 
     while True:
         dashboard = _read_dashboard(client)
         measurement = dashboard.measurement if dashboard is not None else None
         if dashboard is not None:
-            notifications = dashboard.server.notifications
-            for notification in notifications[notifications_seen:]:
-                _log_notification(notification)
-            notifications_seen = len(notifications)
+            _add_dashboard_observations(
+                dashboard,
+                observed_notifications,
+                observed_disk_limit_paths,
+                log_notifications=True,
+            )
         if on_poll is not None:
             on_poll(measurement)
         status = measurement.status if measurement is not None else None
@@ -594,30 +615,48 @@ def _log_notification(notification: ServalDashboardNotification) -> None:
     )
 
 
-def _check_notifications(
+def _add_dashboard_observations(
     dashboard: ServalDashboard,
+    observed_notifications: list[ServalDashboardNotification],
+    observed_disk_limit_paths: set[str],
+    *,
+    log_notifications: bool,
+) -> None:
+    """Retain notices and disk-limit readings from one dashboard response."""
+    new_notifications = dashboard.server.notifications[len(observed_notifications) :]
+    observed_notifications.extend(new_notifications)
+    if log_notifications:
+        for notification in new_notifications:
+            _log_notification(notification)
+    observed_disk_limit_paths.update(
+        disk.path for disk in dashboard.server.disk_space if disk.disk_limit_reached
+    )
+
+
+def _check_notifications(
+    notifications: list[ServalDashboardNotification],
+    disk_limit_paths: set[str],
     warnings: list[str],
     errors: list[str],
 ) -> None:
     """Fail a measurement whose disk filled up; warn on other serious notices.
 
-    SERVAL clears its notices when a measurement starts, so the final dashboard
-    holds every notice from this one. When free disk space falls below its
-    limit, SERVAL stops writing raw files and adds a `REF_ID_DISK_FULL` notice
-    that stays in the list even after space is freed, so a missing stretch of
-    data is never recorded as a working run.
+    SERVAL clears its notices when a measurement starts. HERMES retains every
+    notice and disk-limit reading seen while polling, then adds anything from
+    the final dashboard. When free disk space falls below its limit, SERVAL
+    stops writing raw files and adds a `REF_ID_DISK_FULL` notice, so a missing
+    stretch of data is never recorded as a working run.
     """
     detail = None
-    for notification in dashboard.server.notifications:
+    for notification in notifications:
         if notification.reference_id == "REF_ID_DISK_FULL":
             detail = detail or notification.message
         elif notification.type in _SERIOUS_NOTIFICATION_TYPES:
             warnings.append(
                 f"SERVAL {notification.type} notice: {notification.message}"
             )
-    for disk in dashboard.server.disk_space:
-        if disk.disk_limit_reached:
-            detail = detail or f"DiskLimitReached is set for {disk.path}"
+    for path in sorted(disk_limit_paths):
+        detail = detail or f"DiskLimitReached is set for {path}"
     if detail is None:
         return
     error = f"SERVAL ran out of disk space and stopped writing raw files: {detail}"
