@@ -49,18 +49,47 @@ state service.
 
 `Workflow.run()` reads the record and runs the work it configures:
 
-- Analysis only: it runs analysis, saves the final record to
-  `HERMES_record.yaml` in the run directory, and writes the run timeline to
-  `HERMES-workflow.jsonl` in the log directory.
-- Acquisition only: it calls `run_acquisition()`, which raises
-  `NotImplementedError` because acquisition execution does not exist yet.
-- Both acquisition and analysis: it raises `ValueError`, because running the
-  two together is not supported yet.
+- Analysis only: it runs analysis.
+- Acquisition only: it calls `run_acquisition()`, which runs the SERVAL
+  acquisition (see [acquisition.md](acquisition.md)).
+- Both acquisition and analysis: it runs the acquisition, which unpacks each
+  raw file once SERVAL has finished writing it, and then runs one final
+  analysis pass for anything the last frames left. When the acquisition ended
+  `failed` (for example after a timeout, no camera activity, a full disk, or no
+  complete frames), the final pass still runs over the raw files it wrote, and
+  HERMES logs a `workflow.analysis_after_failed_acquisition` warning, with the
+  stop reason and errors, saying those files may be incomplete. When Ctrl-C or
+  an error ends the acquisition, analysis does not run.
 - Neither: it raises `ValueError`.
 
-`Workflow.run_acquisition()` reserves the acquisition entry point and raises
-`NotImplementedError` until a hardware-facing acquisition runner has its own
-approved plan.
+In every case `run()` saves the final record to `HERMES_record.yaml` in the run
+directory and writes the run timeline to `HERMES-workflow.jsonl` in the log
+directory (the run directory when no log directory is set). Both are written
+in a `finally` block, so they are saved also when Ctrl-C or an error ends the
+run early; the error is then raised again.
+
+`HERMES-workflow.jsonl` holds one JSON object per line, in this order:
+
+1. `HERMES_record_initialized`, with the path of the saved record.
+2. `workflow_initialized`, with the `stages` the record configures, in order:
+   `acquisition`, `unpacking`, `reconstruction`, `event_reconstruction`.
+3. When an acquisition is configured, one `stage_completed` line with
+   `"stage": "acquisition"`. It holds the acquisition `status` (`success` for
+   `completed`, otherwise the saved status, such as `failed`, `stopped`, or
+   `configured`; `planned` means the acquisition ended before it saved a
+   status), `stop_reason`, `frames`, `dropped_frames`, and `errors` from the
+   measurement result, and the measurement's `start` and `stop` times. Runs
+   that take no measurement leave those fields empty (`null`, or `[]` for
+   `errors`).
+4. One `stage_completed` line per finished analysis file, in stage then file
+   order, with its `status` (`success`, `skipped`, or `failed`) and the path to
+   its summary.
+5. One closing line:
+   - `workflow_stopped` when Ctrl-C ended the run;
+   - `workflow_failed` when an error ended the run, or when any stage line
+     above has status `failed`. It lists those stages in `failed_stages` and,
+     when an error ended the run, holds it in `error`;
+   - `workflow_completed` otherwise.
 
 One workflow owns the record for acquisition-only, analysis-only, and combined
 acquisition-to-analysis runs.
