@@ -967,8 +967,14 @@ def test_build_effective_detector_config_refuses_a_missing_file(
         build_effective_detector_config(config)
 
 
-def _fail_dashboard_reads(client: _FakeClient, failing) -> None:
-    """Make the dashboard reads whose 1-based number `failing` accepts fail."""
+def _fail_dashboard_reads(
+    client: _FakeClient, failing, *, hang_s: float = 0.0
+) -> None:
+    """Make the dashboard reads whose 1-based number `failing` accepts fail.
+
+    Each failed read first waits `hang_s` on the fake clock, like a read to a
+    SERVAL that hangs until the client's timeout.
+    """
     read_dashboard = client.get_dashboard
     reads = 0
 
@@ -976,6 +982,8 @@ def _fail_dashboard_reads(client: _FakeClient, failing) -> None:
         nonlocal reads
         reads += 1
         if failing(reads):
+            # The fake clock's sleep moves the time forward.
+            measurement_module.time.sleep(hang_s)
             raise ServalClientError("SERVAL GET /dashboard could not be sent")
         return read_dashboard()
 
@@ -1022,8 +1030,38 @@ def test_run_measurement_ends_as_lost_contact_when_serval_stops_answering(
     assert event_types.count("acquisition.serval.not_answering") == 1
     not_answering = records[event_types.index("acquisition.serval.not_answering")]
     assert not_answering["level"].name == "WARNING"
+    assert "keeps trying for up to 50 s more" in not_answering["message"]
     lost = records[event_types.index("acquisition.serval.lost_contact")]
     assert lost["level"].name == "ERROR"
+
+
+def test_run_measurement_counts_the_time_a_hung_read_waits(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _install_fake_clock(monkeypatch)
+    raw = tmp_path / "raw"
+    client = _FakeClient(["DA_RECORDING"] * 1000, raw_dir=raw)
+    # From the third read (sent at 1 s), each read hangs for the client's 10 s
+    # timeout and then fails, so reads are sent at 1, 11.5, 22, ... s.
+    _fail_dashboard_reads(client, lambda read: read >= 3, hang_s=10.0)
+    config = _config(
+        run_timing=ServalRunTiming(
+            exposure_time_s=0.1, trigger_count=5, max_wait_s=3600.0
+        )
+    )
+
+    outcome, records, event_types = _run_and_capture_logs(client, config, raw)
+
+    # The time counts from when the first failed read was sent, so the wait
+    # inside a hung read counts: HERMES warns once the first read fails, and
+    # ends the run after six, at 62.5 s with no answer.
+    not_answering = records[event_types.index("acquisition.serval.not_answering")]
+    assert not_answering["extra"]["failed_reads"] == 1
+    assert not_answering["extra"]["no_answer_s"] == 10.0
+    lost = records[event_types.index("acquisition.serval.lost_contact")]
+    assert lost["extra"]["failed_reads"] == 6
+    assert lost["extra"]["no_answer_s"] == 62.5
+    assert outcome.result.stop_reason == "lost_contact"
 
 
 def test_run_measurement_does_not_call_an_unreachable_serval_idle(
@@ -1110,8 +1148,12 @@ def test_run_measurement_ends_as_lost_contact_at_the_wait_limit(
         )
     )
 
-    outcome, _records, _event_types = _run_and_capture_logs(client, config, raw)
+    outcome, records, event_types = _run_and_capture_logs(client, config, raw)
 
+    # The warning at 15 s gives the 15 s left until the wait limit, not the
+    # 50 s left until HERMES would give up on its own.
+    not_answering = records[event_types.index("acquisition.serval.not_answering")]
+    assert "keeps trying for up to 15 s more" in not_answering["message"]
     assert outcome.result.stop_reason == "lost_contact"
     assert outcome.result.warnings[0].startswith(
         "lost contact with SERVAL: it did not answer for 25 s"

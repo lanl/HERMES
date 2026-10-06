@@ -486,14 +486,15 @@ def _monitor(
     first appears.
 
     A failed dashboard read is retried on the next poll. After
-    `_NO_ANSWER_WARN_S` with no answer HERMES warns; if SERVAL then answers
-    again, the measurement carries on and the result gets a warning saying how
-    long it did not answer. After `_LOST_CONTACT_S` with no answer, or when the
-    wait limit is reached while HERMES is already warning, HERMES asks SERVAL to
-    stop the measurement and returns "lost_contact", so a run that could not see
-    the camera is not blamed on the camera. When ``on_poll`` is given it is
-    called with the measurement each poll (None when the read failed), before
-    the idle/timeout checks, so the caller can act on new frames as they land.
+    `_NO_ANSWER_WARN_S` with no answer HERMES warns, saying how much longer it
+    keeps trying; if SERVAL then answers again, the measurement carries on and
+    the result gets a warning saying how long it did not answer. After
+    `_LOST_CONTACT_S` with no answer, or when the wait limit is reached while
+    HERMES is already warning, HERMES asks SERVAL to stop the measurement and
+    returns "lost_contact", so a run that could not see the camera is not
+    blamed on the camera. When ``on_poll`` is given it is called with the
+    measurement each poll (None when the read failed), before the idle/timeout
+    checks, so the caller can act on new frames as they land.
     """
     start = time.monotonic()
     deadline = start + wait_limit_s
@@ -559,14 +560,19 @@ def _monitor(
             return _lost_contact(client, no_answer_s, failed_reads, warnings)
         if no_answer_s >= _NO_ANSWER_WARN_S and not warned_no_answer:
             warned_no_answer = True
+            # HERMES stops at _LOST_CONTACT_S with no answer, or at the wait
+            # limit when that comes first.
+            keeps_trying_s = max(
+                0.0, min(_LOST_CONTACT_S - no_answer_s, deadline - read_at)
+            )
             _MEASUREMENT_LOGGER.warning(
                 "SERVAL has not answered for {no_answer_s:.0f} s ({failed_reads} "
-                "dashboard reads in a row failed); HERMES keeps trying until "
-                "{limit_s:.0f} s",
+                "dashboard reads in a row failed); HERMES keeps trying for up "
+                "to {keeps_trying_s:.0f} s more, then stops the measurement",
                 event_type="acquisition.serval.not_answering",
                 no_answer_s=no_answer_s,
                 failed_reads=failed_reads,
-                limit_s=_LOST_CONTACT_S,
+                keeps_trying_s=keeps_trying_s,
             )
 
         now = time.monotonic()

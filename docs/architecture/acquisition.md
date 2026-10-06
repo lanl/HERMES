@@ -286,16 +286,17 @@ logs to reproduce or debug the run.
     dropped frames, elapsed time, time left, event rates, notifications, and
     health changes.
     A failed dashboard read is tried again on the next poll. When SERVAL has
-    not answered for 10 s, HERMES logs a warning. If SERVAL answers again, the
-    measurement carries on, and the result gets a warning saying how long it
-    did not answer and how many reads failed. When SERVAL has not answered for
-    60 s, or the wait limit is reached while HERMES is already warning, HERMES
-    asks SERVAL to stop the measurement and ends the run with stop reason
-    `lost_contact`, so the run is `failed` and is not blamed on the camera. A
-    failed read never counts as the camera being idle. When the camera never
-    leaves the idle state and makes no frames within 15 s, the stop reason is
-    `no_activity`; HERMES asks SERVAL to stop then too, in case the camera did
-    start. SERVAL answers "No measurement is running." when it is idle.
+    not answered for 10 s, HERMES logs a warning saying how much longer it
+    keeps trying. If SERVAL answers again, the measurement carries on, and the
+    result gets a warning saying how long it did not answer and how many reads
+    failed. When SERVAL has not answered for 60 s, or the wait limit is
+    reached while HERMES is already warning, HERMES asks SERVAL to stop the
+    measurement and ends the run with stop reason `lost_contact`, so the run is
+    `failed` and is not blamed on the camera. A failed read never counts as the
+    camera being idle. When the camera never leaves the idle state and makes no
+    frames within 15 s, the stop reason is `no_activity`; HERMES asks SERVAL to
+    stop then too, in case the camera did start. SERVAL answers "No measurement
+    is running." when it is idle.
     SERVAL clears its notices (`Server.Notifications`) when a measurement
     starts, so every notice seen after the start belongs to this run. HERMES
     logs each new notice once, as a warning when its type is `severe` or
