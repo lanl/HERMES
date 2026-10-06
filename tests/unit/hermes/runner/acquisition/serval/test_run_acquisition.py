@@ -7,7 +7,10 @@ import pytest
 
 from hermes.runner.acquisition.serval import measurement as measurement_module
 from hermes.runner.acquisition.serval import run as run_module
-from hermes.runner.acquisition.serval.client import ServalClientError
+from hermes.runner.acquisition.serval.client import (
+    ServalClientError,
+    ServalConnectError,
+)
 from hermes.runner.acquisition.serval.run import (
     ServalAcquisitionError,
     run_serval_acquisition,
@@ -77,7 +80,7 @@ class _FakeAcquisitionClient:
 
     def get(self, path: str):
         if not self._server_up:
-            raise ServalClientError("no server")
+            raise ServalConnectError("no server")
         return None
 
     def get_dashboard(self) -> ServalDashboard:
@@ -253,6 +256,80 @@ def test_launches_and_stops_serval_when_it_started_it(
 
     assert calls == ["start", "stop"]
     assert state_manager.get_state().acquisition.status == "completed"
+    assert client.closed is True
+
+
+class _FakeServalProcess:
+    """A started SERVAL process that is still running, or has exited."""
+
+    def __init__(self, exit_code: int | None = None) -> None:
+        self.exit_code = exit_code
+
+    def poll(self) -> int | None:
+        return self.exit_code
+
+
+def test_does_not_start_a_second_serval_when_the_server_answers_with_an_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    jar = tmp_path / "serv.jar"
+    jar.write_bytes(b"")
+    client = _FakeAcquisitionClient(server_up=True)
+
+    def answer_busy(path: str):
+        raise ServalClientError("SERVAL GET /dashboard returned 503: busy")
+
+    client.get = answer_busy  # type: ignore[method-assign]
+    _patch_client(monkeypatch, client)
+    calls: list[str] = []
+    monkeypatch.setattr(
+        run_module, "start_serval", lambda *_a, **_k: calls.append("start")
+    )
+    monkeypatch.setattr(
+        run_module, "stop_serval", lambda *_a, **_k: calls.append("stop")
+    )
+
+    state_manager = _state_manager(tmp_path, program_path=jar)
+    with pytest.raises(ServalServerError, match="will not start a second SERVAL"):
+        run_serval_acquisition(state_manager)
+
+    # The server that answered is not HERMES's, so it is neither started nor
+    # shut down.
+    assert calls == []
+    assert client.closed is True
+
+
+@pytest.mark.parametrize(
+    ("exit_code", "message"),
+    [(None, "did not become ready"), (1, "exit code 1")],
+)
+def test_stops_a_started_serval_that_does_not_become_ready(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    exit_code: int | None,
+    message: str,
+) -> None:
+    jar = tmp_path / "serv.jar"
+    jar.write_bytes(b"")
+    client = _FakeAcquisitionClient(server_up=False)
+    _patch_client(monkeypatch, client)
+    process = _FakeServalProcess(exit_code=exit_code)
+    monkeypatch.setattr(run_module, "start_serval", lambda *_a, **_k: process)
+    monkeypatch.setattr(run_module, "_SERVER_READY_TIMEOUT_S", 0.0)
+    stopped: list[object] = []
+    monkeypatch.setattr(
+        run_module,
+        "stop_serval",
+        lambda _client, process_arg, **_kw: stopped.append(process_arg),
+    )
+
+    state_manager = _state_manager(tmp_path, program_path=jar)
+    with pytest.raises(ServalServerError, match=message):
+        run_serval_acquisition(state_manager)
+
+    # The SERVAL HERMES started is stopped, so it does not keep the port.
+    assert stopped == [process]
     assert client.closed is True
 
 

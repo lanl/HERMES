@@ -136,20 +136,35 @@ class _FakeReadyClient:
 
 
 def test_wait_until_ready_returns_version_after_retries(
+    tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(server_module.time, "sleep", lambda _seconds: None)
     client = _FakeReadyClient(ready_after=2)
 
-    version = wait_until_ready(client, timeout_s=5.0)
+    version = wait_until_ready(client, _FakeProcess(), tmp_path, timeout_s=5.0)
 
     assert version == "3.3.0"
 
 
-def test_wait_until_ready_raises_on_timeout() -> None:
+def test_wait_until_ready_raises_on_timeout(tmp_path: Path) -> None:
     client = _FakeReadyClient(ready_after=1_000_000)
-    with pytest.raises(ServalServerError, match="did not become ready"):
-        wait_until_ready(client, timeout_s=0.0)
+    with pytest.raises(ServalServerError, match="did not become ready") as raised:
+        wait_until_ready(client, _FakeProcess(), tmp_path, timeout_s=0.0)
+
+    assert str(tmp_path / "serval-server.log") in str(raised.value)
+
+
+def test_wait_until_ready_fails_at_once_when_serval_exits(tmp_path: Path) -> None:
+    client = _FakeReadyClient(ready_after=1_000_000)
+    process = _FakeProcess(returncode=1, exited=True)
+
+    with pytest.raises(ServalServerError, match="exit code 1") as raised:
+        wait_until_ready(client, process, tmp_path, timeout_s=60.0)
+
+    # It did not wait for an answer, and it points to the server's own output.
+    assert client._attempts == 0
+    assert str(tmp_path / "serval-server.log") in str(raised.value)
 
 
 class _FakeDetectorClient:
@@ -189,11 +204,17 @@ def test_wait_until_detector_connected_raises_on_timeout() -> None:
 
 
 class _FakeProcess:
-    def __init__(self, wait_timeouts: int = 0, returncode: int = 0) -> None:
+    def __init__(
+        self, wait_timeouts: int = 0, returncode: int = 0, exited: bool = False
+    ) -> None:
         self._wait_timeouts = wait_timeouts
         self.returncode = returncode
+        self._exited = exited
         self.terminated = False
         self.killed = False
+
+    def poll(self) -> int | None:
+        return self.returncode if self._exited else None
 
     def wait(self, timeout: float | None = None) -> int:
         if self._wait_timeouts > 0:
@@ -241,3 +262,15 @@ def test_stop_serval_terminates_when_process_lingers() -> None:
     assert process.terminated
     assert not process.killed
     assert exit_code == 143
+
+
+def test_stop_serval_sends_no_shutdown_when_serval_already_exited() -> None:
+    client = _FakeShutdownClient()
+    process = _FakeProcess(returncode=1, exited=True)
+
+    exit_code = stop_serval(client, process, timeout_s=1.0)
+
+    # Whatever answers at the URL now is not the server HERMES started.
+    assert client.calls == []
+    assert exit_code == 1
+    assert not process.terminated

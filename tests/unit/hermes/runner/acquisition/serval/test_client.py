@@ -3,7 +3,11 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from hermes.runner.acquisition.serval.client import ServalClient, ServalClientError
+from hermes.runner.acquisition.serval.client import (
+    ServalClient,
+    ServalClientError,
+    ServalConnectError,
+)
 from hermes.state.models.acquisition.serval import (
     DestinationConfiguration,
     ServalRawDestination,
@@ -263,8 +267,11 @@ def test_non_200_raises_with_status_and_body() -> None:
         return httpx.Response(500, text="boom")
 
     with _client_with_handler(handler) as client:  # noqa: SIM117
-        with pytest.raises(ServalClientError, match="500"):
+        with pytest.raises(ServalClientError, match="500") as raised:
             client.get_json("/dashboard")
+
+    # A server answered, so this is not a failure to connect.
+    assert not isinstance(raised.value, ServalConnectError)
 
 
 def test_transport_failure_raises_serval_client_error() -> None:
@@ -274,3 +281,24 @@ def test_transport_failure_raises_serval_client_error() -> None:
     with _client_with_handler(handler) as client:  # noqa: SIM117
         with pytest.raises(ServalClientError, match="could not be sent"):
             client.get("/dashboard")
+
+
+def test_refused_connection_raises_serval_connect_error() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("connection refused", request=request)
+
+    with _client_with_handler(handler) as client:  # noqa: SIM117
+        with pytest.raises(ServalConnectError, match="could not be sent"):
+            client.get("/dashboard")
+
+
+def test_read_timeout_is_not_a_failure_to_connect() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadTimeout("no answer", request=request)
+
+    with _client_with_handler(handler) as client:  # noqa: SIM117
+        with pytest.raises(ServalClientError) as raised:
+            client.get("/dashboard")
+
+    # The server took the connection but did not answer, so a server is there.
+    assert not isinstance(raised.value, ServalConnectError)

@@ -210,9 +210,18 @@ logs to reproduce or debug the run.
    Record the plan, resolved paths, requested acquisition mode, and initial run
    status before touching detector state.
 4. Connect to SERVAL.
-   SERVAL may already be running, or HERMES may start it if that becomes an
-   explicit supported workflow. Verify connectivity with `/dashboard` and record
-   the SERVAL software version and detector type.
+   SERVAL may already be running, or HERMES may start it. HERMES reads
+   `/dashboard` first. If a server answers, HERMES uses it and never shuts it
+   down. If nothing is listening (the connection is refused or cannot be
+   made) and `program_path` is set, HERMES starts `java -jar <program_path>`,
+   writing the server's output to `serval-server.log` in the log directory,
+   and waits up to 60 s for it to answer. If the process exits first, HERMES
+   fails at once with its exit code. Either way the error points to
+   `serval-server.log`, and HERMES stops the process it started, so it does
+   not keep the port for the next run. If something is listening but answers
+   with an error, or does not answer, HERMES fails without starting a second
+   SERVAL, which could not use the port. Then HERMES records the SERVAL
+   software version and detector type.
 5. Snapshot initial SERVAL and detector state.
    Read `/dashboard`, `/detector/info`, `/detector/health`,
    `/detector/layout`, `/detector/config`, and `/server/destination`. Durable
