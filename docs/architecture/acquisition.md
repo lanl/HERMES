@@ -296,7 +296,9 @@ logs to reproduce or debug the run.
     measurement ends, HERMES records an error, so the run is `failed`, when a
     `REF_ID_DISK_FULL` notice was raised or `DiskLimitReached` is still set:
     the raw files are missing the data SERVAL did not write. Every other
-    `severe` or `error` notice is recorded as a warning.
+    `severe` or `error` notice is recorded as a warning. Notices and
+    `DiskLimitReached` readings seen during polling are retained, so a failed
+    final dashboard read cannot hide a disk-full failure.
     Once the measurement has started, HERMES never leaves the camera recording
     on its own. When Ctrl-C or an error HERMES did not expect ends the run, it
     calls `/measurement/stop`, records the final state, the raw files written
