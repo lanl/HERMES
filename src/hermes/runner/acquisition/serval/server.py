@@ -4,6 +4,7 @@ import subprocess
 import time
 from pathlib import Path
 
+import httpx
 from loguru import logger
 
 from hermes.runner.acquisition.serval.client import ServalClient, ServalClientError
@@ -105,7 +106,8 @@ def wait_until_ready(
 
     Returns the running server's software version (from the dashboard) when it
     becomes ready. Readiness is a plain 200 answer; the dashboard is read
-    loosely here so a server whose JSON has extra fields still counts as ready.
+    loosely here, so a server whose reply has extra fields, or is not the JSON
+    HERMES expects, still counts as ready, with no version (None).
     Raises at once when `process` has exited (a wrong jar, a port already in
     use, a bad flag), with its exit code, and raises when the server does not
     answer within `timeout_s`. Both errors point to `serval-server.log` in
@@ -136,9 +138,7 @@ def wait_until_ready(
             response = None
 
         if response is not None:
-            software_version = (
-                response.json().get("Server", {}).get("SoftwareVersion")
-            )
+            software_version = _software_version(response)
             _SERVER_LOGGER.info(
                 "SERVAL is ready (version {software_version})",
                 event_type="acquisition.serval.server_ready",
@@ -162,6 +162,19 @@ def wait_until_ready(
             raise ServalServerError(msg)
 
         time.sleep(_POLL_INTERVAL_S)
+
+
+def _software_version(response: httpx.Response) -> str | None:
+    """The `Server.SoftwareVersion` in a dashboard reply, or None if absent.
+
+    HERMES reads the full dashboard right after this, so a reply it cannot
+    read fails there.
+    """
+    try:
+        version = response.json()["Server"]["SoftwareVersion"]
+    except (ValueError, KeyError, TypeError):
+        return None
+    return version if isinstance(version, str) else None
 
 
 def wait_until_detector_connected(

@@ -25,7 +25,10 @@ from hermes.runner.acquisition.serval.client import (
     ServalClientError,
     ServalConnectError,
 )
-from hermes.runner.acquisition.serval.destination import configure_raw_destination
+from hermes.runner.acquisition.serval.destination import (
+    configure_raw_destination,
+    raw_destination_points_to,
+)
 from hermes.runner.acquisition.serval.measurement import (
     build_effective_detector_config,
     run_measurement,
@@ -39,6 +42,7 @@ from hermes.runner.acquisition.serval.server import (
 )
 from hermes.runner.analysis.run import run_analysis
 from hermes.state.models.acquisition.serval import (
+    DestinationConfiguration,
     ServalAcquisitionState,
     ServalDashboardMeasurement,
     ServalServer,
@@ -57,8 +61,11 @@ _SERVER_READY_TIMEOUT_S = 60.0
 _DETECTOR_CONNECT_TIMEOUT_S = 30.0
 
 # The manual's maximum bias for normal operation, and a floor of free disk
-# space to warn below before a run writes raw data.
+# space to warn below before a run writes raw data. The bias SERVAL reads back
+# wanders a little around the set value (40.027 V seen at a 40 V setting), so
+# the warning allows that much above the maximum.
 _BIAS_MAX_V = 40.0
+_BIAS_READ_BACK_MARGIN_V = 0.1
 _MIN_FREE_DISK_BYTES = 1 * 1024**3
 
 
@@ -158,6 +165,7 @@ def run_serval_acquisition(state_manager: StateManager) -> None:
                 applied_destination,
                 justification="recorded the SERVAL raw destination after setting it",
             )
+            _refuse_wrong_destination(applied_destination, raw_data_directory)
         else:
             _record_existing_destination(client, state_manager)
 
@@ -531,7 +539,7 @@ def _preflight_for_writes(dashboard, snapshot, disk_directory: Path) -> None:
 
     health = snapshot.health
     bias = health.bias_voltage_v if health is not None else None
-    if bias is not None and bias > _BIAS_MAX_V:
+    if bias is not None and bias > _BIAS_MAX_V + _BIAS_READ_BACK_MARGIN_V:
         _ACQUISITION_LOGGER.warning(
             "Detector bias {bias} V exceeds the {maximum} V manual maximum",
             event_type="acquisition.serval.preflight_bias_high",
@@ -540,6 +548,38 @@ def _preflight_for_writes(dashboard, snapshot, disk_directory: Path) -> None:
         )
 
     _warn_if_low_disk(disk_directory)
+
+
+def _refuse_wrong_destination(
+    applied: DestinationConfiguration,
+    raw_data_directory: Path,
+) -> None:
+    """Fail when SERVAL does not report the raw destination HERMES just set.
+
+    SERVAL would then write the raw files somewhere else, or nowhere, and the
+    run would record none. The destination SERVAL reports is already in the
+    record by now, so the record shows where it points.
+    """
+    if raw_destination_points_to(applied, raw_data_directory):
+        _ACQUISITION_LOGGER.info(
+            "SERVAL destination confirmed at {directory}",
+            event_type="acquisition.serval.destination_confirmed",
+            directory=str(raw_data_directory),
+        )
+        return
+    applied_bases = [entry.base for entry in applied.raw]
+    error = (
+        f"HERMES set the raw destination to {raw_data_directory}, but SERVAL "
+        f"reports {applied_bases}, so the raw files would not go there"
+    )
+    _ACQUISITION_LOGGER.error(
+        "The SERVAL raw destination is wrong: {error}",
+        event_type="acquisition.serval.destination_mismatch",
+        error=error,
+        directory=str(raw_data_directory),
+        applied_bases=applied_bases,
+    )
+    raise ServalAcquisitionError(error)
 
 
 def _warn_if_low_disk(directory: Path) -> None:

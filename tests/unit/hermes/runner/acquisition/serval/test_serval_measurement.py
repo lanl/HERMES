@@ -499,6 +499,35 @@ def test_run_measurement_times_out_and_stops(
     assert any("did not finish" in warning for warning in outcome.result.warnings)
 
 
+def test_run_measurement_keeps_a_failed_stop_as_a_warning(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _install_fake_clock(monkeypatch)
+    raw = tmp_path / "raw"
+    raw.mkdir()
+    # The camera stays recording past the wait limit, and SERVAL then refuses
+    # the stop request.
+    client = _FakeClient(["DA_RECORDING"] * 1000, raw_dir=raw)
+
+    def refuse_to_stop() -> httpx.Response:
+        raise ServalClientError("SERVAL GET /measurement/stop could not be sent")
+
+    client.measurement_stop = refuse_to_stop
+    config = _config(
+        run_timing=ServalRunTiming(exposure_time_s=0.1, trigger_count=5)
+    )
+
+    outcome, _records, event_types = _run_and_capture_logs(client, config, raw)
+
+    assert outcome.result.stop_reason == "stopped_after_timeout"
+    assert outcome.exception is None
+    assert outcome.result.warnings[-1] == (
+        "could not stop the measurement cleanly: "
+        "SERVAL GET /measurement/stop could not be sent"
+    )
+    assert "acquisition.serval.measurement_stop_failed" in event_types
+
+
 _AUTO_TRIGGER_CONFIG = DetectorConfiguration(
     trigger_mode="AUTOTRIGSTART_TIMERSTOP",
     exposure_time_s=0.1,

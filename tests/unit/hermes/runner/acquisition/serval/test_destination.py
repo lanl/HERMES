@@ -5,6 +5,7 @@ from pathlib import Path
 from hermes.runner.acquisition.serval.destination import (
     _base_points_to,
     configure_raw_destination,
+    raw_destination_points_to,
 )
 from hermes.state.models.acquisition.serval import (
     DestinationConfiguration,
@@ -43,7 +44,7 @@ def test_configure_raw_destination_sets_creates_and_confirms(tmp_path: Path) -> 
     assert applied.raw[0].base == raw_dir.as_uri()
 
 
-def test_configure_raw_destination_returns_applied_even_on_mismatch(
+def test_configure_raw_destination_returns_what_serval_reports_on_mismatch(
     tmp_path: Path,
 ) -> None:
     raw_dir = tmp_path / "raw"
@@ -54,8 +55,24 @@ def test_configure_raw_destination_returns_applied_even_on_mismatch(
 
     applied = configure_raw_destination(client, raw_dir)
 
-    # Still returns what the server reported, so the record shows the truth.
+    # It returns what the server reported, so the run can record it and then
+    # refuse to measure.
     assert applied.raw[0].base == "file:///somewhere/else"
+    assert raw_destination_points_to(applied, raw_dir) is False
+
+
+def test_raw_destination_points_to_checks_every_raw_output(tmp_path: Path) -> None:
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    destination = DestinationConfiguration(
+        raw=[
+            ServalRawDestination(base="file:///somewhere/else"),
+            ServalRawDestination(base=raw_dir.as_uri()),
+        ]
+    )
+
+    assert raw_destination_points_to(destination, raw_dir) is True
+    assert raw_destination_points_to(DestinationConfiguration(), raw_dir) is False
 
 
 def test_base_points_to_accepts_equivalent_file_uris(tmp_path: Path) -> None:

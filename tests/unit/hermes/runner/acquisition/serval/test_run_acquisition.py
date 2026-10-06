@@ -4,6 +4,7 @@ from pathlib import Path
 
 import httpx
 import pytest
+from loguru import logger
 
 from hermes.runner.acquisition.serval import measurement as measurement_module
 from hermes.runner.acquisition.serval import run as run_module
@@ -60,6 +61,7 @@ class _FakeAcquisitionClient:
         dropped_frames: int = 0,
         raw_dir: Path | None = None,
         tpx3_names: tuple[str, ...] = (),
+        bias_voltage_v: float = 12.6,
     ) -> None:
         self.base_url = "http://serval.test"
         self._server_up = server_up
@@ -71,6 +73,7 @@ class _FakeAcquisitionClient:
         self._dropped_frames = dropped_frames
         self._raw_dir = raw_dir
         self._tpx3_names = tpx3_names
+        self._bias_voltage_v = bias_voltage_v
         self._put_destination: DestinationConfiguration | None = None
         self.put_detector_config_arg: DetectorConfiguration | None = None
         self.loaded: list[tuple[str, str]] = []
@@ -101,7 +104,7 @@ class _FakeAcquisitionClient:
     def get_detector_snapshot(self) -> DetectorSnapshot:
         return DetectorSnapshot(
             info=DetectorInfo(number_of_chips=1),
-            health=DetectorHealth(bias_voltage_v=12.6),
+            health=DetectorHealth(bias_voltage_v=self._bias_voltage_v),
         )
 
     def put_detector_config(self, config: DetectorConfiguration) -> None:
@@ -403,6 +406,88 @@ def test_configures_destination_and_calibration(
     ]
     # Configured, not completed: no measurement was taken.
     assert acquisition.status == "configured"
+
+
+def test_refuses_to_measure_when_serval_reports_another_destination(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    raw_dir = tmp_path / "raw"
+    client = _FakeAcquisitionClient(server_up=True, raw_dir=raw_dir)
+    _patch_client(monkeypatch, client)
+    elsewhere = DestinationConfiguration(
+        raw=[ServalRawDestination(base="file:///somewhere/else")]
+    )
+    client.get_destination = lambda: elsewhere  # type: ignore[method-assign]
+
+    state_manager = _state_manager(
+        tmp_path,
+        raw_data_directory=raw_dir,
+        run_timing=ServalRunTiming(exposure_time_s=0.1, trigger_count=5),
+    )
+    with pytest.raises(ServalAcquisitionError, match="somewhere/else"):
+        run_serval_acquisition(state_manager)
+
+    # The camera never started, and the record shows where SERVAL points.
+    assert client.started is False
+    acquisition = state_manager.get_state().acquisition
+    assert acquisition.destination.raw[0].base == "file:///somewhere/else"
+    assert client.closed is True
+
+
+@pytest.mark.parametrize(("bias_v", "warned"), [(40.027, False), (40.2, True)])
+def test_bias_warning_allows_a_small_read_back_margin(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    bias_v: float,
+    warned: bool,
+) -> None:
+    client = _FakeAcquisitionClient(server_up=True, bias_voltage_v=bias_v)
+    _patch_client(monkeypatch, client)
+    records: list[dict] = []
+    sink_id = logger.add(lambda message: records.append(message.record))
+    try:
+        run_serval_acquisition(
+            _state_manager(tmp_path, raw_data_directory=tmp_path / "raw")
+        )
+    finally:
+        logger.remove(sink_id)
+
+    event_types = [record["extra"].get("event_type") for record in records]
+    assert ("acquisition.serval.preflight_bias_high" in event_types) is warned
+
+
+def test_a_failed_measurement_start_fails_the_run(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    raw_dir = tmp_path / "raw"
+    client = _FakeAcquisitionClient(server_up=True, raw_dir=raw_dir)
+    _patch_client(monkeypatch, client)
+    monkeypatch.setattr(measurement_module.time, "sleep", lambda _s: None)
+
+    def refuse_to_start() -> httpx.Response:
+        raise ServalClientError(
+            "SERVAL GET /measurement/start returned 409: Detector is busy"
+        )
+
+    client.measurement_start = refuse_to_start  # type: ignore[method-assign]
+
+    state_manager = _state_manager(
+        tmp_path,
+        raw_data_directory=raw_dir,
+        run_timing=ServalRunTiming(exposure_time_s=0.1, trigger_count=5),
+    )
+    run_serval_acquisition(state_manager)
+
+    acquisition = state_manager.get_state().acquisition
+    assert acquisition.status == "failed"
+    assert acquisition.result.stop_reason == "failed"
+    assert acquisition.result.errors == [
+        "SERVAL GET /measurement/start returned 409: Detector is busy"
+    ]
+    # HERMES still asked SERVAL to stop, in case the camera did start.
+    assert client.stopped is True
 
 
 def test_preflight_refuses_to_configure_during_a_measurement(
