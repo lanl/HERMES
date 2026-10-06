@@ -285,6 +285,20 @@ logs to reproduce or debug the run.
     workflow fails, times out, or is explicitly stopped. Track frame count,
     dropped frames, elapsed time, time left, event rates, notifications, and
     health changes.
+    SERVAL clears its notices (`Server.Notifications`) when a measurement
+    starts, so every notice seen after the start belongs to this run. HERMES
+    logs each new notice once, as a warning when its type is `severe` or
+    `error`. When free disk space falls below SERVAL's limit (100 MB plus about
+    two seconds of writing), SERVAL stops writing raw files, sets
+    `DiskLimitReached` for that directory, and adds a `REF_ID_DISK_FULL` notice.
+    If space is freed later it resumes writing and adds a
+    `REF_ID_DISK_SPACE_FREED` notice, also of type `severe`. Once the
+    measurement ends, HERMES records an error, so the run is `failed`, when a
+    `REF_ID_DISK_FULL` notice was raised or `DiskLimitReached` is still set:
+    the raw files are missing the data SERVAL did not write. Every other
+    `severe` or `error` notice is recorded as a warning. Notices and
+    `DiskLimitReached` readings seen during polling are retained, so a failed
+    final dashboard read cannot hide a disk-full failure.
     Once the measurement has started, HERMES never leaves the camera recording
     on its own. When Ctrl-C or an error HERMES did not expect ends the run, it
     calls `/measurement/stop`, records the final state, the raw files written
@@ -295,6 +309,13 @@ logs to reproduce or debug the run.
 13. Snapshot final acquisition state.
     Read final `/dashboard` and `/detector/health` data. Record completion
     status, counts, warnings, errors, and any stop reason.
+    SERVAL counts a frame as dropped when it cannot build a complete frame from
+    the readout, and leaves it out of `FrameCount`. In the runs seen so far, a
+    dropped frame's raw file had no end-of-readout word (`0x71B0`). Its raw file
+    is still written. When the camera finishes on its own but SERVAL reports 0
+    frames, as when every frame was dropped, HERMES records an error and the
+    run is `failed`. When some frames were dropped, HERMES records a warning
+    and the run can still be `completed`.
 14. Discover and record output files.
     Locate raw `.tpx3` files and any preview or image files, then record paths,
     sizes, timestamps, and other useful metadata in the HERMES record.

@@ -17,7 +17,9 @@ from hermes.state.models.acquisition.serval import (
     ServalAcquisitionConfig,
     ServalDashboard,
     ServalDashboardDetector,
+    ServalDashboardDiskSpace,
     ServalDashboardMeasurement,
+    ServalDashboardNotification,
     ServalDashboardServer,
     ServalRunTiming,
     ServalServer,
@@ -50,12 +52,18 @@ class _FakeClient:
         statuses: list[str],
         *,
         frame_count: int = 5,
+        dropped_frames: int = 0,
+        notifications: tuple[ServalDashboardNotification, ...] = (),
+        disk_space: tuple[ServalDashboardDiskSpace, ...] = (),
         raw_dir: Path | None = None,
         tpx3_names: tuple[str, ...] = (),
         put_error: ServalClientError | None = None,
     ) -> None:
         self._statuses = list(statuses)
         self._frame_count = frame_count
+        self._dropped_frames = dropped_frames
+        self._notifications = list(notifications)
+        self._disk_space = list(disk_space)
         self._raw_dir = raw_dir
         self._tpx3_names = tpx3_names
         self._put_error = put_error
@@ -89,9 +97,15 @@ class _FakeClient:
     def get_dashboard(self) -> ServalDashboard:
         status = self._statuses.pop(0) if self._statuses else "DA_IDLE"
         return ServalDashboard(
-            server=ServalDashboardServer(software_version="3.3.0"),
+            server=ServalDashboardServer(
+                software_version="3.3.0",
+                notifications=self._notifications,
+                disk_space=self._disk_space,
+            ),
             measurement=ServalDashboardMeasurement(
-                status=status, frame_count=self._frame_count, dropped_frames=0
+                status=status,
+                frame_count=self._frame_count,
+                dropped_frames=self._dropped_frames,
             ),
             detector=ServalDashboardDetector(detector_type="Tpx3"),
         )
@@ -610,6 +624,247 @@ def test_run_measurement_reports_no_activity_when_never_recording(
     outcome = run_measurement(client, config, raw)
 
     assert outcome.result.stop_reason == "no_activity"
+
+
+def test_run_measurement_fails_when_every_frame_was_dropped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _install_fake_clock(monkeypatch)
+    raw = tmp_path / "raw"
+    # Seen live: a 3-frame run whose files had no end-of-readout word came back
+    # with 0 frames and 3 dropped.
+    client = _FakeClient(
+        ["DA_RECORDING", "DA_IDLE"],
+        frame_count=0,
+        dropped_frames=3,
+        raw_dir=raw,
+        tpx3_names=("a.tpx3", "b.tpx3", "c.tpx3"),
+    )
+    config = _config(
+        run_timing=ServalRunTiming(exposure_time_s=0.1, trigger_count=3)
+    )
+
+    outcome = run_measurement(client, config, raw)
+
+    # The camera finished on its own, but with no complete frames: an error,
+    # with the raw files still recorded.
+    assert outcome.result.stop_reason == "completed"
+    assert outcome.result.frames == 0
+    assert outcome.result.dropped_frames == 3
+    assert outcome.result.errors == [
+        "the measurement finished with no complete frames: SERVAL reports "
+        "0 frames and 3 dropped"
+    ]
+    assert len(outcome.result.output_files) == 3
+
+
+def test_run_measurement_warns_on_some_dropped_frames(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _install_fake_clock(monkeypatch)
+    raw = tmp_path / "raw"
+    client = _FakeClient(
+        ["DA_RECORDING", "DA_IDLE"], frame_count=1, dropped_frames=1, raw_dir=raw
+    )
+    config = _config(
+        run_timing=ServalRunTiming(exposure_time_s=0.1, trigger_count=5)
+    )
+
+    outcome = run_measurement(client, config, raw)
+
+    assert outcome.result.stop_reason == "completed"
+    assert outcome.result.errors == []
+    assert outcome.result.warnings == [
+        "SERVAL reports 1 dropped frame (frames whose readout did not complete) "
+        "and 1 complete frame"
+    ]
+
+
+_DISK_FULL_NOTICE = ServalDashboardNotification(
+    type="severe",
+    domain="server",
+    message="Stopped writing to file channel because free disk space limit "
+    "was reached (100.0 MB) in directory: /data/raw",
+    reference_id="REF_ID_DISK_FULL",
+)
+_DISK_SPACE_FREED_NOTICE = ServalDashboardNotification(
+    type="severe",
+    domain="server",
+    message="Noticed freed disk space of directory: /data/raw. Resuming "
+    "writing to file channel.",
+    reference_id="REF_ID_DISK_SPACE_FREED",
+)
+
+
+def test_run_measurement_fails_when_serval_runs_out_of_disk_space(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _install_fake_clock(monkeypatch)
+    raw = tmp_path / "raw"
+    # Space was freed again before the end, so DiskLimitReached is false, but
+    # the raw files still miss the frames SERVAL did not write.
+    client = _FakeClient(
+        ["DA_RECORDING", "DA_IDLE"],
+        notifications=(_DISK_FULL_NOTICE, _DISK_SPACE_FREED_NOTICE),
+        disk_space=(
+            ServalDashboardDiskSpace(path="/data/raw", disk_limit_reached=False),
+        ),
+        raw_dir=raw,
+    )
+    config = _config(
+        run_timing=ServalRunTiming(exposure_time_s=0.1, trigger_count=5)
+    )
+
+    records: list[dict[str, object]] = []
+    sink_id = logger.add(
+        lambda message: records.append(message.record),
+        filter=lambda record: record["extra"].get("event_type")
+        == "acquisition.serval.notification",
+    )
+    try:
+        outcome = run_measurement(client, config, raw)
+    finally:
+        logger.remove(sink_id)
+
+    assert outcome.result.stop_reason == "completed"
+    assert outcome.result.errors == [
+        "SERVAL ran out of disk space and stopped writing raw files: "
+        + _DISK_FULL_NOTICE.message
+    ]
+    # The notice that space was freed is kept as a warning.
+    assert outcome.result.warnings == [
+        "SERVAL severe notice: " + _DISK_SPACE_FREED_NOTICE.message
+    ]
+    # Each notice was logged once while the measurement ran, though every
+    # dashboard poll returned both.
+    assert [record["extra"]["reference_id"] for record in records] == [
+        "REF_ID_DISK_FULL",
+        "REF_ID_DISK_SPACE_FREED",
+    ]
+
+
+def test_run_measurement_keeps_disk_full_notice_when_final_dashboard_read_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _install_fake_clock(monkeypatch)
+    raw = tmp_path / "raw"
+    client = _FakeClient(
+        ["DA_RECORDING", "DA_IDLE"],
+        notifications=(_DISK_FULL_NOTICE,),
+        raw_dir=raw,
+    )
+    config = _config(
+        run_timing=ServalRunTiming(exposure_time_s=0.1, trigger_count=5)
+    )
+    read_dashboard = client.get_dashboard
+    dashboard_reads = 0
+
+    def get_dashboard() -> ServalDashboard:
+        nonlocal dashboard_reads
+        dashboard_reads += 1
+        if dashboard_reads == 3:
+            raise ServalClientError("final dashboard unavailable")
+        return read_dashboard()
+
+    client.get_dashboard = get_dashboard
+
+    outcome = run_measurement(client, config, raw)
+
+    assert outcome.final_dashboard is None
+    assert outcome.result.errors == [
+        "SERVAL ran out of disk space and stopped writing raw files: "
+        + _DISK_FULL_NOTICE.message
+    ]
+    assert outcome.result.warnings == [
+        "could not read the final detector state: final dashboard unavailable"
+    ]
+
+
+def test_run_measurement_keeps_disk_limit_when_final_dashboard_read_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _install_fake_clock(monkeypatch)
+    raw = tmp_path / "raw"
+    client = _FakeClient(
+        ["DA_RECORDING", "DA_IDLE"],
+        disk_space=(
+            ServalDashboardDiskSpace(path="/data/raw", disk_limit_reached=True),
+        ),
+        raw_dir=raw,
+    )
+    config = _config(
+        run_timing=ServalRunTiming(exposure_time_s=0.1, trigger_count=5)
+    )
+    read_dashboard = client.get_dashboard
+    dashboard_reads = 0
+
+    def get_dashboard() -> ServalDashboard:
+        nonlocal dashboard_reads
+        dashboard_reads += 1
+        if dashboard_reads == 3:
+            raise ServalClientError("final dashboard unavailable")
+        return read_dashboard()
+
+    client.get_dashboard = get_dashboard
+
+    outcome = run_measurement(client, config, raw)
+
+    assert outcome.final_dashboard is None
+    assert outcome.result.errors == [
+        "SERVAL ran out of disk space and stopped writing raw files: "
+        "DiskLimitReached is set for /data/raw"
+    ]
+
+
+def test_run_measurement_fails_when_the_disk_limit_is_reached(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _install_fake_clock(monkeypatch)
+    raw = tmp_path / "raw"
+    client = _FakeClient(
+        ["DA_RECORDING", "DA_IDLE"],
+        disk_space=(
+            ServalDashboardDiskSpace(path="/data/raw", disk_limit_reached=True),
+        ),
+        raw_dir=raw,
+    )
+    config = _config(
+        run_timing=ServalRunTiming(exposure_time_s=0.1, trigger_count=5)
+    )
+
+    outcome = run_measurement(client, config, raw)
+
+    assert outcome.result.errors == [
+        "SERVAL ran out of disk space and stopped writing raw files: "
+        "DiskLimitReached is set for /data/raw"
+    ]
+
+
+def test_run_measurement_keeps_info_notices_out_of_the_result(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _install_fake_clock(monkeypatch)
+    raw = tmp_path / "raw"
+    client = _FakeClient(
+        ["DA_RECORDING", "DA_IDLE"],
+        notifications=(
+            ServalDashboardNotification(
+                type="info", domain="detector", message="Detector connected"
+            ),
+        ),
+        disk_space=(
+            ServalDashboardDiskSpace(path="/data/raw", disk_limit_reached=False),
+        ),
+        raw_dir=raw,
+    )
+    config = _config(
+        run_timing=ServalRunTiming(exposure_time_s=0.1, trigger_count=5)
+    )
+
+    outcome = run_measurement(client, config, raw)
+
+    assert outcome.result.errors == []
+    assert outcome.result.warnings == []
 
 
 def test_run_measurement_calls_on_poll_each_poll(
