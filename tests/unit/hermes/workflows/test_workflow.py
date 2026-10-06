@@ -596,6 +596,33 @@ def test_run_logs_a_completed_acquisition(
     assert acquisition_line["errors"] == []
 
 
+def test_run_logs_no_times_for_an_acquisition_that_took_no_measurement(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workflow = Workflow(_acquisition_record(tmp_path))
+
+    def connect_only_acquisition(state_manager: StateManager) -> None:
+        _set(state_manager, "acquisition.status", "completed")
+
+    monkeypatch.setattr(
+        "hermes.workflows.workflow.run_serval_acquisition",
+        connect_only_acquisition,
+    )
+
+    workflow.run()
+
+    log_file = tmp_path / "HERMES-workflow.jsonl"
+    lines = [json.loads(line) for line in log_file.read_text().splitlines()]
+    acquisition_line = lines[2]
+    assert acquisition_line["stage"] == "acquisition"
+    assert acquisition_line["status"] == "success"
+    assert acquisition_line["start"] is None
+    assert acquisition_line["stop"] is None
+    assert acquisition_line["stop_reason"] is None
+    assert acquisition_line["frames"] is None
+
+
 def test_run_analyzes_and_fails_the_log_after_a_failed_acquisition(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

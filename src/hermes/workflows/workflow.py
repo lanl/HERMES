@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from pathlib import Path
 
 from loguru import logger
@@ -45,6 +46,11 @@ def _relative(path: Path) -> str:
         return str(resolved.relative_to(Path.cwd()))
     except ValueError:
         return str(path)
+
+
+def _iso_or_none(time: datetime | None) -> str | None:
+    """Write a time as ISO text, or None when it was never recorded."""
+    return time.isoformat() if time is not None else None
 
 
 class Workflow:
@@ -230,13 +236,12 @@ class Workflow:
         acquisition without opening the record. A status of `planned` means the
         acquisition ended before it recorded a status. Runs that take no
         measurement (connect-only or configure-only) leave the measurement
-        fields empty, and their start and stop are the time the log is written.
+        fields, including start and stop, empty.
         """
         acquisition = self._state_manager.get_state().acquisition
         if acquisition is None:
             return []
         result = acquisition.result or ServalAcquisitionResult()
-        now = utc_now()
         return [
             {
                 "event": "stage_completed",
@@ -248,8 +253,8 @@ class Workflow:
                 "frames": result.frames,
                 "dropped_frames": result.dropped_frames,
                 "errors": result.errors,
-                "start": (result.started_at or now).isoformat(),
-                "stop": (result.completed_at or now).isoformat(),
+                "start": _iso_or_none(result.started_at),
+                "stop": _iso_or_none(result.completed_at),
             }
         ]
 

@@ -79,7 +79,8 @@ run early; the error is then raised again.
    `configured`; `planned` means the acquisition ended before it saved a
    status), `stop_reason`, `frames`, `dropped_frames`, and `errors` from the
    measurement result, and the measurement's `start` and `stop` times. Runs
-   that take no measurement leave those fields empty.
+   that take no measurement leave those fields empty (`null`, or `[]` for
+   `errors`).
 4. One `stage_completed` line per finished analysis file, in stage then file
    order, with its `status` (`success`, `skipped`, or `failed`) and the path to
    its summary.
