@@ -624,6 +624,9 @@ def test_run_measurement_reports_no_activity_when_never_recording(
     outcome = run_measurement(client, config, raw)
 
     assert outcome.result.stop_reason == "no_activity"
+    # SERVAL answers a stop with "No measurement is running." when the camera
+    # is idle, so HERMES asks anyway, in case the camera did start.
+    assert client.stopped is True
 
 
 def test_run_measurement_fails_when_every_frame_was_dropped(
@@ -962,3 +965,199 @@ def test_build_effective_detector_config_refuses_a_missing_file(
 
     with pytest.raises(ValueError, match="cannot read detector_config_file"):
         build_effective_detector_config(config)
+
+
+def _fail_dashboard_reads(
+    client: _FakeClient, failing, *, hang_s: float = 0.0
+) -> None:
+    """Make the dashboard reads whose 1-based number `failing` accepts fail.
+
+    Each failed read first waits `hang_s` on the fake clock, like a read to a
+    SERVAL that hangs until the client's timeout.
+    """
+    read_dashboard = client.get_dashboard
+    reads = 0
+
+    def get_dashboard() -> ServalDashboard:
+        nonlocal reads
+        reads += 1
+        if failing(reads):
+            # The fake clock's sleep moves the time forward.
+            measurement_module.time.sleep(hang_s)
+            raise ServalClientError("SERVAL GET /dashboard could not be sent")
+        return read_dashboard()
+
+    client.get_dashboard = get_dashboard
+
+
+def _run_and_capture_logs(client, config, raw):
+    records: list[dict] = []
+    sink_id = logger.add(lambda message: records.append(message.record))
+    try:
+        outcome = run_measurement(client, config, raw)
+    finally:
+        logger.remove(sink_id)
+    event_types = [record["extra"].get("event_type") for record in records]
+    return outcome, records, event_types
+
+
+def test_run_measurement_ends_as_lost_contact_when_serval_stops_answering(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _install_fake_clock(monkeypatch)
+    raw = tmp_path / "raw"
+    client = _FakeClient(["DA_RECORDING"] * 1000, raw_dir=raw)
+    # Reads are 0.5 s apart; from the fifth (at 2 s) SERVAL never answers.
+    _fail_dashboard_reads(client, lambda read: read >= 5)
+    config = _config(
+        run_timing=ServalRunTiming(
+            exposure_time_s=0.1, trigger_count=5, max_wait_s=3600.0
+        )
+    )
+
+    outcome, records, event_types = _run_and_capture_logs(client, config, raw)
+
+    # HERMES gives up after 60 s with no answer, not at the hour-long wait
+    # limit, and does not blame the camera for not finishing.
+    assert outcome.result.stop_reason == "lost_contact"
+    assert client.stopped is True
+    assert outcome.result.warnings[0].startswith(
+        "lost contact with SERVAL: it did not answer for 60 s"
+    )
+    assert not any(
+        "did not finish" in warning for warning in outcome.result.warnings
+    )
+    assert event_types.count("acquisition.serval.not_answering") == 1
+    not_answering = records[event_types.index("acquisition.serval.not_answering")]
+    assert not_answering["level"].name == "WARNING"
+    assert "keeps trying for up to 50 s more" in not_answering["message"]
+    lost = records[event_types.index("acquisition.serval.lost_contact")]
+    assert lost["level"].name == "ERROR"
+
+
+def test_run_measurement_counts_the_time_a_hung_read_waits(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _install_fake_clock(monkeypatch)
+    raw = tmp_path / "raw"
+    client = _FakeClient(["DA_RECORDING"] * 1000, raw_dir=raw)
+    # From the third read (sent at 1 s), each read hangs for the client's 10 s
+    # timeout and then fails, so reads are sent at 1, 11.5, 22, ... s.
+    _fail_dashboard_reads(client, lambda read: read >= 3, hang_s=10.0)
+    config = _config(
+        run_timing=ServalRunTiming(
+            exposure_time_s=0.1, trigger_count=5, max_wait_s=3600.0
+        )
+    )
+
+    outcome, records, event_types = _run_and_capture_logs(client, config, raw)
+
+    # The time counts from when the first failed read was sent, so the wait
+    # inside a hung read counts: HERMES warns once the first read fails, and
+    # ends the run after six, at 62.5 s with no answer.
+    not_answering = records[event_types.index("acquisition.serval.not_answering")]
+    assert not_answering["extra"]["failed_reads"] == 1
+    assert not_answering["extra"]["no_answer_s"] == 10.0
+    lost = records[event_types.index("acquisition.serval.lost_contact")]
+    assert lost["extra"]["failed_reads"] == 6
+    assert lost["extra"]["no_answer_s"] == 62.5
+    assert outcome.result.stop_reason == "lost_contact"
+
+
+def test_run_measurement_does_not_call_an_unreachable_serval_idle(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _install_fake_clock(monkeypatch)
+    raw = tmp_path / "raw"
+    client = _FakeClient(["DA_RECORDING"] * 1000, raw_dir=raw)
+    # SERVAL never answers a dashboard read, so HERMES cannot see the camera.
+    _fail_dashboard_reads(client, lambda read: True)
+    config = _config(
+        run_timing=ServalRunTiming(
+            exposure_time_s=0.1, trigger_count=5, max_wait_s=3600.0
+        )
+    )
+
+    outcome, _records, _event_types = _run_and_capture_logs(client, config, raw)
+
+    assert outcome.result.stop_reason == "lost_contact"
+    assert client.stopped is True
+    assert not any(
+        "never left the idle state" in warning
+        for warning in outcome.result.warnings
+    )
+
+
+def test_run_measurement_continues_when_serval_answers_again(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _install_fake_clock(monkeypatch)
+    raw = tmp_path / "raw"
+    client = _FakeClient(["DA_RECORDING"] * 5 + ["DA_IDLE"], raw_dir=raw)
+    # Reads 3 to 42 (sent from 1 s to 20.5 s) fail; read 43 at 21 s answers.
+    _fail_dashboard_reads(client, lambda read: 3 <= read <= 42)
+    config = _config(
+        run_timing=ServalRunTiming(
+            exposure_time_s=0.1, trigger_count=5, max_wait_s=3600.0
+        )
+    )
+
+    outcome, _records, event_types = _run_and_capture_logs(client, config, raw)
+
+    assert outcome.result.stop_reason == "completed"
+    assert outcome.result.errors == []
+    assert outcome.result.warnings == [
+        "SERVAL did not answer for 20 s (40 dashboard reads in a row failed) "
+        "during the measurement; it answered again and the measurement "
+        "continued"
+    ]
+    assert "acquisition.serval.not_answering" in event_types
+
+
+def test_run_measurement_does_not_warn_on_a_short_gap_in_answers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _install_fake_clock(monkeypatch)
+    raw = tmp_path / "raw"
+    client = _FakeClient(["DA_RECORDING"] * 5 + ["DA_IDLE"], raw_dir=raw)
+    # Reads 3 to 10 (4 s) fail, under the 10 s HERMES waits before warning.
+    _fail_dashboard_reads(client, lambda read: 3 <= read <= 10)
+    config = _config(
+        run_timing=ServalRunTiming(exposure_time_s=0.1, trigger_count=5)
+    )
+
+    outcome, _records, event_types = _run_and_capture_logs(client, config, raw)
+
+    assert outcome.result.stop_reason == "completed"
+    assert outcome.result.warnings == []
+    assert "acquisition.serval.not_answering" not in event_types
+
+
+def test_run_measurement_ends_as_lost_contact_at_the_wait_limit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _install_fake_clock(monkeypatch)
+    raw = tmp_path / "raw"
+    client = _FakeClient(["DA_RECORDING"] * 1000, raw_dir=raw)
+    # SERVAL stops answering at 5 s; the 30 s wait limit comes before the
+    # 60 s HERMES would otherwise wait, so the run ends then.
+    _fail_dashboard_reads(client, lambda read: read >= 11)
+    config = _config(
+        run_timing=ServalRunTiming(
+            exposure_time_s=0.1, trigger_count=5, max_wait_s=30.0
+        )
+    )
+
+    outcome, records, event_types = _run_and_capture_logs(client, config, raw)
+
+    # The warning at 15 s gives the 15 s left until the wait limit, not the
+    # 50 s left until HERMES would give up on its own.
+    not_answering = records[event_types.index("acquisition.serval.not_answering")]
+    assert "keeps trying for up to 15 s more" in not_answering["message"]
+    assert outcome.result.stop_reason == "lost_contact"
+    assert outcome.result.warnings[0].startswith(
+        "lost contact with SERVAL: it did not answer for 25 s"
+    )
+    assert not any(
+        "did not finish" in warning for warning in outcome.result.warnings
+    )
