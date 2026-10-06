@@ -287,10 +287,11 @@ logs to reproduce or debug the run.
     Re-read `/detector/config` and `/server/destination`, compare them with the
     requested plan, and update the HERMES record with the applied values. Record
     detector configuration once in state, then use concise summaries, file
-    hashes, or state paths in operational logs. When the raw destination SERVAL
-    reports does not point at `raw_data_dir`, HERMES records what SERVAL
-    reports and fails before starting the measurement, since the raw files
-    would go somewhere else.
+    hashes, or state paths in operational logs. HERMES sets one raw output,
+    writing to `raw_data_dir`. When SERVAL reports anything else, such as
+    another directory or an extra raw output, HERMES records what SERVAL
+    reports and fails before starting the measurement, since raw files would
+    go somewhere HERMES did not ask for.
 11. Start measurement.
     Call `/measurement/start` only after the applied configuration and
     destinations have been validated.

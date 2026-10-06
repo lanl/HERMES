@@ -61,17 +61,24 @@ def test_configure_raw_destination_returns_what_serval_reports_on_mismatch(
     assert raw_destination_points_to(applied, raw_dir) is False
 
 
-def test_raw_destination_points_to_checks_every_raw_output(tmp_path: Path) -> None:
+def test_raw_destination_points_to_wants_only_the_one_raw_output(
+    tmp_path: Path,
+) -> None:
     raw_dir = tmp_path / "raw"
     raw_dir.mkdir()
-    destination = DestinationConfiguration(
-        raw=[
-            ServalRawDestination(base="file:///somewhere/else"),
-            ServalRawDestination(base=raw_dir.as_uri()),
-        ]
-    )
+    ours = ServalRawDestination(base=raw_dir.as_uri())
+    elsewhere = ServalRawDestination(base="file:///somewhere/else")
 
-    assert raw_destination_points_to(destination, raw_dir) is True
+    assert raw_destination_points_to(
+        DestinationConfiguration(raw=[ours]), raw_dir
+    ) is True
+    # An extra raw output would also write raw data somewhere else.
+    assert raw_destination_points_to(
+        DestinationConfiguration(raw=[elsewhere, ours]), raw_dir
+    ) is False
+    assert raw_destination_points_to(
+        DestinationConfiguration(raw=[ours, ours]), raw_dir
+    ) is False
     assert raw_destination_points_to(DestinationConfiguration(), raw_dir) is False
 
 

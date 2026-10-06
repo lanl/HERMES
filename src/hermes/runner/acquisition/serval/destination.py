@@ -65,9 +65,14 @@ def raw_destination_points_to(
     destination: DestinationConfiguration,
     directory: Path,
 ) -> bool:
-    """True when one of the destination's raw outputs writes to `directory`."""
-    target = directory.resolve()
-    return any(_base_points_to(entry.base, target) for entry in destination.raw)
+    """True when the destination has one raw output, and it writes to `directory`.
+
+    `configure_raw_destination` sets exactly one raw output, so a read-back
+    with more would also write raw data somewhere HERMES did not ask for.
+    """
+    if len(destination.raw) != 1:
+        return False
+    return _base_points_to(destination.raw[0].base, directory.resolve())
 
 
 def _base_points_to(base: str, target: Path) -> bool:

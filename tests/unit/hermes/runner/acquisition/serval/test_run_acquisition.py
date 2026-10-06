@@ -408,17 +408,21 @@ def test_configures_destination_and_calibration(
     assert acquisition.status == "configured"
 
 
+@pytest.mark.parametrize("also_ours", [False, True])
 def test_refuses_to_measure_when_serval_reports_another_destination(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    also_ours: bool,
 ) -> None:
     raw_dir = tmp_path / "raw"
     client = _FakeAcquisitionClient(server_up=True, raw_dir=raw_dir)
     _patch_client(monkeypatch, client)
-    elsewhere = DestinationConfiguration(
-        raw=[ServalRawDestination(base="file:///somewhere/else")]
-    )
-    client.get_destination = lambda: elsewhere  # type: ignore[method-assign]
+    # SERVAL reports another directory, either instead of ours or as well.
+    raw_outputs = [ServalRawDestination(base="file:///somewhere/else")]
+    if also_ours:
+        raw_outputs.append(ServalRawDestination(base=raw_dir.as_uri()))
+    reported = DestinationConfiguration(raw=raw_outputs)
+    client.get_destination = lambda: reported  # type: ignore[method-assign]
 
     state_manager = _state_manager(
         tmp_path,

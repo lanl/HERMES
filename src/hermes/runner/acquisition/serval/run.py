@@ -556,9 +556,10 @@ def _refuse_wrong_destination(
 ) -> None:
     """Fail when SERVAL does not report the raw destination HERMES just set.
 
-    SERVAL would then write the raw files somewhere else, or nowhere, and the
-    run would record none. The destination SERVAL reports is already in the
-    record by now, so the record shows where it points.
+    HERMES sets one raw output, writing to the raw data directory. Any other
+    read-back means SERVAL would write raw files somewhere else as well, or
+    instead. The destination SERVAL reports is already in the record by now,
+    so the record shows where it points.
     """
     if raw_destination_points_to(applied, raw_data_directory):
         _ACQUISITION_LOGGER.info(
@@ -570,7 +571,7 @@ def _refuse_wrong_destination(
     applied_bases = [entry.base for entry in applied.raw]
     error = (
         f"HERMES set the raw destination to {raw_data_directory}, but SERVAL "
-        f"reports {applied_bases}, so the raw files would not go there"
+        f"reports {applied_bases}, so the raw files would not go only there"
     )
     _ACQUISITION_LOGGER.error(
         "The SERVAL raw destination is wrong: {error}",
