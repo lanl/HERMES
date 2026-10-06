@@ -664,7 +664,7 @@ def test_run_measurement_warns_on_some_dropped_frames(
     _install_fake_clock(monkeypatch)
     raw = tmp_path / "raw"
     client = _FakeClient(
-        ["DA_RECORDING", "DA_IDLE"], frame_count=4, dropped_frames=1, raw_dir=raw
+        ["DA_RECORDING", "DA_IDLE"], frame_count=1, dropped_frames=1, raw_dir=raw
     )
     config = _config(
         run_timing=ServalRunTiming(exposure_time_s=0.1, trigger_count=5)
@@ -674,7 +674,10 @@ def test_run_measurement_warns_on_some_dropped_frames(
 
     assert outcome.result.stop_reason == "completed"
     assert outcome.result.errors == []
-    assert any("1 dropped frames" in warning for warning in outcome.result.warnings)
+    assert outcome.result.warnings == [
+        "SERVAL reports 1 dropped frame (frames whose readout did not complete) "
+        "and 1 complete frame"
+    ]
 
 
 _DISK_FULL_NOTICE = ServalDashboardNotification(

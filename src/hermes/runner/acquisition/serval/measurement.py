@@ -588,9 +588,11 @@ def _check_frames(
             dropped_frames=dropped,
         )
     elif dropped > 0:
+        dropped_noun = "frame" if dropped == 1 else "frames"
+        complete_noun = "frame" if frames == 1 else "frames"
         warning = (
-            f"SERVAL reports {dropped} dropped frames (frames whose readout did "
-            f"not complete) and {frames} complete frames"
+            f"SERVAL reports {dropped} dropped {dropped_noun} (frames whose "
+            f"readout did not complete) and {frames} complete {complete_noun}"
         )
         warnings.append(warning)
         _MEASUREMENT_LOGGER.warning(
