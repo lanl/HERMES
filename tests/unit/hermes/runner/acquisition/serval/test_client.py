@@ -283,9 +283,19 @@ def test_transport_failure_raises_serval_client_error() -> None:
             client.get("/dashboard")
 
 
-def test_refused_connection_raises_serval_connect_error() -> None:
+@pytest.mark.parametrize(
+    "connect_failure",
+    [
+        httpx.ConnectError("connection refused"),
+        httpx.ConnectTimeout("connecting timed out"),
+    ],
+)
+def test_failure_to_connect_raises_serval_connect_error(
+    connect_failure: httpx.TransportError,
+) -> None:
     def handler(request: httpx.Request) -> httpx.Response:
-        raise httpx.ConnectError("connection refused", request=request)
+        connect_failure.request = request
+        raise connect_failure
 
     with _client_with_handler(handler) as client:  # noqa: SIM117
         with pytest.raises(ServalConnectError, match="could not be sent"):
