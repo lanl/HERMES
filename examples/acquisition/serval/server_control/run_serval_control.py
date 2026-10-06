@@ -36,7 +36,9 @@ def main(config_path: Path = DEFAULT_YAML_PATH) -> None:
     process = start_serval(serval, log_directory)
     client = ServalClient(serval.url)
     try:
-        software_version = wait_until_ready(client, timeout_s=60.0)
+        software_version = wait_until_ready(
+            client, process, log_directory, timeout_s=60.0
+        )
         print(f"SERVAL is up. Software version: {software_version}")
     finally:
         exit_code = stop_serval(client, process)

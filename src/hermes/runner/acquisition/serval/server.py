@@ -14,6 +14,9 @@ _SERVER_LOGGER = logger.bind(domain="acquisition", backend="serval", step="serva
 # How often the readiness poll asks the server whether it is up yet.
 _POLL_INTERVAL_S = 0.5
 
+# start_serval writes the server's own output here, in the log directory.
+_SERVER_LOG_NAME = "serval-server.log"
+
 
 class ServalServerError(Exception):
     """Raised when HERMES cannot launch, reach, or stop the SERVAL server."""
@@ -59,7 +62,7 @@ def start_serval(serval: ServalServer, log_dir: Path) -> subprocess.Popen[bytes]
         raise ServalServerError(msg)
 
     log_dir.mkdir(parents=True, exist_ok=True)
-    server_log = log_dir / "serval-server.log"
+    server_log = log_dir / _SERVER_LOG_NAME
     command = _build_launch_command(serval)
 
     _SERVER_LOGGER.info(
@@ -91,15 +94,42 @@ def start_serval(serval: ServalServer, log_dir: Path) -> subprocess.Popen[bytes]
     return process
 
 
-def wait_until_ready(client: ServalClient, *, timeout_s: float = 30.0) -> str | None:
-    """Poll `GET /dashboard` until the server answers, or raise on timeout.
+def wait_until_ready(
+    client: ServalClient,
+    process: subprocess.Popen[bytes],
+    log_dir: Path,
+    *,
+    timeout_s: float = 30.0,
+) -> str | None:
+    """Poll `GET /dashboard` until the SERVAL HERMES started answers.
 
     Returns the running server's software version (from the dashboard) when it
     becomes ready. Readiness is a plain 200 answer; the dashboard is read
     loosely here so a server whose JSON has extra fields still counts as ready.
+    Raises at once when `process` has exited (a wrong jar, a port already in
+    use, a bad flag), with its exit code, and raises when the server does not
+    answer within `timeout_s`. Both errors point to `serval-server.log` in
+    `log_dir`, where `start_serval` writes the server's output. This does not
+    stop the process; the caller does.
     """
+    server_log = log_dir / _SERVER_LOG_NAME
     deadline = time.monotonic() + timeout_s
     while True:
+        exit_code = process.poll()
+        if exit_code is not None:
+            msg = (
+                f"SERVAL exited (exit code {exit_code}) before it answered at "
+                f"{client.base_url}; its output is in {server_log}"
+            )
+            _SERVER_LOGGER.error(
+                msg,
+                event_type="acquisition.serval.server_exited",
+                url=client.base_url,
+                exit_code=exit_code,
+                server_log=str(server_log),
+            )
+            raise ServalServerError(msg)
+
         try:
             response = client.get("/dashboard")
         except ServalClientError:
@@ -120,13 +150,14 @@ def wait_until_ready(client: ServalClient, *, timeout_s: float = 30.0) -> str | 
         if time.monotonic() >= deadline:
             msg = (
                 f"SERVAL did not become ready within {timeout_s} s "
-                f"at {client.base_url}"
+                f"at {client.base_url}; its output is in {server_log}"
             )
             _SERVER_LOGGER.error(
                 msg,
                 event_type="acquisition.serval.server_ready_timeout",
                 url=client.base_url,
                 timeout_s=timeout_s,
+                server_log=str(server_log),
             )
             raise ServalServerError(msg)
 
@@ -189,9 +220,20 @@ def stop_serval(
 
     First `GET /server/shutdown` asks the server to stop cleanly. Whether or
     not that call answers, HERMES then waits for the process to exit and
-    terminates (and finally kills) it if it is still alive. Returns the
-    process exit code.
+    terminates (and finally kills) it if it is still alive. When the process
+    has already exited, no shutdown request is sent: whatever answers at the
+    URL then is not the server HERMES started. Returns the process exit code.
     """
+    exit_code = process.poll()
+    if exit_code is not None:
+        _SERVER_LOGGER.info(
+            "SERVAL had already exited (exit code {exit_code}); not sending a "
+            "shutdown request",
+            event_type="acquisition.serval.server_already_exited",
+            exit_code=exit_code,
+        )
+        return exit_code
+
     try:
         client.get("/server/shutdown")
     except ServalClientError as error:

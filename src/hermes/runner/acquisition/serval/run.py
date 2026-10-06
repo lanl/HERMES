@@ -20,7 +20,11 @@ from pathlib import Path
 from loguru import logger
 
 from hermes.runner.acquisition.serval.calibration import load_calibration
-from hermes.runner.acquisition.serval.client import ServalClient, ServalClientError
+from hermes.runner.acquisition.serval.client import (
+    ServalClient,
+    ServalClientError,
+    ServalConnectError,
+)
 from hermes.runner.acquisition.serval.destination import configure_raw_destination
 from hermes.runner.acquisition.serval.measurement import (
     build_effective_detector_config,
@@ -100,7 +104,13 @@ def run_serval_acquisition(state_manager: StateManager) -> None:
     client = ServalClient(serval.url)
     process: subprocess.Popen[bytes] | None = None
     try:
-        process = _ensure_serval_running(client, serval, log_dir)
+        process = _start_serval_unless_running(client, serval, log_dir)
+        if process is not None:
+            # `process` is set before the wait, so the `finally` below also
+            # stops a SERVAL that exits or never becomes ready.
+            wait_until_ready(
+                client, process, log_dir, timeout_s=_SERVER_READY_TIMEOUT_S
+            )
         wait_until_detector_connected(client, timeout_s=_DETECTOR_CONNECT_TIMEOUT_S)
 
         dashboard = client.get_dashboard()
@@ -398,20 +408,36 @@ def _interleaved_analysis_callback(
     return on_poll
 
 
-def _ensure_serval_running(
+def _start_serval_unless_running(
     client: ServalClient,
     serval: ServalServer,
     log_dir: Path,
 ) -> subprocess.Popen[bytes] | None:
-    """Make sure SERVAL answers, launching it if HERMES has to.
+    """Start SERVAL when nothing is listening at its URL.
 
-    Returns the launched process when HERMES started SERVAL, or None when a
-    server was already answering. The caller stops only a server it started.
+    Returns the started process, or None when a server already answers. The
+    caller waits for a started server to answer and stops only a server it
+    started. HERMES starts SERVAL only when it cannot connect at all: when
+    something is there but answers with an error, or does not answer, a second
+    SERVAL could not use the port, so HERMES raises instead.
     """
     try:
         client.get("/dashboard")
-    except ServalClientError:
+    except ServalConnectError:
         pass
+    except ServalClientError as error:
+        msg = (
+            f"a server at {serval.url} did not answer /dashboard normally "
+            f"({error}); HERMES will not start a second SERVAL there. Check "
+            "that SERVAL is working, then run again"
+        )
+        _ACQUISITION_LOGGER.error(
+            msg,
+            event_type="acquisition.serval.server_not_answering_normally",
+            url=serval.url,
+            error=str(error),
+        )
+        raise ServalServerError(msg) from error
     else:
         _ACQUISITION_LOGGER.info(
             "SERVAL is already running at {url}",
@@ -432,9 +458,7 @@ def _ensure_serval_running(
         )
         raise ServalServerError(msg)
 
-    process = start_serval(serval, log_dir)
-    wait_until_ready(client, timeout_s=_SERVER_READY_TIMEOUT_S)
-    return process
+    return start_serval(serval, log_dir)
 
 
 def _check_presence(dashboard, snapshot) -> None:

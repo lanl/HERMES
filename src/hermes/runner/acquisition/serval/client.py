@@ -28,6 +28,16 @@ class ServalClientError(Exception):
     """Raised when a SERVAL HTTP call fails to send or answers with non-200."""
 
 
+class ServalConnectError(ServalClientError):
+    """Raised when HERMES cannot connect to SERVAL at all.
+
+    The connection was refused, the host was not found, or connecting timed
+    out, so no server is listening at the URL. Any other failure (an error
+    answer, or a server that accepts the connection but does not answer)
+    raises plain `ServalClientError`, because a server is there.
+    """
+
+
 class ServalClient:
     """Thin HTTP client for the SERVAL server.
 
@@ -75,7 +85,11 @@ class ServalClient:
                 elapsed_ms=elapsed_ms,
                 error=str(error),
             )
-            raise ServalClientError(
+            could_not_connect = isinstance(
+                error, (httpx.ConnectError, httpx.ConnectTimeout)
+            )
+            error_type = ServalConnectError if could_not_connect else ServalClientError
+            raise error_type(
                 f"SERVAL {method} {path} could not be sent: {error}"
             ) from error
 
