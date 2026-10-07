@@ -439,6 +439,51 @@ def test_refuses_to_measure_when_serval_reports_another_destination(
     assert client.closed is True
 
 
+@pytest.mark.parametrize("refused", ["pixelconfig", "dacs"])
+def test_refuses_to_measure_when_serval_does_not_load_the_calibration(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    refused: str,
+) -> None:
+    raw_dir = tmp_path / "raw"
+    client = _FakeAcquisitionClient(server_up=True, raw_dir=raw_dir)
+    _patch_client(monkeypatch, client)
+    answer = "File '/missing.bpc' does not exist on the server."
+
+    def refuse(server_file_path: str) -> httpx.Response:
+        raise ServalClientError(
+            f"SERVAL GET /config/load returned 400: {answer}",
+            response=httpx.Response(400, text=answer),
+        )
+
+    monkeypatch.setattr(
+        client, "load_pixel_config" if refused == "pixelconfig" else "load_dacs", refuse
+    )
+
+    state_manager = _state_manager(
+        tmp_path,
+        raw_data_directory=raw_dir,
+        calibration_files=_write_calibration_files(tmp_path / "sophy"),
+        run_timing=ServalRunTiming(exposure_time_s=0.1, trigger_count=5),
+    )
+    with pytest.raises(ServalAcquisitionError, match="does not exist on the server"):
+        run_serval_acquisition(state_manager)
+
+    # The camera never started, and the record shows what SERVAL loaded and
+    # what it answered for the file it refused.
+    assert client.started is False
+    calibration = state_manager.get_state().acquisition.calibration
+    if refused == "pixelconfig":
+        assert calibration.pixel_config_load.status == "failed"
+        assert calibration.pixel_config_load.server_response_body == answer
+        assert calibration.dacs_load is None
+    else:
+        assert calibration.pixel_config_load.status == "loaded"
+        assert calibration.dacs_load.status == "failed"
+        assert calibration.dacs_load.http_status_code == 400
+    assert client.closed is True
+
+
 @pytest.mark.parametrize(("bias_v", "warned"), [(40.027, False), (40.2, True)])
 def test_bias_warning_allows_a_small_read_back_margin(
     tmp_path: Path,

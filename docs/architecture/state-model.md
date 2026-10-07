@@ -557,9 +557,12 @@ DacsLoad
 ```
 
 The class identifies whether the request used SERVAL's `pixelconfig` or `dacs`
-format, so the state does not repeat a separate `format` field. The optional
-`server_response_body` records the short text returned by `/config/load` when it
-is useful for diagnosing a load failure. Large or unrelated response bodies
+format, so the state does not repeat a separate `format` field. `status` is
+`loaded` when SERVAL answered 200 and `failed` when it refused the file or did
+not answer; a failed load has no `applied_at`, and `dacs_load` stays None when
+the pixel configuration failed, since HERMES does not then load the DACs. The
+optional `server_response_body` records the short text returned by
+`/config/load`, which for a refused file says why. Large or unrelated response bodies
 should remain in bounded acquisition logs rather than the HERMES record.
 
 ServalDashboard should model the SERVAL `/dashboard` response with aliases for

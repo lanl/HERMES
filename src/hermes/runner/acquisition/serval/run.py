@@ -42,6 +42,7 @@ from hermes.runner.acquisition.serval.server import (
 )
 from hermes.runner.analysis.run import run_analysis
 from hermes.state.models.acquisition.serval import (
+    CalibrationState,
     DestinationConfiguration,
     ServalAcquisitionState,
     ServalDashboardMeasurement,
@@ -182,6 +183,7 @@ def run_serval_acquisition(state_manager: StateManager) -> None:
                 calibration,
                 justification="recorded the saved and loaded SoPhy calibration files",
             )
+            _refuse_failed_calibration(calibration)
 
         run_timing = acquisition.config.run_timing
         if run_timing is not None:
@@ -581,6 +583,33 @@ def _refuse_wrong_destination(
         applied_bases=applied_bases,
     )
     raise ServalAcquisitionError(error)
+
+
+def _refuse_failed_calibration(calibration: CalibrationState) -> None:
+    """Fail when SERVAL did not load the pixel config or the DACs.
+
+    The calibration is already in the record by now, so the record shows which
+    file SERVAL loaded and what it answered for the one it did not. A run must
+    not go on with a detector that is not calibrated, or only half calibrated.
+    """
+    loads = [
+        ("pixel config", calibration.pixel_config_load),
+        ("DACs", calibration.dacs_load),
+    ]
+    for name, load in loads:
+        if load is None or load.status != "failed":
+            continue
+        answer = load.server_response_body or "SERVAL did not answer"
+        error = (
+            f"SERVAL did not load the {name} file {load.server_file_path}: {answer}"
+        )
+        _ACQUISITION_LOGGER.error(
+            "The SERVAL calibration did not load: {error}",
+            event_type="acquisition.serval.calibration_not_loaded",
+            error=error,
+            http_status_code=load.http_status_code,
+        )
+        raise ServalAcquisitionError(error)
 
 
 def _warn_if_low_disk(directory: Path) -> None:
