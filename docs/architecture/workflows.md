@@ -54,7 +54,12 @@ state service.
   acquisition (see [acquisition.md](acquisition.md)).
 - Both acquisition and analysis: it runs the acquisition, which unpacks each
   raw file once SERVAL has finished writing it, and then runs one final
-  analysis pass for anything the last frames left. When the acquisition ended
+  analysis pass for anything the last frames left. A file unpacked or
+  reconstructed during recording keeps its `completed` result in that final
+  pass and is not reported as `skipped`. When the analysis during recording
+  fails, HERMES logs the error with its traceback once, adds a warning to
+  `acquisition.result.warnings`, and runs no more analysis until the recording
+  ends; the final pass then handles every file. When the acquisition ended
   `failed` (for example after a timeout, no camera activity, a full disk, or no
   complete frames), the final pass still runs over the raw files it wrote, and
   HERMES logs a `workflow.analysis_after_failed_acquisition` warning, with the

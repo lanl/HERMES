@@ -204,6 +204,7 @@ def run_hermes_analysis(
 
     unpacked_files: list[FileReference] = []
     unpacking_results: list[HermesTpx3UnpackingResult] = []
+    files_to_run: list[FileReference] = []
     try:
         if analysis.unpacking is not None:
             raw_data_directory = (
@@ -214,7 +215,11 @@ def run_hermes_analysis(
             unpack_overwrite = (
                 overwrite or analysis.unpacking.runtime_options.overwrite
             )
-            files_to_run: list[FileReference] = []
+            earlier_results = {
+                result.input_file.path: result
+                for result in analysis.unpacking.results
+                if result.status != "failed"
+            }
             # For each file submitted to the pool, remember where its result
             # sits in unpacking_results so a failure can flip it to "failed".
             run_result_positions: list[int] = []
@@ -243,29 +248,38 @@ def run_hermes_analysis(
                 if scan_errors:
                     # A corrupt or partial prior summary stops the whole stage,
                     # matching the single-file scan this replaces. Files
-                    # confirmed already done stay "skipped"; every other file is
-                    # recorded "failed". Re-raise the lowest-index error so the
+                    # confirmed already done keep their result; every other
+                    # file is recorded "failed". Re-raise the lowest-index error so the
                     # stop is deterministic regardless of scan completion order.
                     for index, raw_file in enumerate(raw_files):
-                        unpacking_results.append(
-                            HermesTpx3UnpackingResult(
-                                input_file=raw_file,
-                                status="skipped"
-                                if already_unpacked.get(index) is True
-                                else "failed",
+                        if already_unpacked.get(index) is True:
+                            unpacking_results.append(
+                                earlier_results.get(raw_file.path)
+                                or HermesTpx3UnpackingResult(
+                                    input_file=raw_file, status="skipped"
+                                )
                             )
-                        )
+                        else:
+                            unpacking_results.append(
+                                HermesTpx3UnpackingResult(
+                                    input_file=raw_file, status="failed"
+                                )
+                            )
                     raise scan_errors[min(scan_errors)]
 
             for index, raw_file in enumerate(raw_files):
                 if already_unpacked.get(index):
-                    log_skipped_input(analysis_root, raw_file)
-                    unpacking_results.append(
-                        HermesTpx3UnpackingResult(
+                    # A file this record already lists, such as one unpacked
+                    # on an earlier pass while the camera recorded, keeps its
+                    # result and is not reported as skipped again.
+                    earlier_result = earlier_results.get(raw_file.path)
+                    if earlier_result is None:
+                        log_skipped_input(analysis_root, raw_file)
+                        earlier_result = HermesTpx3UnpackingResult(
                             input_file=raw_file,
                             status="skipped",
                         )
-                    )
+                    unpacking_results.append(earlier_result)
                 else:
                     files_to_run.append(raw_file)
                     run_result_positions.append(len(unpacking_results))
@@ -356,8 +370,8 @@ def run_hermes_analysis(
             if analysis.unpacking.runtime_options.delete_raw_after_unpack:
                 # SERVAL may still be writing a raw file while the camera
                 # records, so raw files are deleted only once recording is over.
-                # That later pass skips the files unpacked during recording, so
-                # every file that is done (skipped or unpacked now) is deleted.
+                # That later pass keeps the results of files unpacked during
+                # recording, so every file that is not failed is deleted.
                 if _recording_in_progress(state):
                     _ANALYSIS_LOGGER.info(
                         "Keeping raw files until the recording ends",
@@ -407,17 +421,18 @@ def run_hermes_analysis(
         # a per-file execution failure is now recorded "failed" and the run
         # continues. A missing executable or input, or a prior summary that is
         # invalid or has partial output, still stops the stage here. A file
-        # already unpacked on a previous run stays "skipped"; the files this run
-        # attempted are marked failed. If the stop came before any file was
+        # already unpacked keeps its result; the files this pass attempted are
+        # marked failed. If the stop came before any file was
         # examined, fall back to marking every raw file.
         if unpacking_results:
+            attempted = {raw_file.path for raw_file in files_to_run}
             results = [
-                result
-                if result.status == "skipped"
-                else HermesTpx3UnpackingResult(
+                HermesTpx3UnpackingResult(
                     input_file=result.input_file,
                     status="failed",
                 )
+                if result.input_file.path in attempted
+                else result
                 for result in unpacking_results
             ]
         else:
@@ -490,8 +505,13 @@ def _run_photon_reconstruction(
     reconstruction = analysis.photon_reconstruction
     assert reconstruction is not None
     recon_overwrite = overwrite or reconstruction.runtime_options.overwrite
+    earlier_results = {
+        result.input_file.path: result
+        for result in reconstruction.results
+        if result.status != "failed"
+    }
     files_to_run: list[FileReference] = []
-    skipped_results: list[HermesTpx3PhotonReconstructionResult] = []
+    done_results: list[HermesTpx3PhotonReconstructionResult] = []
     try:
         validate_program_and_algorithm(reconstruction)
         pixel_files = resolve_pixel_files(analysis, analysis_root)
@@ -500,15 +520,18 @@ def _run_photon_reconstruction(
                 analysis_root, input_file
             )
             if not recon_overwrite and already_reconstructed:
-                output_file = derive_output_path(analysis_root, input_file)
-                log_reconstruction_skipped(input_file, output_file)
-                skipped_results.append(
-                    HermesTpx3PhotonReconstructionResult(
+                # A file this record already lists keeps its result and is not
+                # reported as skipped again.
+                earlier_result = earlier_results.get(input_file.path)
+                if earlier_result is None:
+                    output_file = derive_output_path(analysis_root, input_file)
+                    log_reconstruction_skipped(input_file, output_file)
+                    earlier_result = HermesTpx3PhotonReconstructionResult(
                         input_file=input_file,
                         output_file=output_file,
                         status="skipped",
                     )
-                )
+                done_results.append(earlier_result)
             else:
                 files_to_run.append(input_file)
 
@@ -543,7 +566,7 @@ def _run_photon_reconstruction(
 
         _apply_reconstruction_results(
             state_manager,
-            skipped_results + run_results + failed_results,
+            done_results + run_results + failed_results,
             justification="recorded photon reconstruction results per pixel file",
         )
         log_reconstruction_completion(
@@ -556,10 +579,10 @@ def _run_photon_reconstruction(
         # reconstruct: a per-file execution failure is now recorded "failed" and
         # the run continues. An unsupported algorithm, a missing executable, or a
         # malformed pixel filename still stops the stage here. Files already
-        # reconstructed on a previous run stay "skipped"; the files this run
-        # attempted are marked failed. If the stop came before any file was
+        # reconstructed keep their result; the files this pass attempted are
+        # marked failed. If the stop came before any file was
         # examined, fall back to every reconstruction input.
-        if files_to_run or skipped_results:
+        if files_to_run or done_results:
             failed_inputs = files_to_run
         else:
             failed_inputs = _reconstruction_inputs(analysis, analysis_root)
@@ -573,7 +596,7 @@ def _run_photon_reconstruction(
         ]
         _apply_reconstruction_results(
             state_manager,
-            skipped_results + failed_results,
+            done_results + failed_results,
             justification=f"photon reconstruction failed: {exc}",
         )
         log_reconstruction_failure(exc)
@@ -613,8 +636,13 @@ def _run_event_reconstruction(
     event_reconstruction = analysis.event_reconstruction
     assert event_reconstruction is not None
     event_overwrite = overwrite or event_reconstruction.runtime_options.overwrite
+    earlier_results = {
+        result.raw_file_stem: result
+        for result in event_reconstruction.results
+        if result.status != "failed"
+    }
     stems_to_run: list[str] = []
-    skipped_results: list[HermesTpx3EventReconstructionResult] = []
+    done_results: list[HermesTpx3EventReconstructionResult] = []
     try:
         validate_event_program_and_algorithm(event_reconstruction)
         # Scan the photons directory once and group every file under its raw
@@ -628,17 +656,20 @@ def _run_event_reconstruction(
                 analysis_root, raw_file_stem
             )
             if not event_overwrite and already_reconstructed:
-                output_file = derive_event_output_path(
-                    analysis_root, raw_file_stem
-                )
-                log_event_reconstruction_skipped(raw_file_stem, output_file)
-                skipped_results.append(
-                    HermesTpx3EventReconstructionResult(
+                # A stem this record already lists keeps its result and is not
+                # reported as skipped again.
+                earlier_result = earlier_results.get(raw_file_stem)
+                if earlier_result is None:
+                    output_file = derive_event_output_path(
+                        analysis_root, raw_file_stem
+                    )
+                    log_event_reconstruction_skipped(raw_file_stem, output_file)
+                    earlier_result = HermesTpx3EventReconstructionResult(
                         raw_file_stem=raw_file_stem,
                         output_file=output_file,
                         status="skipped",
                     )
-                )
+                done_results.append(earlier_result)
             else:
                 stems_to_run.append(raw_file_stem)
 
@@ -701,7 +732,7 @@ def _run_event_reconstruction(
 
         _apply_event_reconstruction_results(
             state_manager,
-            skipped_results + run_results + failed_results,
+            done_results + run_results + failed_results,
             justification="recorded event reconstruction results per raw stem",
         )
         log_event_reconstruction_completion(
@@ -714,10 +745,10 @@ def _run_event_reconstruction(
         # reconstruct: a per-stem execution failure is now recorded "failed" and
         # the run continues. An unsupported algorithm, a missing executable, or a
         # malformed photon filename still stops the stage here. Stems already
-        # reconstructed on a previous run stay "skipped"; the stems this run
-        # attempted are marked failed. If the stop came before any stem was
+        # reconstructed keep their result; the stems this pass attempted are
+        # marked failed. If the stop came before any stem was
         # examined, fall back to every reconstruction input.
-        if stems_to_run or skipped_results:
+        if stems_to_run or done_results:
             failed_stems = stems_to_run
         else:
             failed_stems = _event_reconstruction_inputs(analysis, analysis_root)
@@ -733,7 +764,7 @@ def _run_event_reconstruction(
         ]
         _apply_event_reconstruction_results(
             state_manager,
-            skipped_results + failed_results,
+            done_results + failed_results,
             justification=f"event reconstruction failed: {exc}",
         )
         log_event_reconstruction_failure(exc)

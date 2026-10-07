@@ -200,15 +200,20 @@ def test_real_cpp_unpacker_handles_two_inputs_and_skips_completed_files(
         path: path.stat().st_mtime_ns
         for path in saved_files
     } == modification_times
-    skipped_inputs = [
-        Path(record["extra"]["raw_tpx3_file"]).name
+    # The record already lists both files as unpacked, so the second pass keeps
+    # those results and does not report them as skipped.
+    skip_events = [
+        record
         for record in skip_records
         if record["extra"].get("event_type")
         == "analysis.tpx3_unpacking.skipped"
     ]
-    assert skipped_inputs == ["example-first.tpx3", "example-second.tpx3"]
+    assert skip_events == []
     final_results = manager.get_state().analysis.unpacking.results
-    assert all(result.status == "skipped" for result in final_results)
+    assert [result.status for result in final_results] == [
+        "completed",
+        "completed",
+    ]
 
 
 def _contains_key(value: object, keys: set[str]) -> bool:

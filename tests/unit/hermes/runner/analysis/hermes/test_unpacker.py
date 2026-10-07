@@ -33,6 +33,7 @@ from hermes.state.models.acquisition.serval import (
 from hermes.state.models.analysis.empir import EmpirAnalysisState
 from hermes.state.models.analysis.hermes_tpx3_spidr import (
     HermesTpx3AnalysisState,
+    HermesTpx3UnpackingResult,
     Tpx3SpidrSummary,
     Tpx3Unpacking,
     Tpx3UnpackingRuntimeOptions,
@@ -731,6 +732,39 @@ def test_run_with_only_completed_files_does_not_mark_running(
     results = manager.get_state().analysis.unpacking.results
     assert len(results) == 1
     assert results[0].status == "skipped"
+
+
+def test_run_keeps_completed_results_the_record_already_lists(
+    tmp_path: Path,
+) -> None:
+    # "listed.tpx3" was unpacked by an earlier pass of this run, for example
+    # while the camera recorded; "other.tpx3" has outputs from somewhere else.
+    analysis = _analysis(tmp_path, "listed.tpx3", "other.tpx3")
+    listed, other = analysis.unpacking.tpx3_files
+    for raw_file in (listed, other):
+        _save_completed_files(_analysis_root(tmp_path), raw_file)
+    analysis.unpacking.results = [
+        HermesTpx3UnpackingResult(input_file=listed, status="completed")
+    ]
+    manager = StateManager(
+        _record(tmp_path, analysis),
+        config=StateServiceConfig(allow_trusted_workflow_bypass=True),
+        state_logger=CapturingStateLogger(),
+    )
+    records, sink_id = _capture_events("analysis.tpx3_unpacking.skipped")
+    try:
+        run_hermes_analysis(manager)
+    finally:
+        logger.remove(sink_id)
+
+    results = {
+        result.input_file.path.name: result.status
+        for result in manager.get_state().analysis.unpacking.results
+    }
+    assert results == {"listed.tpx3": "completed", "other.tpx3": "skipped"}
+    assert [
+        Path(record["extra"]["raw_tpx3_file"]).name for record in records
+    ] == ["other.tpx3"]
 
 
 def test_run_failure_keeps_skipped_and_marks_only_attempted_failed(

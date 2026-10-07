@@ -861,6 +861,10 @@ no result):
 - `skipped`: a valid result already existed, so the file was not reprocessed
 - `failed`: the file could not be unpacked or validated
 
+A file whose valid result this record already lists keeps that result instead
+of becoming `skipped`. A file unpacked during recording, for example, stays
+`completed` after the analysis pass that runs once recording ends.
+
 A repeated run skips a raw file only when its summary is valid and every listed
 Parquet file exists. It runs an input only when neither its summary nor matching
 Parquet files exist. Matching Parquet files without a valid summary, or an
@@ -869,7 +873,8 @@ invalid existing summary, cause the run to fail. No resume flag is saved.
 Reconstruction records the same terminal values per photon file: `completed`
 when a file has a valid reconstruction summary and every required photon file,
 `skipped` when a valid result already existed, and `failed` when a file could
-not be reconstructed or validated.
+not be reconstructed or validated. As with unpacking, a file this record
+already lists keeps its result.
 
 A repeated reconstruction run also verifies that the saved summary settings
 match the requested settings. It requires `photon_pixels` files only when the

@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from loguru import logger
 
 from hermes.runner.analysis.hermes.event_reconstruction import (
     HermesEventReconstructionPreflightError,
@@ -438,6 +439,54 @@ def test_run_skips_stems_with_existing_summary(
         for r in manager.get_state().analysis.event_reconstruction.results
     }
     assert results == {"run_000000": "skipped", "run_000001": "completed"}
+
+
+def test_run_keeps_completed_results_the_record_already_lists(
+    tmp_path: Path,
+) -> None:
+    analysis = _analysis(
+        tmp_path,
+        "run_000000_chip_0_photon_00000.parquet",
+        "run_000001_chip_0_photon_00000.parquet",
+    )
+    analysis.unpacking = None
+    analysis.photon_reconstruction = None
+    analysis_root = tmp_path / "analysis"
+    for raw_file_stem in ("run_000000", "run_000001"):
+        summary_path = derive_summary_path(analysis_root, raw_file_stem)
+        summary_path.parent.mkdir(parents=True, exist_ok=True)
+        summary_path.touch()
+    # run_000000 was reconstructed by an earlier pass of this run.
+    analysis.event_reconstruction.results = [
+        HermesTpx3EventReconstructionResult(
+            raw_file_stem="run_000000",
+            output_file=derive_output_path(analysis_root, "run_000000"),
+            status="completed",
+        )
+    ]
+    manager = StateManager(
+        _event_only_record(analysis, tmp_path),
+        config=StateServiceConfig(allow_trusted_workflow_bypass=True),
+    )
+    records: list[dict[str, Any]] = []
+    sink_id = logger.add(
+        lambda message: records.append(message.record),
+        filter=lambda record: record["extra"].get("event_type")
+        == "analysis.tpx3_event_reconstruction.skipped",
+    )
+    try:
+        run_hermes_analysis(manager)
+    finally:
+        logger.remove(sink_id)
+
+    results = {
+        r.raw_file_stem: r.status
+        for r in manager.get_state().analysis.event_reconstruction.results
+    }
+    assert results == {"run_000000": "completed", "run_000001": "skipped"}
+    assert [record["extra"]["raw_file_stem"] for record in records] == [
+        "run_000001"
+    ]
 
 
 def test_run_marks_failed_stem_and_continues(

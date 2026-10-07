@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from loguru import logger
 
 from hermes.runner.analysis.hermes.photon_reconstruction import (
     HermesPhotonReconstructionPreflightError,
@@ -15,16 +16,22 @@ from hermes.runner.analysis.hermes.photon_reconstruction import (
     resolve_pixel_files,
     validate_program_and_algorithm,
 )
+from hermes.runner.analysis.hermes.run import run_hermes_analysis
 from hermes.shipped_files import default_timewalk_calibration
 from hermes.state.models.analysis.hermes_tpx3_spidr import (
     HermesTpx3AnalysisState,
     HermesTpx3PhotonClustering,
     HermesTpx3PhotonClusteringSettings,
     HermesTpx3PhotonReconstruction,
+    HermesTpx3PhotonReconstructionResult,
     Tpx3Unpacking,
 )
+from hermes.state.models.environment import RuntimeEnvironment
 from hermes.state.models.measurement import MeasurementInfo
 from hermes.state.models.shared_models import BinaryProgram, FileReference
+from hermes.state.state import HermesRecord
+from hermes.state_service.shared_types import StateServiceConfig
+from hermes.state_service.state_manager import StateManager
 
 
 def _settings(**overrides: Any) -> HermesTpx3PhotonClusteringSettings:
@@ -312,3 +319,62 @@ def test_command_appends_overwrite_when_requested(tmp_path: Path) -> None:
         overwrite=True,
     )
     assert command[-1] == "--overwrite"
+
+
+def test_run_keeps_completed_results_the_record_already_lists(
+    tmp_path: Path,
+) -> None:
+    analysis = _analysis(
+        tmp_path,
+        "run_000000_chip_0_pixels_00000.parquet",
+        "run_000001_chip_0_pixels_00000.parquet",
+    )
+    analysis.unpacking = None
+    analysis_root = tmp_path / "analysis"
+    listed, other = resolve_pixel_files(analysis, analysis_root)
+    for input_file in (listed, other):
+        summary_path = derive_summary_path(analysis_root, input_file)
+        summary_path.parent.mkdir(parents=True, exist_ok=True)
+        summary_path.touch()
+    # The first pixel file was reconstructed by an earlier pass of this run.
+    analysis.photon_reconstruction.results = [
+        HermesTpx3PhotonReconstructionResult(
+            input_file=listed,
+            output_file=derive_output_path(analysis_root, listed),
+            status="completed",
+        )
+    ]
+    manager = StateManager(
+        HermesRecord(
+            measurement_info=_measurement_info(),
+            environment=RuntimeEnvironment(
+                working_directory=tmp_path,
+                analysis_directory=analysis_root,
+            ),
+            acquisition=None,
+            analysis=analysis,
+        ),
+        config=StateServiceConfig(allow_trusted_workflow_bypass=True),
+    )
+    records: list[dict[str, Any]] = []
+    sink_id = logger.add(
+        lambda message: records.append(message.record),
+        filter=lambda record: record["extra"].get("event_type")
+        == "analysis.tpx3_reconstruction.skipped",
+    )
+    try:
+        run_hermes_analysis(manager)
+    finally:
+        logger.remove(sink_id)
+
+    results = {
+        result.input_file.path.name: result.status
+        for result in manager.get_state().analysis.photon_reconstruction.results
+    }
+    assert results == {
+        "run_000000_chip_0_pixels_00000.parquet": "completed",
+        "run_000001_chip_0_pixels_00000.parquet": "skipped",
+    }
+    assert [Path(record["extra"]["pixel_file"]).name for record in records] == [
+        "run_000001_chip_0_pixels_00000.parquet"
+    ]
