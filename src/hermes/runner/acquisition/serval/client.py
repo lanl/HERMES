@@ -25,7 +25,16 @@ _SUCCESS_STATUS = 200
 
 
 class ServalClientError(Exception):
-    """Raised when a SERVAL HTTP call fails to send or answers with non-200."""
+    """Raised when a SERVAL HTTP call fails to send or answers with non-200.
+
+    `response` is SERVAL's non-200 answer, whose text often says why, such as
+    "File '...' does not exist on the server.". It is None when the request
+    could not be sent or got no answer.
+    """
+
+    def __init__(self, message: str, *, response: httpx.Response | None = None) -> None:
+        super().__init__(message)
+        self.response = response
 
 
 class ServalConnectError(ServalClientError):
@@ -105,7 +114,8 @@ class ServalClient:
         if response.status_code != _SUCCESS_STATUS:
             raise ServalClientError(
                 f"SERVAL {method} {path} returned "
-                f"{response.status_code}: {response.text}"
+                f"{response.status_code}: {response.text}",
+                response=response,
             )
         return response
 

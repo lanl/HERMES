@@ -270,8 +270,11 @@ def test_non_200_raises_with_status_and_body() -> None:
         with pytest.raises(ServalClientError, match="500") as raised:
             client.get_json("/dashboard")
 
-    # A server answered, so this is not a failure to connect.
+    # A server answered, so this is not a failure to connect, and its answer
+    # is kept for callers that record what SERVAL said.
     assert not isinstance(raised.value, ServalConnectError)
+    assert raised.value.response.status_code == 500
+    assert raised.value.response.text == "boom"
 
 
 def test_transport_failure_raises_serval_client_error() -> None:
@@ -279,8 +282,10 @@ def test_transport_failure_raises_serval_client_error() -> None:
         raise httpx.ConnectError("no server", request=request)
 
     with _client_with_handler(handler) as client:  # noqa: SIM117
-        with pytest.raises(ServalClientError, match="could not be sent"):
+        with pytest.raises(ServalClientError, match="could not be sent") as raised:
             client.get("/dashboard")
+
+    assert raised.value.response is None
 
 
 @pytest.mark.parametrize(

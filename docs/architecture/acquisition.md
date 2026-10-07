@@ -155,6 +155,14 @@ the matching `PixelConfigLoad` or `DacsLoad`, including the path resolved by the
 SERVAL host, HTTP status code, completion status, and optional short server
 response body.
 
+SERVAL refuses a file it cannot find, read, or apply with a non-200 answer whose
+text says why, such as "File '...' does not exist on the server." or "Too many
+chips in the DACs file.". HERMES records that load as `failed` with the status
+code and that text. It loads the pixel configuration first and does not load the
+DACs when the pixel configuration fails. It records the calibration, including a
+pixel configuration that loaded followed by DACs that did not, and only then
+fails the run, before any measurement starts.
+
 SoPhy and SERVAL should not be run against the detector at the same time. A
 HERMES acquisition workflow may require the user to provide existing SoPhy output
 files before it configures SERVAL.
@@ -273,7 +281,8 @@ logs to reproduce or debug the run.
    Load the user-provided `.bpc` pixel configuration and `.dacs` DAC files with
    SERVAL `/config/load`. These files are generated outside HERMES by SoPhy or
    supplied by ASI; HERMES is responsible for validating, recording, and handing
-   them to SERVAL.
+   them to SERVAL. A load SERVAL refuses is recorded as `failed` with SERVAL's
+   answer, and the run then fails (see "Calibration Boundary").
 8. Apply detector acquisition configuration.
    Update `/detector/config` with the run-specific trigger mode, trigger count,
    exposure time, trigger period, bias settings, TDC settings, and any other

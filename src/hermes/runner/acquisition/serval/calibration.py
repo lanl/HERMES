@@ -4,7 +4,9 @@ HERMES never generates calibration files; SoPhy does. HERMES takes the
 user-named `.bpc` and `.dacs` paths, copies each into the run's `config`
 directory, records the saved path and its SHA-256, then asks SERVAL to load
 each one. Loading is a GET whose `file` path SERVAL resolves on its own host
-(here, the local machine), so we point it at the saved copies.
+(here, the local machine), so we point it at the saved copies. A load SERVAL
+refuses is recorded as `failed` with its answer, not raised, so the caller can
+record a calibration that is only half loaded before it stops the run.
 """
 
 from __future__ import annotations
@@ -18,7 +20,7 @@ from typing import Callable, TypeVar
 import httpx
 from loguru import logger
 
-from hermes.runner.acquisition.serval.client import ServalClient
+from hermes.runner.acquisition.serval.client import ServalClient, ServalClientError
 from hermes.state.models.acquisition.serval import (
     CalibrationFiles,
     CalibrationState,
@@ -54,7 +56,8 @@ def load_calibration(
     """Save the calibration files under the run and load them into SERVAL.
 
     `config_directory` is where the copies are written; `run_directory` is the
-    root the saved paths are recorded relative to.
+    root the saved paths are recorded relative to. The pixel config is loaded
+    first; when it fails, the DACs are not loaded and `dacs_load` stays None.
     """
     config_directory.mkdir(parents=True, exist_ok=True)
 
@@ -79,7 +82,9 @@ def load_calibration(
     pixel_config_load = _load(
         client.load_pixel_config, str(pixel_absolute), PixelConfigLoad, "pixelconfig"
     )
-    dacs_load = _load(client.load_dacs, str(dacs_absolute), DacsLoad, "dacs")
+    dacs_load = None
+    if pixel_config_load.status == "loaded":
+        dacs_load = _load(client.load_dacs, str(dacs_absolute), DacsLoad, "dacs")
 
     return CalibrationState(
         pixel_config_file=pixel_config_file,
@@ -136,12 +141,34 @@ def _load(
         label=label,
         file=server_file_path,
     )
-    response = load_call(server_file_path)
-    body = response.text.strip()
+    try:
+        response = load_call(server_file_path)
+    except ServalClientError as error:
+        # SERVAL refuses a file it cannot find, read, or apply with a non-200
+        # answer whose text says why. When the request got no answer at all,
+        # the status code and answer text stay empty.
+        _LOGGER.warning(
+            "SERVAL did not load {label} from {file}: {error}",
+            event_type="acquisition.serval.calibration_load_failed",
+            label=label,
+            file=server_file_path,
+            error=str(error),
+        )
+        answer = error.response
+        return model(
+            server_file_path=server_file_path,
+            status="failed",
+            http_status_code=None if answer is None else answer.status_code,
+            server_response_body=None if answer is None else _short_text(answer.text),
+        )
     return model(
         server_file_path=server_file_path,
         applied_at=datetime.now(tz=timezone.utc),
         status="loaded",
         http_status_code=response.status_code,
-        server_response_body=body[:_MAX_RESPONSE_BODY_CHARS] or None,
+        server_response_body=_short_text(response.text),
     )
+
+
+def _short_text(text: str) -> str | None:
+    return text.strip()[:_MAX_RESPONSE_BODY_CHARS] or None
