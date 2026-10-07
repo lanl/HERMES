@@ -276,9 +276,11 @@ rules:
 4. Stop when the summary exists but is invalid.
 5. Record each raw file's result as it finishes; a file is `completed` only
    after its outputs pass validation, `skipped` when reused, or `failed` when
-   its unpacker did not finish successfully.
+   its unpacker did not finish successfully. A reused file this record already
+   lists, such as one unpacked during recording, keeps that result, so it is
+   not reported as `skipped` again on every later pass.
 
-Skipped inputs are logged but never submitted to the worker pool. Files whose
+Skipped inputs are logged once but never submitted to the worker pool. Files whose
 planned action is `run` are grouped into small chunks, and the chunks are
 submitted to a `ThreadPoolExecutor` with the calculated worker count. Each worker
 waits for one C++ subprocess that unpacks its chunk's files in sequence. A run
@@ -351,7 +353,8 @@ files:
 
 The runner records one result per pixel file after that file finishes: it never
 writes a start-of-work status. Each result is `completed`, `skipped`, or
-`failed`.
+`failed`. A reused file this record already lists keeps that result, the same
+way unpacking does.
 
 If one reconstruction process fails, the runner logs that file's failure,
 records it `failed`, and keeps reconstructing the remaining files, retaining

@@ -954,7 +954,7 @@ def test_interleaved_analysis_runs_once_per_new_raw_file(
     calls: list[int] = []
     monkeypatch.setattr(run_module, "run_analysis", lambda _sm: calls.append(1))
 
-    on_poll = run_module._interleaved_analysis_callback(manager, raw_dir)
+    on_poll = run_module._interleaved_analysis_callback(manager, raw_dir, [])
     assert on_poll is not None
 
     on_poll(None)  # no files yet -> nothing to unpack
@@ -982,7 +982,7 @@ def test_interleaved_analysis_waits_while_a_raw_file_grows(
     calls: list[int] = []
     monkeypatch.setattr(run_module, "run_analysis", lambda _sm: calls.append(1))
 
-    on_poll = run_module._interleaved_analysis_callback(manager, raw_dir)
+    on_poll = run_module._interleaved_analysis_callback(manager, raw_dir, [])
     assert on_poll is not None
 
     # SERVAL creates the file under its final name and keeps writing to it.
@@ -1015,7 +1015,7 @@ def test_interleaved_analysis_skips_a_poll_when_a_raw_file_cannot_be_read(
     calls: list[int] = []
     monkeypatch.setattr(run_module, "run_analysis", lambda _sm: calls.append(1))
 
-    on_poll = run_module._interleaved_analysis_callback(manager, raw_dir)
+    on_poll = run_module._interleaved_analysis_callback(manager, raw_dir, [])
     assert on_poll is not None
 
     # A file that is listed but whose size cannot be read, like one that
@@ -1039,26 +1039,82 @@ def test_no_interleaved_callback_without_a_hermes_analysis(
 ) -> None:
     manager = _state_manager(tmp_path)  # acquisition only, no analysis
     assert (
-        run_module._interleaved_analysis_callback(manager, tmp_path / "raw")
+        run_module._interleaved_analysis_callback(manager, tmp_path / "raw", [])
         is None
     )
 
 
-def test_interleaved_analysis_failure_does_not_propagate(
+def test_interleaved_analysis_stops_after_its_first_failure(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     raw_dir = tmp_path / "raw"
     raw_dir.mkdir()
     (raw_dir / "a.tpx3").write_bytes(b"x")
     manager = _both_state_manager(tmp_path)
+    calls: list[int] = []
 
     def boom(_sm: StateManager) -> None:
+        calls.append(1)
         raise RuntimeError("analysis blew up")
 
     monkeypatch.setattr(run_module, "run_analysis", boom)
+    records: list[dict] = []
+    sink_id = logger.add(
+        lambda message: records.append(message.record),
+        filter=lambda record: record["extra"].get("event_type")
+        == "acquisition.serval.interleaved_analysis_failed",
+    )
 
-    on_poll = run_module._interleaved_analysis_callback(manager, raw_dir)
+    warnings: list[str] = []
+    on_poll = run_module._interleaved_analysis_callback(manager, raw_dir, warnings)
     assert on_poll is not None
-    # A failed analysis during recording must not stop the measurement.
-    on_poll(None)
-    on_poll(None)
+    try:
+        # A failed analysis during recording must not stop the measurement.
+        on_poll(None)
+        on_poll(None)
+        # Later files are left for the analysis after recording.
+        (raw_dir / "b.tpx3").write_bytes(b"x")
+        on_poll(None)
+        on_poll(None)
+    finally:
+        logger.remove(sink_id)
+
+    assert len(calls) == 1
+    assert len(records) == 1
+    assert records[0]["exception"] is not None
+    assert len(warnings) == 1
+    assert "analysis blew up" in warnings[0]
+
+
+def test_a_failed_analysis_during_recording_is_a_result_warning(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    raw_dir = tmp_path / "raw"
+    client = _FakeAcquisitionClient(
+        server_up=True,
+        measurement_statuses=["DA_IDLE"] + ["DA_RECORDING"] * 4 + ["DA_IDLE"],
+        frame_count=2,
+        raw_dir=raw_dir,
+        tpx3_names=("run_0.tpx3",),
+    )
+    _patch_client(monkeypatch, client)
+    monkeypatch.setattr(run_module, "start_serval", lambda *_a, **_k: None)
+    monkeypatch.setattr(run_module, "stop_serval", lambda *_a, **_k: None)
+    monkeypatch.setattr(measurement_module.time, "sleep", lambda _s: None)
+    calls: list[int] = []
+
+    def boom(_sm: StateManager) -> None:
+        calls.append(1)
+        raise RuntimeError("analysis blew up")
+
+    monkeypatch.setattr(run_module, "run_analysis", boom)
+    manager = _both_state_manager(tmp_path)
+
+    run_serval_acquisition(manager)
+
+    acquisition = manager.get_state().acquisition
+    # The recording still finished, and the result says the analysis failed.
+    assert acquisition.status == "completed"
+    assert calls == [1]
+    assert len(acquisition.result.warnings) == 1
+    assert "analysis blew up" in acquisition.result.warnings[0]

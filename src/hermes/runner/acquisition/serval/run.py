@@ -291,7 +291,10 @@ def _run_measurement(
         justification="starting the measurement",
     )
 
-    on_poll = _interleaved_analysis_callback(state_manager, raw_data_directory)
+    analysis_warnings: list[str] = []
+    on_poll = _interleaved_analysis_callback(
+        state_manager, raw_data_directory, analysis_warnings
+    )
     try:
         outcome = run_measurement(
             client, acquisition.config, raw_data_directory, on_poll
@@ -326,6 +329,7 @@ def _run_measurement(
             outcome.final_dashboard,
             justification="recorded the SERVAL dashboard read after the measurement",
         )
+    outcome.result.warnings.extend(analysis_warnings)
     _record(
         state_manager,
         "acquisition.result",
@@ -364,6 +368,7 @@ def _stop_measurement(client: ServalClient) -> None:
 def _interleaved_analysis_callback(
     state_manager: StateManager,
     raw_data_directory: Path,
+    warnings: list[str],
 ) -> Callable[[ServalDashboardMeasurement | None], None] | None:
     """Build a poll callback that unpacks raw files as new frames land.
 
@@ -371,9 +376,12 @@ def _interleaved_analysis_callback(
     recording. SERVAL creates each raw file under its final name and can keep
     writing to it for seconds, so the callback runs the analysis only when no
     `.tpx3` file has changed size since the previous poll and something is new
-    since the last run. It never lets an analysis failure stop the recording.
-    Files already unpacked on an earlier poll are skipped by the analysis
-    itself, so it stays incremental.
+    since the last successful run. Files already unpacked on an earlier poll
+    are not unpacked again by the analysis itself, so it stays incremental.
+
+    An analysis failure never stops the recording. The first one is logged with
+    its traceback and added to `warnings`, and no more analysis runs during
+    this recording; the analysis after recording handles every file.
     """
     if not isinstance(
         state_manager.get_state().analysis, HermesTpx3AnalysisState
@@ -382,9 +390,12 @@ def _interleaved_analysis_callback(
 
     previous_sizes: dict[Path, int] = {}
     analyzed_sizes: dict[Path, int] = {}
+    analysis_failed = False
 
     def on_poll(measurement: ServalDashboardMeasurement | None) -> None:
-        nonlocal previous_sizes, analyzed_sizes
+        nonlocal previous_sizes, analyzed_sizes, analysis_failed
+        if analysis_failed:
+            return
         try:
             current_sizes = {
                 path: path.stat().st_size
@@ -404,16 +415,23 @@ def _interleaved_analysis_callback(
         previous_sizes = current_sizes
         if not unchanged or current_sizes == analyzed_sizes:
             return
-        analyzed_sizes = current_sizes
         try:
             run_analysis(state_manager)
         except Exception as error:
-            _ACQUISITION_LOGGER.warning(
-                "Analysis during recording failed; continuing the "
-                "measurement: {error}",
+            analysis_failed = True
+            message = (
+                "Analysis during recording failed, so no more analysis runs "
+                f"until the recording ends: {type(error).__name__}: {error}"
+            )
+            warnings.append(message)
+            _ACQUISITION_LOGGER.opt(exception=error).warning(
+                "{message}",
                 event_type="acquisition.serval.interleaved_analysis_failed",
+                message=message,
                 error=str(error),
             )
+            return
+        analyzed_sizes = current_sizes
 
     return on_poll
 
