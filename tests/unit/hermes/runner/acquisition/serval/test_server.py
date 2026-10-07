@@ -3,6 +3,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+import httpx
 import pytest
 
 from hermes.runner.acquisition.serval import server as server_module
@@ -145,6 +146,25 @@ def test_wait_until_ready_returns_version_after_retries(
     version = wait_until_ready(client, _FakeProcess(), tmp_path, timeout_s=5.0)
 
     assert version == "3.3.0"
+
+
+@pytest.mark.parametrize(
+    "body", ["<html>not json</html>", "[]", '{"Server": null}', "{}"]
+)
+def test_wait_until_ready_counts_an_unexpected_reply_as_ready(
+    tmp_path: Path, body: str
+) -> None:
+    class _OddReplyClient:
+        base_url = "http://serval.test"
+
+        def get(self, path: str) -> httpx.Response:
+            return httpx.Response(200, text=body)
+
+    version = wait_until_ready(
+        _OddReplyClient(), _FakeProcess(), tmp_path, timeout_s=5.0
+    )
+
+    assert version is None
 
 
 def test_wait_until_ready_raises_on_timeout(tmp_path: Path) -> None:

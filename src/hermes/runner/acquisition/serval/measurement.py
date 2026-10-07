@@ -95,14 +95,15 @@ class ServalMeasurementError(Exception):
 class MeasurementOutcome(NamedTuple):
     """What one measurement produced, for the run to record.
 
-    `exception` is set when Ctrl-C or an error HERMES did not expect ended the
-    measurement early. HERMES has already stopped the camera by then; the caller
-    records the outcome and then raises `exception` again.
+    `final_dashboard` is None when the dashboard could not be read after the
+    measurement. `exception` is set when Ctrl-C or an error HERMES did not
+    expect ended the measurement early. HERMES has already stopped the camera
+    by then; the caller records the outcome and then raises `exception` again.
     """
 
     result: ServalAcquisitionResult
     final_snapshot: DetectorSnapshot
-    final_dashboard: ServalDashboard
+    final_dashboard: ServalDashboard | None
     exception: BaseException | None = None
 
 

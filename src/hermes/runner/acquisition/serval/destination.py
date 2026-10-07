@@ -2,8 +2,8 @@
 
 SERVAL runs on the same machine as HERMES, so the write location is a local
 directory named with a `file:` URI. This builds a single raw destination, sends
-it to SERVAL, reads it back, and confirms it points at the directory we asked
-for. No measurement is started here.
+it to SERVAL, and reads it back. The caller records what SERVAL reports and
+checks it with `raw_destination_points_to`. No measurement is started here.
 """
 
 from __future__ import annotations
@@ -35,11 +35,11 @@ def configure_raw_destination(
     client: ServalClient,
     raw_data_directory: Path,
 ) -> DestinationConfiguration:
-    """Point SERVAL at `raw_data_directory` and return the applied destination.
+    """Point SERVAL at `raw_data_directory` and return the destination it reports.
 
     Creates the directory, PUTs a single raw destination that writes time-named,
     per-frame `.tpx3` files there, then reads `/server/destination` back and
-    warns if the read-back does not point at the same directory.
+    returns what SERVAL holds, whether or not it matches.
     """
     raw_data_directory.mkdir(parents=True, exist_ok=True)
     requested = DestinationConfiguration(
@@ -58,30 +58,21 @@ def configure_raw_destination(
         base=requested.raw[0].base,
     )
     client.put_destination(requested)
-
-    applied = client.get_destination()
-    if _any_raw_points_to(applied, raw_data_directory):
-        _LOGGER.info(
-            "SERVAL destination confirmed at {directory}",
-            event_type="acquisition.serval.destination_confirmed",
-            directory=str(raw_data_directory),
-        )
-    else:
-        _LOGGER.warning(
-            "SERVAL destination read-back does not point at {directory}",
-            event_type="acquisition.serval.destination_mismatch",
-            directory=str(raw_data_directory),
-            applied_bases=[entry.base for entry in applied.raw],
-        )
-    return applied
+    return client.get_destination()
 
 
-def _any_raw_points_to(
+def raw_destination_points_to(
     destination: DestinationConfiguration,
     directory: Path,
 ) -> bool:
-    target = directory.resolve()
-    return any(_base_points_to(entry.base, target) for entry in destination.raw)
+    """True when the destination has one raw output, and it writes to `directory`.
+
+    `configure_raw_destination` sets exactly one raw output, so a read-back
+    with more would also write raw data somewhere HERMES did not ask for.
+    """
+    if len(destination.raw) != 1:
+        return False
+    return _base_points_to(destination.raw[0].base, directory.resolve())
 
 
 def _base_points_to(base: str, target: Path) -> bool:
