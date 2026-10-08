@@ -36,11 +36,13 @@ Whether a field is optional or required depends on what the user has selected:
 
 ## How model is used to keep a record of acquisition and analysis
 The initial `HermesRecord` is recorded by the state logger. Every later durable
-state change is also logged with the changed state path, previous value, new
-value, status, proposer, origin, approver or approval-bypass marker, and
-timestamps. This creates an audit trail that can reconstruct the state at any
-point in the measurement, assuming the saved detector-configuration files named
-in the state are still available.
+state change is also logged with the changed state path, a short summary of the
+previous and new values, status, proposer, origin, approver or approval-bypass
+marker, and timestamps. The summary shows a scalar value in full, but only the
+length of a list and the size and first keys of a mapping, so the log does not
+grow with the square of the file count. This creates an audit trail of what
+changed and when; the final values are in the saved `HERMES_record.yaml`, along
+with the saved detector-configuration files named in the state.
 
 HERMES saves the SoPhy `.bpc` pixel-configuration file and `.dacs` DAC-settings
 file under the run's `config/` directory. The state names each file directly
