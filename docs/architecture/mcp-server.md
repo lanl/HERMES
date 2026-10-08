@@ -70,12 +70,13 @@ in the background. The skills are:
 
 - `hermes-config-and-files` — the config field guide (one section of the
   installed `HermesRecord` models at a time) and the output file guide.
-- `hermes-analyze-run`, `hermes-set-up-measurement`, `hermes-fix-a-problem`, and
-  a guide for making movies of a run — the usual steps in order, which tool or
-  script to use at each step, and an "if this breaks, check that" list.
+- `hermes-analyze-run`, `hermes-set-up-measurement`, and `hermes-fix-a-problem`
+  — the usual steps in order, which tool or script to use at each step, and an
+  "if this breaks, check that" list.
 - `hermes-firework-movies` and `hermes-find-clustering-settings` — each asks the
   user its questions, runs a built-in HERMES function from a script, and reports a
-  short summary.
+  short summary. `hermes-firework-movies` also holds the steps for making movies
+  of a run, so there is no separate movie guide.
 
 Skills follow the open Agent Skills standard. An assistant that does not support
 skills still gets every MCP tool and loses only the guides and the two analysis
@@ -200,6 +201,7 @@ src/
     └── skills/           # one folder per skill, copied into .claude/skills/
         └── <skill name>/
             ├── SKILL.md  # when to use the skill, and which file or script to open
+            ├── *.md      # longer guides SKILL.md points to, such as output_files.md
             └── scripts/  # scripts the assistant runs in the shell
 ```
 
