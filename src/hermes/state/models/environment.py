@@ -115,18 +115,52 @@ def _working_dir_base(value: object) -> Path | None:
 class RuntimeEnvironment(StrictBaseModel):
     """Directory state and tool provenance for a HERMES run."""
 
-    working_directory: DirectoryState = Field(default_factory=_default_working_dir)
-    run_directory: DirectoryState = Field(default_factory=_directory_state)
-    raw_data_directory: DirectoryState = Field(default_factory=_directory_state)
-    analysis_directory: DirectoryState = Field(default_factory=_directory_state)
-    log_directory: DirectoryState = Field(default_factory=_directory_state)
-    preview_directory: DirectoryState = Field(default_factory=_directory_state)
-    config_file: DirectoryState = Field(default_factory=_directory_state)
+    working_directory: DirectoryState = Field(
+        default_factory=_default_working_dir,
+        description="The folder every other folder is under. Default: the "
+        "folder HERMES is started in.",
+    )
+    run_directory: DirectoryState = Field(
+        default_factory=_directory_state,
+        description="This run's folder, under working_directory. Default: "
+        "measurement_info.run.",
+    )
+    raw_data_directory: DirectoryState = Field(
+        default_factory=_directory_state,
+        description="Raw .tpx3 files, under the run folder. Acquisition writes "
+        "them here and refuses a folder that already has .tpx3 files; "
+        'tpx3_files: "auto" reads them from here.',
+    )
+    analysis_directory: DirectoryState = Field(
+        default_factory=_directory_state,
+        description="Parquet files and per-file summaries, under the run "
+        "folder. Needed for analysis.",
+    )
+    log_directory: DirectoryState = Field(
+        default_factory=_directory_state,
+        description="JSON-lines log files, under the run folder.",
+    )
+    preview_directory: DirectoryState = Field(
+        default_factory=_directory_state,
+        description="Not used yet; only checked against the raw and analysis "
+        "folders.",
+    )
+    config_file: DirectoryState = Field(
+        default_factory=_directory_state, description="Not used yet."
+    )
     hermes_version: str | None = None
     python_version: str | None = None
     platform: str | None = None
-    allow_overlapping_output_dirs: bool = Field(default=False)
-    log_level: str = Field(default="INFO")
+    allow_overlapping_output_dirs: bool = Field(
+        default=False,
+        description="Let the raw, analysis and preview folders be the same "
+        "folder.",
+    )
+    log_level: str = Field(
+        default="INFO",
+        description="What is printed to the terminal: DEBUG, INFO, WARNING or "
+        "ERROR. The log files always keep everything.",
+    )
 
     @model_validator(mode="before")
     @classmethod

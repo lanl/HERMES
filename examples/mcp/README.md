@@ -36,6 +36,12 @@ Claude Code and other tools that read a project `.mcp.json` are ready after
 that. Claude Desktop has no project `.mcp.json`, so add the same `mcpServers`
 block to its own config file by hand.
 
+It also copies the HERMES skills into `.claude/skills/` there. A skill is a
+short guide the assistant opens only when it needs it. Older HERMES copies are
+replaced and other skills are left alone, so rerun `hermes-mcp-setup` after
+upgrading HERMES. Assistants that don't read `.claude/skills/` still get every
+MCP tool; the skill files are plain markdown you can read too.
+
 Your assistant launches `pixi run hermes-mcp` from your project, which starts the
 server using the HERMES you installed. Start (or restart) your assistant so it
 picks up the new config.
@@ -130,6 +136,30 @@ For each folder in the run's `analysis/` folder (`pixel_hits/`, `tdc_triggers/`,
 It reads only the summary at the end of each file and a few rows, so it is quick
 even when a run is many gigabytes. The assistant can then write its own pandas or
 matplotlib code against the columns it found.
+
+## Look up config fields and output files
+
+The `hermes-config-and-files` skill lets the assistant look things up instead of
+guessing. It is used when you ask it to write or explain a config, or to work
+with the Parquet files:
+
+> What does `max_time_spread_ticks` do?
+>
+> How do I get time-of-flight from the events and the TDC1 triggers?
+
+- **Config fields**: a script prints one config section's fields, with each
+  one's type, default, allowed values and meaning. It reads them from the
+  HERMES you installed, so it matches your version. You can run it yourself:
+
+  ```bash
+  pixi run python .claude/skills/hermes-config-and-files/scripts/show_config_fields.py photon_reconstruction
+  ```
+
+  The sections are `measurement_info`, `environment`, `acquisition`, `analysis`,
+  `unpacking`, `photon_reconstruction` and `event_reconstruction`.
+- **Output files**: `output_files.md` describes each output folder and its
+  columns, the time unit, the TDC1 and TDC2 offsets, the known timing limits,
+  and what the summaries and logs hold.
 
 ## Check the installation
 

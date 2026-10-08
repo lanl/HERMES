@@ -179,11 +179,22 @@ class DetectorConfiguration(DetectorApiModel):
     )
     trigger_mode: DetectorTriggerMode | None = Field(default=None, alias="TriggerMode")
     n_triggers: int | None = Field(default=None, ge=0, alias="nTriggers")
-    tdc: DetectorTdcConfig | None = Field(default=None, alias="Tdc")
+    tdc: DetectorTdcConfig | None = Field(
+        default=None,
+        alias="Tdc",
+        description="Which TDC edges to record, as [TDC1, TDC2]: P rising, N "
+        'falling, PN both, then the chip numbers. Quad: ["PN0123", "PN0123"]. '
+        'Off: ["", ""].',
+    )
     global_timestamp_interval_s: float | None = Field(
         default=None,
         le=10_000_000,
         alias="GlobalTimestampInterval",
+        description="Seconds between global timestamps, which unpacking needs "
+        "to place times on one time axis. Unset: HERMES uses 1 s, or half the "
+        "trigger period if that is shorter. HERMES refuses 0 or less, more than "
+        "13 s, or more than half the trigger period in AUTOTRIGSTART_TIMERSTOP "
+        "and CONTINUOUS.",
     )
     external_reference_clock: bool | None = Field(
         default=None,
