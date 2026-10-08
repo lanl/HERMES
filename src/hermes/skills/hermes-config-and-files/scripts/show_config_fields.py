@@ -111,6 +111,12 @@ def print_fields(model: type[BaseModel], indent: str) -> None:
             notes.append("required")
         elif field.default is not PydanticUndefined:
             notes.append(f"default {json.dumps(field.default, default=str)}")
+        elif isinstance(default := field.default_factory(), (list, dict)):
+            notes.append(f"default {json.dumps(default)}")
+        else:
+            # A folder or a group of settings; the description or the fields
+            # below give its default.
+            notes.append("optional")
         for limit in field.metadata:
             for key, text in LIMITS.items():
                 value = getattr(limit, key, None)

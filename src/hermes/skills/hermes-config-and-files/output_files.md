@@ -5,7 +5,8 @@ events and so on, each in its own folder under the run's analysis folder. Every
 file has a `timestamp_canonical` column on the same clock. `<raw name>` is the
 raw `.tpx3` file name without `.tpx3`. `<chip>` is 0–3. `<part>` is a five-digit
 part number, starting at `00000`. The unpacker starts a new part every 1,000,000
-rows.
+rows. A file that would have no rows is not written, so a folder can be missing
+or have fewer files than expected; the summaries still count them.
 
 ## Time
 
@@ -48,12 +49,13 @@ Every file name starts with `<raw name>` and ends with `_<part>.parquet`.
   `timestamp_canonical`. Each of those has a `<name>_present` true/false column
   saying whether that packet type has the value.
 - `unrecognized_packets/`: packets HERMES did not recognise, with columns
-  `chunk_index`, `packet_index`, `raw_word` and `most_significant_byte`. It is
-  usually empty.
+  `chunk_index`, `packet_index`, `raw_word` and `most_significant_byte`.
+  Usually there are none, so there is no file.
 
 ## Folders written by photon reconstruction
 
-There is one output file per pixel file, so the names keep the chip and part.
+Each pixel file gives at most one photon file, so the names keep the chip and
+part. A pixel file with no photons gives no photon file, only its summary.
 
 - `photons/<raw name>_chip_<chip>_photon_<part>.parquet`: one row per photon,
   with columns `photon_id`, `x`, `y`, `timestamp_canonical`, `tot` and
@@ -82,7 +84,8 @@ summary counts them.
 
 ## Folders written by event reconstruction
 
-There is one output file per raw file, covering all chips.
+Each raw file gives at most one events file, covering all chips. A raw file with
+no events gives no events file, only its summary.
 
 - `events/<raw name>_event_candidates.parquet`: one row per event, with columns
   `event_id`, `x`, `y`, `timestamp_canonical`, `photon_count` and

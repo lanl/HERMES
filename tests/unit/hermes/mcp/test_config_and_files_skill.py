@@ -67,6 +67,16 @@ def test_a_field_shows_its_type_default_limits_and_meaning() -> None:
     assert "4: pixels join when they share a side." in result.stdout
 
 
+def test_a_field_with_a_built_default_is_not_shown_as_unspecified() -> None:
+    assert "additional_metadata: dict[str, JsonValue] (default {})" in (
+        _show("measurement_info").stdout
+    )
+    assert "log_directory: path (optional)" in _show("environment").stdout
+    assert "runtime_options: Tpx3UnpackingRuntimeOptions (optional)" in (
+        _show("unpacking").stdout
+    )
+
+
 def test_an_unknown_section_lists_the_sections() -> None:
     result = _show("clustering")
 

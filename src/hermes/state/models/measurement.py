@@ -9,7 +9,9 @@ class MeasurementInfo(StrictBaseModel):
     """Human and facility metadata needed to identify a measurement."""
 
     measurement_id: str = Field(
-        min_length=1, description="Names the measurement; written into every summary."
+        min_length=1,
+        description="Names the measurement; written into the logs and the "
+        "unpacking and photon reconstruction summaries.",
     )
     run: str = Field(
         min_length=1,
