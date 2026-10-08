@@ -816,20 +816,36 @@ def _tail_records(path: Path) -> list[dict]:
     return [record for record in map(_parse_log_line, lines) if record]
 
 
-def _last_run_records(files: list[Path], *, read_all: bool) -> list[dict]:
-    """The warning, error and measurement lines the last run logged.
+def _last_run_process(logs: Path) -> int | None:
+    """The process that wrote the newest line in any of the run's log files.
 
-    `files` are one log file and its older, rotated parts, oldest first. Every
-    run appends to the same log files, so only lines from the process that
-    wrote the newest line are kept. With `read_all` False only the end of the
-    newest file is read.
+    Every run appends to the same log files, and one run is one process. A new
+    run may have logged only an acquisition line so far, so look at all three
+    files, not each on its own.
     """
-    if not files:
+    newest = None
+    for name in ("state.jsonl", "analysis.jsonl", "acquisition.serval.jsonl"):
+        path = logs / name
+        records = _tail_records(path) if path.is_file() else []
+        if records and (
+            newest is None
+            or records[-1]["time"]["timestamp"] > newest["time"]["timestamp"]
+        ):
+            newest = records[-1]
+    return newest["process"]["id"] if newest else None
+
+
+def _last_run_records(
+    files: list[Path], process: int | None, *, read_all: bool
+) -> list[dict]:
+    """The warning, error and measurement lines `process` logged.
+
+    `files` are one log file and its older, rotated parts, oldest first. With
+    `read_all` False only the end of the newest file is read.
+    """
+    if not files or process is None:
         return []
     records = _tail_records(files[-1])
-    if not records:
-        return []
-    process = records[-1]["process"]["id"]
     if read_all:
         records = []
         for path in files:
@@ -1124,6 +1140,7 @@ def report_run_status(request: RunStatusRequest) -> RunStatusResult:
     file_errors: dict[tuple[str, str], list[str]] = {}
     skipped: set[tuple[str, str]] = set()
     measurement: dict | None = None
+    process = _last_run_process(logs)
     for source, files, read_all in (
         ("analysis.jsonl", sorted(logs.glob("analysis*.jsonl")), True),
         (
@@ -1133,7 +1150,7 @@ def report_run_status(request: RunStatusRequest) -> RunStatusResult:
         ),
         ("state.jsonl", sorted(logs.glob("state.jsonl")), False),
     ):
-        for record in _last_run_records(files, read_all=read_all):
+        for record in _last_run_records(files, process, read_all=read_all):
             extra = record["extra"]
             event_type = extra.get("event_type") or ""
             if event_type in _MEASUREMENT_EVENTS:

@@ -337,6 +337,46 @@ def test_a_new_run_in_an_old_run_folder_has_not_finished(finished_run: Path) -> 
     assert result.outcome == "not finished"
 
 
+def test_a_new_run_leaves_out_the_errors_of_the_run_before(
+    finished_run: Path,
+) -> None:
+    # The run before logged an error; the new run has so far logged only one
+    # acquisition line and nothing to analysis.jsonl.
+    _write_lines(
+        finished_run / "logs" / "analysis.jsonl",
+        [
+            _log_line(
+                "ERROR",
+                "Unpacking raw/junk.tpx3 failed: Invalid TPX3 signature",
+                "analysis.tpx3_unpacking.failed",
+                raw_tpx3_file="raw/junk.tpx3",
+            )
+        ],
+    )
+    _write_lines(
+        finished_run / "logs" / "acquisition.serval.jsonl",
+        [
+            _log_line(
+                "INFO",
+                "Measurement running: 1 frames",
+                "acquisition.serval.measurement_progress",
+                process=_PROCESS + 1,
+                time=3_000.0,
+                frames=1,
+                dropped_frames=0,
+            )
+        ],
+    )
+
+    result = _report(finished_run)
+
+    assert result.outcome == "not finished"
+    assert result.acquisition is not None
+    assert result.acquisition.frames == 1
+    assert "junk.tpx3" not in [problem.file for problem in result.problem_files]
+    assert result.errors == []
+
+
 def test_repeated_warnings_are_shown_once_with_a_count(finished_run: Path) -> None:
     raw_files = [f"raw/{n:06d}.tpx3" for n in range(12)]
     _write_lines(
