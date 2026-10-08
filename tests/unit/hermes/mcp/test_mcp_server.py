@@ -92,8 +92,9 @@ def test_generated_config_is_quiet_and_uses_the_default_timewalk(
 
     record = load_hermes_record_from_yaml(result.config_file)
     # Runs print only errors and worse to the terminal; the JSON-lines log files
-    # still keep the full record.
+    # in the run's logs/ folder still keep everything.
     assert record.environment.log_level == "ERROR"
+    assert record.environment.log_directory.resolved_path == tmp_path / "run-1" / "logs"
     assert isinstance(record.analysis, HermesTpx3AnalysisState)
     reconstruction = record.analysis.photon_reconstruction
     assert reconstruction is not None
