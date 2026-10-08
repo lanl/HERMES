@@ -78,6 +78,29 @@ Each stage writes one Parquet file per signal so times from different signals
 stay on one comparable clock. For what each stage produces, see the analysis
 examples under [`examples/analysis/`](../analysis/).
 
+## Describe the output files
+
+Once a run has finished, ask the assistant what it wrote before you start
+looking at the data:
+
+> Describe the output files in ./my-run/analysis.
+
+For each folder in the run's `analysis/` folder (`pixel_hits/`, `tdc_triggers/`,
+`photons/`, `events/`, and the rest), the assistant reports:
+
+- **How many Parquet files** there are and their total size.
+- **The columns and their types.**
+- **The number of rows.**
+- **The first and last `timestamp_canonical`**, and the time between them in
+  seconds. Every `timestamp_canonical` counts the same ticks of 25 ns / 12288
+  (about 2.03 ps), so times from different folders can be subtracted directly.
+- **A few example rows** from one file.
+- **Files it could not read**, such as one still being written.
+
+It reads only the summary at the end of each file and a few rows, so it is quick
+even when a run is many gigabytes. The assistant can then write its own pandas or
+matplotlib code against the columns it found.
+
 ## Check the installation
 
 When something doesn't work, start by asking:

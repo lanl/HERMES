@@ -3,7 +3,8 @@
 One local MCP server (standard input/output, no network) that ships inside the
 HERMES package so any MCP-speaking LLM tool can help a user configure and run a
 HERMES analysis. Its tools write a workflow config and a runnable script for the
-``.tpx3`` files in a folder, check a config, and check the installation.
+``.tpx3`` files in a folder, check a config, check the installation, and
+describe a run's Parquet output files.
 """
 
 from __future__ import annotations
@@ -12,8 +13,10 @@ import json
 from datetime import datetime
 from importlib.metadata import PackageNotFoundError, distribution, version
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
+import pyarrow as pa
+import pyarrow.parquet as pq
 import yaml
 from loguru import logger
 from mcp.server.mcpserver import MCPServer
@@ -460,6 +463,180 @@ def check_installation() -> InstallationCheckResult:
         empir_programs=empir_programs,
         python_packages=python_packages,
         message=f"HERMES {hermes.version}. " + " ".join(notes),
+    )
+
+
+# Every timestamp_canonical column counts ticks of 25 ns / 12288.
+_TICK_SECONDS = 25e-9 / 12_288
+_EXAMPLE_ROW_COUNT = 3
+
+
+class OutputFilesRequest(BaseModel):
+    analysis_directory: Path = Field(
+        description="The run's analysis folder, which holds one folder per "
+        "kind of output, such as pixel_hits/, tdc_triggers/, photons/ and "
+        "events/.",
+    )
+
+
+class OutputFolderSummary(BaseModel):
+    folder: str
+    file_count: int
+    total_bytes: int
+    row_count: int
+    columns: dict[str, str] = Field(
+        description="Column names and types, from the first file's schema.",
+    )
+    first_timestamp_canonical: int | float | None = Field(
+        description="The earliest timestamp_canonical in the folder, in ticks; "
+        "empty when the files have no timestamp_canonical column.",
+    )
+    last_timestamp_canonical: int | float | None
+    time_span_seconds: float | None
+    example_file: str
+    example_rows: list[dict[str, Any]]
+    problems: list[str] = Field(
+        description="Files that could not be read, for example one still "
+        "being written; they are left out of the counts.",
+    )
+
+
+class OutputFilesResult(BaseModel):
+    analysis_directory: Path
+    tick_seconds: float = Field(
+        description="Seconds per timestamp_canonical tick.",
+    )
+    folders: list[OutputFolderSummary]
+    message: str
+
+
+def _timestamp_range(
+    metadata: pq.FileMetaData,
+) -> tuple[int | float, int | float] | None:
+    """Read the timestamp_canonical range from the column statistics."""
+    names = metadata.schema.names
+    if "timestamp_canonical" not in names:
+        return None
+    column = names.index("timestamp_canonical")
+    lows: list[int | float] = []
+    highs: list[int | float] = []
+    for group in range(metadata.num_row_groups):
+        statistics = metadata.row_group(group).column(column).statistics
+        if statistics is not None and statistics.has_min_max:
+            lows.append(statistics.min)
+            highs.append(statistics.max)
+    if not lows:
+        return None
+    return min(lows), max(highs)
+
+
+def _describe_folder(folder: Path, files: list[Path]) -> OutputFolderSummary:
+    # Read only each file's footer. A run can have thousands of files, so each
+    # one is closed straight away rather than kept open.
+    readable: list[tuple[Path, pq.FileMetaData]] = []
+    problems: list[str] = []
+    for path in files:
+        try:
+            readable.append((path, pq.read_metadata(path)))
+        except (OSError, pa.ArrowException) as exc:
+            problems.append(f"could not read {path.name}: {exc}")
+
+    total_bytes = 0
+    row_count = 0
+    lows: list[int | float] = []
+    highs: list[int | float] = []
+    for path, metadata in readable:
+        total_bytes += path.stat().st_size
+        row_count += metadata.num_rows
+        time_range = _timestamp_range(metadata)
+        if time_range is not None:
+            lows.append(time_range[0])
+            highs.append(time_range[1])
+
+    columns: dict[str, str] = {}
+    example_file = ""
+    example_rows: list[dict[str, Any]] = []
+    if readable:
+        # Take the example rows from the first file that has any.
+        path = next(
+            (path for path, metadata in readable if metadata.num_rows > 0),
+            readable[0][0],
+        )
+        with pq.ParquetFile(path) as parquet_file:
+            columns = {
+                field.name: str(field.type) for field in parquet_file.schema_arrow
+            }
+            for batch in parquet_file.iter_batches(batch_size=_EXAMPLE_ROW_COUNT):
+                example_rows = batch.to_pylist()
+                break
+        example_file = path.name
+
+    first = min(lows) if lows else None
+    last = max(highs) if highs else None
+    return OutputFolderSummary(
+        folder=folder.name,
+        file_count=len(readable),
+        total_bytes=total_bytes,
+        row_count=row_count,
+        columns=columns,
+        first_timestamp_canonical=first,
+        last_timestamp_canonical=last,
+        time_span_seconds=(
+            (last - first) * _TICK_SECONDS if first is not None else None
+        ),
+        example_file=example_file,
+        example_rows=example_rows,
+        problems=problems,
+    )
+
+
+@mcp_server.tool()
+def describe_output_files(request: OutputFilesRequest) -> OutputFilesResult:
+    """Describe the Parquet files in a run's analysis folder: for each output
+    folder, the file count and size, the columns and their types, the row
+    count, the timestamp_canonical range, and a few example rows. Reads only
+    the file footers and a few rows, so it is quick on runs of any size. Use it
+    before writing pandas or matplotlib code for a run's output."""
+    directory = request.analysis_directory.expanduser().resolve()
+    if not directory.is_dir():
+        raise ValueError(f"analysis folder does not exist: {directory}")
+
+    folders: list[OutputFolderSummary] = []
+    for folder in sorted(path for path in directory.iterdir() if path.is_dir()):
+        files = sorted(folder.glob("*.parquet"))
+        if files:
+            folders.append(_describe_folder(folder, files))
+    if not folders:
+        raise ValueError(
+            f"no folders with Parquet files under {directory}; give the run's "
+            f"analysis folder, for example <run folder>/analysis"
+        )
+
+    file_count = sum(summary.file_count for summary in folders)
+    unreadable = sum(len(summary.problems) for summary in folders)
+    logger.bind(domain="analysis").info(
+        "described {files} Parquet file(s) in {folders} folder(s) under {path}",
+        files=file_count,
+        folders=len(folders),
+        path=str(directory),
+    )
+    message = (
+        f"Found {file_count} Parquet file(s) in {len(folders)} folder(s): "
+        f"{', '.join(summary.folder for summary in folders)}. Every "
+        f"timestamp_canonical column counts ticks of 25 ns / 12288 (about "
+        f"2.03 ps), so times from different folders can be subtracted "
+        f"directly; multiply by tick_seconds to get seconds."
+    )
+    if unreadable:
+        message += (
+            f" {unreadable} file(s) could not be read and are left out; see "
+            f"each folder's problems."
+        )
+    return OutputFilesResult(
+        analysis_directory=directory,
+        tick_seconds=_TICK_SECONDS,
+        folders=folders,
+        message=message,
     )
 
 
