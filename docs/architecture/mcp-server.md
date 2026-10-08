@@ -170,7 +170,11 @@ gold-plated.
 - **Phase 2: validate a config.** `validate_config` loads a config YAML through
   the installed HERMES's real rules and reports either that it is valid, with the
   stages it would run, or a clear per-field list of what is wrong. It pairs with
-  `create_analysis_config`: generate, then check.
+  `create_analysis_config`: generate, then check. For an acquisition it also
+  checks, without contacting SERVAL, that the calibration files exist and that
+  the detector configuration passes the same checks the run makes before it
+  starts (`build_effective_detector_config`), and warns about a missing SERVAL
+  `.jar` or less than 1 GB free for the raw files.
 - **Phase 3: the rest of the tools and skills.** The order follows what each
   piece uses:
   - `check_installation`, `describe_output_files`, `report_run_status`,

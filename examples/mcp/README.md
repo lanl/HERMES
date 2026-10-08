@@ -197,3 +197,30 @@ You can also ask the assistant to check an existing config before you run it:
 It reports whether the config is valid — and, when it is, the stages it would run
 — or, when it is not, a clear list of exactly what to fix (a missing field, a bad
 value, an unknown key, or unparseable YAML).
+
+For a config that runs an acquisition, it lists `acquisition` as the first stage
+and also checks the things that would otherwise only go wrong once the camera is
+running. It reads only the config and the files it names; it does not contact
+SERVAL, so you can check a config on a machine with no camera.
+
+These are problems, so the config is not valid:
+
+- **A calibration file is missing**: the `.bpc` or `.dacs` file under
+  `calibration_files`.
+- **The detector configuration cannot be used**: a `detector_config_file` that
+  is missing or cannot be read, or a setting the camera would refuse, such as an
+  exposure time too close to the trigger period.
+- **The global timestamp settings would give wrong times**: an interval of 0 or
+  less (global timestamps turned off), an interval over 13 s, or, in
+  `AUTOTRIGSTART_TIMERSTOP` and `CONTINUOUS`, an interval over half the trigger
+  period or a trigger period under 0.1 s. These are the same checks the run
+  makes before it starts. When the interval is left unset, the answer says the
+  one HERMES will use.
+- **A measurement has nowhere to write**: `run_timing` is set but
+  `environment.raw_data_directory` is not.
+
+These are warnings, so the config can still be valid:
+
+- **The SERVAL `.jar` (`program_path`) is not found.** HERMES needs it only to
+  start SERVAL when nothing is answering at `url` yet.
+- **Less than 1 GB is free** where the raw files will be written.
