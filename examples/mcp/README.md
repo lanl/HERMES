@@ -65,8 +65,8 @@ Two of those defaults are worth calling out:
   (`timewalk_calibration_file: default` under photon reconstruction).
 - **The run is quiet**, showing only errors on your terminal
   (`log_level: ERROR`). HERMES still writes its full, structured logs to
-  JSON-lines files on disk, so nothing is lost — the setting only trims what
-  prints to the screen.
+  JSON-lines files in the run's `logs/` folder (`log_directory: logs`), so
+  nothing is lost — the setting only trims what prints to the screen.
 
 ## 3. Run it
 
@@ -77,6 +77,33 @@ pixi run python run_hermes.py
 Each stage writes one Parquet file per signal so times from different signals
 stay on one comparable clock. For what each stage produces, see the analysis
 examples under [`examples/analysis/`](../analysis/).
+
+## Check how a run went
+
+During a run or after it, ask:
+
+> How far did my HERMES run in ./my-run/run-1 get?
+
+Give it the run folder: the one with `HERMES_record.yaml`, `analysis/` and
+`logs/` in it. The assistant reports:
+
+- **How the run ended**: completed, failed, or stopped by Ctrl-C. HERMES writes
+  its workflow log and record only when a run ends, so while a run is still going
+  the answer says it has not finished and is built from the summary and log
+  files written so far.
+- **The acquisition**, if the run had one: its status, why it stopped, and the
+  frame and dropped-frame counts.
+- **For each stage** (unpacking, photon reconstruction, event reconstruction):
+  how many files succeeded, were skipped because their outputs already existed,
+  failed, or have not run, and how many Parquet files are in its output folders.
+- **The files that failed or have not run**, with their error text. A file that
+  failed before writing a summary still gets its error from `logs/analysis.jsonl`.
+- **Each kind of warning and error once, with a count**, so a warning repeated for
+  every file shows up as one line rather than hundreds. Only lines from the last
+  run are counted, since every run in a folder adds to the same log files.
+
+It reports what HERMES saved without second-guessing it. Read the per-file
+summaries under `analysis/logs/` for the full detail on any one file.
 
 ## Describe the output files
 

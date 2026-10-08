@@ -3,13 +3,16 @@
 One local MCP server (standard input/output, no network) that ships inside the
 HERMES package so any MCP-speaking LLM tool can help a user configure and run a
 HERMES analysis. Its tools write a workflow config and a runnable script for the
-``.tpx3`` files in a folder, check a config, check the installation, and
-describe a run's Parquet output files.
+``.tpx3`` files in a folder, check a config, check the installation, describe
+a run's Parquet output files, and report how far a run got and why anything
+failed.
 """
 
 from __future__ import annotations
 
 import json
+import re
+from collections import Counter
 from datetime import datetime
 from importlib.metadata import PackageNotFoundError, distribution, version
 from pathlib import Path
@@ -91,9 +94,11 @@ _EVENT_RECONSTRUCTION: dict = {
     },
 }
 
-# HERMES always writes its full, structured logs to JSON-lines files on disk.
-# This level only sets how much a run prints to the terminal, so keep runs quiet
-# by showing errors and worse on screen while the log files keep everything.
+# The config keeps HERMES's full, structured logs in JSON-lines files in the
+# run's logs/ folder. This level only sets how much a run prints to the
+# terminal, so keep runs quiet by showing errors and worse on screen while the
+# log files keep everything.
+_LOG_DIRECTORY = "logs"
 _QUIET_LOG_LEVEL = "ERROR"
 
 _RUN_SCRIPT = '''from pathlib import Path
@@ -151,7 +156,12 @@ def create_analysis_config(request: AnalysisConfigRequest) -> AnalysisConfigResu
     if not raw_files:
         raise ValueError(f"no .tpx3 files found under {directory}")
 
-    unpacking = {**_UNPACKING, "tpx3_files": [{"path": name} for name in raw_files]}
+    # HERMES opens each listed .tpx3 path as written, from whatever folder the
+    # run script is launched in, so write full paths.
+    unpacking = {
+        **_UNPACKING,
+        "tpx3_files": [{"path": str(directory / name)} for name in raw_files],
+    }
     analysis: dict = {"mode": "hermes", "unpacking": unpacking}
     stages = ["unpacking"]
     if request.furthest_stage in ("photon_reconstruction", "event_reconstruction"):
@@ -169,14 +179,13 @@ def create_analysis_config(request: AnalysisConfigRequest) -> AnalysisConfigResu
         "environment": {
             "working_directory": str(directory),
             "analysis_directory": "analysis",
+            "log_directory": _LOG_DIRECTORY,
             "log_level": _QUIET_LOG_LEVEL,
         },
         "analysis": analysis,
     }
 
-    # Validate against the installed HERMES's real rules before writing. The
-    # working directory is written into the config so the .tpx3 file list
-    # resolves no matter which directory the run script is launched from.
+    # Validate against the installed HERMES's real rules before writing.
     HermesRecord.model_validate(config)
 
     config_path = directory / "hermes-config.yaml"
@@ -662,6 +671,635 @@ def describe_output_files(request: OutputFilesRequest) -> OutputFilesResult:
         tick_seconds=_TICK_SECONDS,
         folders=folders,
         message=message,
+    )
+
+
+_STAGES = ("unpacking", "photon_reconstruction", "event_reconstruction")
+# The workflow log calls photon reconstruction just "reconstruction".
+_WORKFLOW_LOG_STAGES = {"reconstruction": "photon_reconstruction"}
+_STAGE_OUTPUT_FOLDERS = {
+    "unpacking": (
+        "pixel_hits",
+        "tdc_triggers",
+        "global_timestamps",
+        "control_packets",
+        "unrecognized_packets",
+    ),
+    "photon_reconstruction": ("photons", "pixel_clusters"),
+    "event_reconstruction": ("events", "event_photons"),
+}
+_OUTCOMES = {
+    "workflow_completed": "completed",
+    "workflow_failed": "failed",
+    "workflow_stopped": "stopped",
+}
+_MEASUREMENT_EVENTS = (
+    "acquisition.serval.measurement_progress",
+    "acquisition.serval.measurement_done",
+)
+# Show at most this many problem files and kinds of message, and this many
+# errors for each file, so the answer stays short even when hundreds of files
+# failed.
+_SHOWN = 20
+_ERRORS_PER_FILE = 3
+# state.jsonl holds the whole record and can grow to tens of megabytes, so
+# only its last megabyte is read.
+_TAIL_BYTES = 1_000_000
+
+
+class RunStatusRequest(BaseModel):
+    run_directory: Path = Field(
+        description="The run folder, which holds HERMES_record.yaml, analysis/ "
+        "and logs/.",
+    )
+
+
+class AcquisitionStatus(BaseModel):
+    status: str | None = Field(
+        description="Once the run has ended, the status saved in "
+        "HERMES_record.yaml: completed, failed, stopped, configured, planned "
+        "or unknown. While the run is going, 'running', or 'measurement "
+        "finished' once the camera has stopped, from the acquisition log.",
+    )
+    stop_reason: str | None
+    frames: int | None
+    dropped_frames: int | None
+    warnings: list[str]
+    errors: list[str]
+
+
+class StageStatus(BaseModel):
+    stage: str
+    succeeded: int
+    skipped: int = Field(
+        description="Files left as they were because valid outputs already "
+        "existed.",
+    )
+    failed: int
+    not_run: int = Field(
+        description="Raw files this stage has no result for although the "
+        "stage before finished them, for example when that stage passed on "
+        "nothing to work on. While a run is going, this also counts .tpx3 "
+        "files in the run folder still waiting to be unpacked.",
+    )
+    parquet_files: int = Field(
+        description="Parquet files in this stage's output folders.",
+    )
+
+
+class ProblemFile(BaseModel):
+    stage: str
+    file: str
+    status: str = Field(
+        description="failed; 'not run' for a file the stage has no result "
+        "for although the stage before finished it; or the saved status of a "
+        "file that logged errors anyway.",
+    )
+    errors: list[str] = Field(
+        description=f"The first {_ERRORS_PER_FILE} error messages.",
+    )
+    error_count: int
+
+
+class LoggedMessage(BaseModel):
+    source: str = Field(
+        description="The log file it came from, or the stage whose summary "
+        "files it came from.",
+    )
+    text: str = Field(description="The first message of this kind.")
+    count: int = Field(
+        description="How many messages of this kind there were; messages that "
+        "differ only in their numbers count as one kind.",
+    )
+
+
+class RunStatusResult(BaseModel):
+    run_directory: Path
+    outcome: str = Field(
+        description="How the run ended, from the workflow log HERMES writes "
+        "when a run ends: completed, failed, or stopped (by Ctrl-C). 'not "
+        "finished' when there is no workflow log yet.",
+    )
+    acquisition: AcquisitionStatus | None
+    stages: list[StageStatus]
+    problem_files: list[ProblemFile] = Field(
+        description="Only files that failed, that a stage has no result for, "
+        f"or that logged errors; at most {_SHOWN}.",
+    )
+    errors: list[LoggedMessage] = Field(
+        description=f"Each kind of error once, most common first; at most "
+        f"{_SHOWN}. Errors about one file are in problem_files instead.",
+    )
+    warnings: list[LoggedMessage] = Field(
+        description=f"Each kind of warning once, most common first; at most "
+        f"{_SHOWN}.",
+    )
+    message: str
+
+
+def _parse_log_line(line: str) -> dict | None:
+    try:
+        return json.loads(line)["record"]
+    except (ValueError, KeyError, TypeError):
+        # For example the last line of a log file HERMES is still writing.
+        return None
+
+
+def _tail_records(path: Path) -> list[dict]:
+    """The log lines in the last megabyte of a log file."""
+    with path.open("rb") as handle:
+        size = handle.seek(0, 2)
+        handle.seek(max(0, size - _TAIL_BYTES))
+        lines = handle.read().decode("utf-8", errors="replace").splitlines()
+    if size > _TAIL_BYTES:
+        lines = lines[1:]  # only the end of a line
+    return [record for record in map(_parse_log_line, lines) if record]
+
+
+def _last_run_process(logs: Path) -> int | None:
+    """The process that wrote the newest line in any of the run's log files.
+
+    Every run appends to the same log files, and one run is one process. A new
+    run may have logged only an acquisition line so far, so look at all three
+    files, not each on its own.
+    """
+    newest = None
+    for name in ("state.jsonl", "analysis.jsonl", "acquisition.serval.jsonl"):
+        path = logs / name
+        records = _tail_records(path) if path.is_file() else []
+        if records and (
+            newest is None
+            or records[-1]["time"]["timestamp"] > newest["time"]["timestamp"]
+        ):
+            newest = records[-1]
+    return newest["process"]["id"] if newest else None
+
+
+def _last_run_records(
+    files: list[Path], process: int | None, *, read_all: bool
+) -> list[dict]:
+    """The warning, error and measurement lines `process` logged.
+
+    `files` are one log file and its older, rotated parts, oldest first. With
+    `read_all` False only the end of the newest file is read.
+    """
+    if not files or process is None:
+        return []
+    records = _tail_records(files[-1])
+    if read_all:
+        records = []
+        for path in files:
+            with path.open(encoding="utf-8", errors="replace") as handle:
+                # Decode only the lines that can matter; a long run logs
+                # hundreds of megabytes.
+                records += [
+                    record
+                    for line in handle
+                    if '"WARNING"' in line
+                    or '"ERROR"' in line
+                    or '"CRITICAL"' in line
+                    or "acquisition.serval.measurement_" in line
+                    if (record := _parse_log_line(line))
+                ]
+    return [
+        record
+        for record in records
+        if record["process"]["id"] == process
+        and (
+            record["level"]["no"] >= 30
+            or record["extra"].get("event_type") in _MEASUREMENT_EVENTS
+        )
+    ]
+
+
+def _new_run_started(workflow_log: Path, logs: Path) -> bool:
+    """Whether a new run has started since the workflow log was written.
+
+    HERMES writes the workflow log when a run ends, and every run appends to
+    the same log files, so a newer log line from another process means a new
+    run in this folder is going, or ended before it could write its own.
+    """
+    written = workflow_log.stat().st_mtime
+    for name in ("state.jsonl", "analysis.jsonl", "acquisition.serval.jsonl"):
+        path = logs / name
+        records = _tail_records(path) if path.is_file() else []
+        if not records or records[-1]["time"]["timestamp"] <= written:
+            continue
+        before = [
+            record for record in records if record["time"]["timestamp"] <= written
+        ]
+        newest = records[-1]["process"]["id"]
+        if not before or before[-1]["process"]["id"] != newest:
+            return True
+    return False
+
+
+def _count_message(
+    groups: dict[tuple[str, ...], LoggedMessage],
+    source: str,
+    text: str,
+    event_type: str = "",
+    extra: dict | None = None,
+) -> None:
+    """Count a message, treating ones of the same event type that differ only
+    in their numbers, or in the files they name, as one kind."""
+    kind = text
+    files = [
+        str(value)
+        for key, value in (extra or {}).items()
+        if key.endswith(("_file", "_stem")) and value
+    ]
+    # Longest first, so a path is replaced before a shorter name inside it.
+    for file in sorted(files, key=len, reverse=True):
+        kind = kind.replace(file, "FILE")
+    key = (source, event_type, re.sub(r"\d+", "N", kind))
+    if key in groups:
+        groups[key].count += 1
+    else:
+        groups[key] = LoggedMessage(source=source, text=text, count=1)
+
+
+def _file_named_in(extra: dict) -> tuple[str, str] | None:
+    """The stage and file name a log line is about, if it is about one file."""
+    if "raw_tpx3_file" in extra:
+        return "unpacking", Path(str(extra["raw_tpx3_file"])).name
+    if "pixel_file" in extra:
+        return "photon_reconstruction", Path(str(extra["pixel_file"])).name
+    if "raw_file_stem" in extra:
+        stem = str(extra["raw_file_stem"])
+        return "event_reconstruction", f"{stem}_event_candidates.parquet"
+    return None
+
+
+def _file_for_summary(stage: str, summary_name: str) -> str:
+    """The name of the file a stage worked on, from its summary's name.
+
+    These are the names the workflow log and the log lines use.
+    """
+    if stage == "unpacking":
+        return summary_name.replace("_unpacker_summary.json", ".tpx3")
+    if stage == "photon_reconstruction":
+        return summary_name.replace(
+            "_photon_reconstruction_summary_", "_pixels_"
+        ).replace(".json", ".parquet")
+    return summary_name.replace(
+        "_event_reconstruction_summary.json", "_event_candidates.parquet"
+    )
+
+
+def _raw_name(file_name: str) -> str:
+    """The raw file's name without .tpx3, which every stage's file names
+    start with."""
+    return re.sub(r"(_chip_.*|_event_candidates)?\.(tpx3|parquet)$", "", file_name)
+
+
+def _read_summaries(
+    analysis: Path,
+    warnings: dict[tuple[str, ...], LoggedMessage],
+    file_errors: dict[tuple[str, str], list[str]],
+) -> dict[str, dict[str, str]]:
+    """Each stage's file statuses from the summaries under analysis/logs/.
+
+    A stage writes one summary per file it finishes. A summary with errors
+    means the file failed. The warnings and errors are added to `warnings` and
+    `file_errors`.
+    """
+    statuses: dict[str, dict[str, str]] = {}
+    for stage in _STAGES:
+        folder = analysis / "logs" / stage
+        if not folder.is_dir():
+            continue
+        files = statuses.setdefault(stage, {})
+        for path in sorted(folder.glob("*.json")):
+            try:
+                summary = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue  # still being written
+            name = _file_for_summary(stage, path.name)
+            found: list[str] = []
+            for section in ("unpacking", "output_parquet", "reconstruction"):
+                part = summary.get(section) or {}
+                for text in part.get("warnings") or []:
+                    _count_message(warnings, f"{stage} summaries", str(text))
+                found += [str(text) for text in part.get("errors") or []]
+            if found:
+                file_errors.setdefault((stage, name), []).extend(found)
+            files[name] = "failed" if found else "success"
+    return statuses
+
+
+def _read_workflow_log(path: Path) -> tuple[dict[str, dict[str, str]], dict]:
+    """Each stage's file statuses from the workflow log, and its closing line."""
+    lines = [
+        json.loads(line)
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    statuses: dict[str, dict[str, str]] = {}
+    for line in lines:
+        if line.get("event") == "workflow_initialized":
+            # A stage the run configured but never reached has no lines.
+            for stage in line.get("stages", []):
+                if stage != "acquisition":
+                    statuses[_WORKFLOW_LOG_STAGES.get(stage, stage)] = {}
+        elif line.get("event") == "stage_completed" and "file" in line:
+            stage = _WORKFLOW_LOG_STAGES.get(line["stage"], line["stage"])
+            statuses.setdefault(stage, {})[Path(line["file"]).name] = line["status"]
+    return statuses, (lines[-1] if lines else {})
+
+
+def _saved_acquisition(record_file: Path) -> AcquisitionStatus | None:
+    """The acquisition as HERMES_record.yaml saved it, if the run had one."""
+    if not record_file.is_file():
+        return None
+    record = yaml.safe_load(record_file.read_text(encoding="utf-8"))
+    acquisition = record.get("acquisition") if isinstance(record, dict) else None
+    if not isinstance(acquisition, dict):
+        return None
+    result = acquisition.get("result") or {}
+    return AcquisitionStatus(
+        status=acquisition.get("status"),
+        stop_reason=result.get("stop_reason"),
+        frames=result.get("frames"),
+        dropped_frames=result.get("dropped_frames"),
+        warnings=result.get("warnings") or [],
+        errors=result.get("errors") or [],
+    )
+
+
+def _starting_config(logs: Path, process: int | None) -> dict | None:
+    """The config the last run started with, which HERMES logs as one line in
+    state.jsonl when the run starts."""
+    # Newest file first. Decode only that one line, since state.jsonl can be
+    # tens of megabytes.
+    for path in sorted(logs.glob("state*.jsonl"), reverse=True):
+        found = None
+        with path.open(encoding="utf-8", errors="replace") as handle:
+            for line in handle:
+                if '"state.initial_record"' in line:
+                    record = _parse_log_line(line)
+                    if record and record["process"]["id"] == process:
+                        found = record["extra"].get("record")
+        if found:
+            return found
+    return None
+
+
+def _raw_names_to_unpack(config: dict) -> set[str]:
+    """The names, without .tpx3, of the raw files a run's config unpacks."""
+    unpacking = (config.get("analysis") or {}).get("unpacking") or {}
+    tpx3_files = unpacking.get("tpx3_files")
+    if isinstance(tpx3_files, list):
+        return {Path(entry["path"]).stem for entry in tpx3_files}
+    if tpx3_files != "auto":
+        return set()
+    # "auto" unpacks every .tpx3 in the raw data folder, as it is now.
+    environment = config.get("environment") or {}
+    folder = (environment.get("raw_data_directory") or {}).get("resolved_path")
+    return {path.stem for path in Path(folder).glob("*.tpx3")} if folder else set()
+
+
+def _logged_acquisition(line: dict | None) -> AcquisitionStatus | None:
+    """The acquisition so far, from its newest measurement log line."""
+    if line is None:
+        return None
+    finished = line.get("event_type") == "acquisition.serval.measurement_done"
+    return AcquisitionStatus(
+        status="measurement finished" if finished else "running",
+        stop_reason=line.get("stop_reason"),
+        frames=line.get("frames"),
+        # The measurement-finished line calls it "dropped".
+        dropped_frames=line.get("dropped_frames", line.get("dropped")),
+        warnings=[],
+        errors=[],
+    )
+
+
+def _count_stages(
+    statuses: dict[str, dict[str, str]],
+    file_errors: dict[tuple[str, str], list[str]],
+    waiting: set[str] | None,
+    analysis: Path,
+) -> tuple[list[StageStatus], list[ProblemFile]]:
+    """Count each stage's files, and list the failed or missing ones.
+
+    A raw file a stage has no result for is "not run" when the stage before
+    finished it. While a run is going, `waiting` holds the names of the .tpx3
+    files the run will unpack; nothing is listed as a problem file for not
+    having run yet. Once the run has ended, `waiting` is None.
+    """
+    stages: list[StageStatus] = []
+    problems: list[ProblemFile] = []
+    earlier = waiting or set()
+    for stage in (stage for stage in _STAGES if stage in statuses):
+        files = statuses[stage]
+        not_run = sorted(earlier - {_raw_name(name) for name in files})
+        earlier = {
+            _raw_name(name)
+            for name, status in files.items()
+            if status in ("success", "skipped")
+        }
+        counts = Counter(files.values())
+        stages.append(
+            StageStatus(
+                stage=stage,
+                succeeded=counts["success"],
+                skipped=counts["skipped"],
+                failed=counts["failed"],
+                not_run=len(not_run),
+                parquet_files=sum(
+                    len(list((analysis / folder).glob("*.parquet")))
+                    for folder in _STAGE_OUTPUT_FOLDERS[stage]
+                ),
+            )
+        )
+        for name, status in sorted(files.items()):
+            found = file_errors.get((stage, name), [])
+            if status == "failed" or found:
+                problems.append(
+                    ProblemFile(
+                        stage=stage,
+                        file=name,
+                        status=status,
+                        errors=found[:_ERRORS_PER_FILE],
+                        error_count=len(found),
+                    )
+                )
+        if waiting is None:
+            problems += [
+                ProblemFile(
+                    stage=stage,
+                    file=f"{raw}.tpx3",
+                    status="not run",
+                    errors=[],
+                    error_count=0,
+                )
+                for raw in not_run
+            ]
+    return stages, problems
+
+
+@mcp_server.tool()
+def report_run_status(request: RunStatusRequest) -> RunStatusResult:
+    """Report how far a HERMES run got and why anything failed: how it ended,
+    the acquisition's status and frame counts, how many files each stage
+    finished, skipped, failed or has not run, the failed or missing files with
+    their error text, and each kind of warning and error once with a count.
+    Works on a run that has ended and on one still going."""
+    run = request.run_directory.expanduser().resolve()
+    if not run.is_dir():
+        raise ValueError(f"run folder does not exist: {run}")
+    logs = run / "logs"
+    analysis = run / "analysis"
+    record_file = run / "HERMES_record.yaml"
+    workflow_log = next(
+        (
+            path
+            for path in (logs / "HERMES-workflow.jsonl", run / "HERMES-workflow.jsonl")
+            if path.is_file()
+        ),
+        None,
+    )
+    if workflow_log is None and not (
+        record_file.is_file() or analysis.is_dir() or logs.is_dir()
+    ):
+        raise ValueError(
+            f"no HERMES run found in {run}; give the run folder, which holds "
+            f"HERMES_record.yaml, analysis/ and logs/"
+        )
+    # A workflow log and record left by an earlier run in this folder say
+    # nothing about the run going now.
+    finished = workflow_log is not None and not _new_run_started(workflow_log, logs)
+
+    errors: dict[tuple[str, ...], LoggedMessage] = {}
+    warnings: dict[tuple[str, ...], LoggedMessage] = {}
+    file_errors: dict[tuple[str, str], list[str]] = {}
+    skipped: set[tuple[str, str]] = set()
+    measurement: dict | None = None
+    process = _last_run_process(logs)
+    for source, files, read_all in (
+        ("analysis.jsonl", sorted(logs.glob("analysis*.jsonl")), True),
+        (
+            "acquisition.serval.jsonl",
+            sorted(logs.glob("acquisition.serval*.jsonl")),
+            True,
+        ),
+        ("state.jsonl", sorted(logs.glob("state.jsonl")), False),
+    ):
+        for record in _last_run_records(files, process, read_all=read_all):
+            extra = record["extra"]
+            event_type = extra.get("event_type") or ""
+            if event_type in _MEASUREMENT_EVENTS:
+                measurement = extra
+                continue
+            is_error = record["level"]["no"] >= 40
+            named = _file_named_in(extra)
+            if named and is_error:
+                file_errors.setdefault(named, []).append(record["message"])
+                continue
+            if named and event_type.endswith(".skipped"):
+                skipped.add(named)
+            _count_message(
+                errors if is_error else warnings,
+                source,
+                record["message"],
+                event_type,
+                extra,
+            )
+
+    statuses = _read_summaries(analysis, warnings, file_errors)
+    if finished:
+        statuses, closing = _read_workflow_log(workflow_log)
+        outcome = _OUTCOMES.get(closing.get("event"), "unknown")
+        if closing.get("error"):
+            _count_message(errors, workflow_log.name, closing["error"])
+        acquisition = _saved_acquisition(record_file)
+        waiting = None
+    else:
+        for stage, name in skipped:
+            statuses.setdefault(stage, {})[name] = "skipped"
+        outcome = "not finished"
+        acquisition = _logged_acquisition(measurement)
+        # The raw files can be outside the run folder, as with a config from
+        # create_analysis_config, so take them and the stages from the config
+        # the run started with. Without logs, look in the run folder.
+        waiting = {path.stem for path in run.rglob("*.tpx3")}
+        config = _starting_config(logs, process)
+        if config is not None:
+            waiting = _raw_names_to_unpack(config)
+            for stage in _STAGES:
+                if (config.get("analysis") or {}).get(stage):
+                    statuses.setdefault(stage, {})
+    # A file that failed before it wrote a summary is known only from its log
+    # line.
+    for stage, name in file_errors:
+        statuses.setdefault(stage, {}).setdefault(name, "failed")
+    stages, problems = _count_stages(statuses, file_errors, waiting, analysis)
+
+    if finished:
+        parts = [f"The run ended: {outcome}."]
+    else:
+        parts = [
+            "The run has not finished, or it ended before HERMES could write "
+            "its workflow log, so this comes from the summary and log files "
+            "written so far."
+        ]
+    if acquisition is not None:
+        text = f"Acquisition: {acquisition.status}"
+        if acquisition.stop_reason:
+            text += f" ({acquisition.stop_reason})"
+        if acquisition.frames is not None:
+            text += f", {acquisition.frames} frame(s)"
+        if acquisition.dropped_frames is not None:
+            text += f", {acquisition.dropped_frames} dropped"
+        parts.append(text + ".")
+    for stage in stages:
+        counts = [
+            f"{count} {label}"
+            for count, label in (
+                (stage.succeeded, "succeeded"),
+                (stage.skipped, "skipped"),
+                (stage.failed, "failed"),
+                (stage.not_run, "not run"),
+            )
+            if count
+        ]
+        parts.append(f"{stage.stage}: {', '.join(counts) or 'no files'}.")
+    if not stages:
+        parts.append("No analysis stage has written any results yet.")
+    if problems:
+        text = (
+            f"{len(problems)} file(s) failed, have no result in a stage, or "
+            f"logged errors; see problem_files"
+        )
+        if len(problems) > _SHOWN:
+            text += f", which lists the first {_SHOWN}"
+        parts.append(text + ".")
+    if errors or warnings:
+        parts.append(
+            f"Found {len(errors)} kind(s) of error and {len(warnings)} kind(s) "
+            f"of warning, each listed once with a count."
+        )
+    if not logs.is_dir():
+        parts.append(
+            "There is no logs/ folder, so the error text of a file that failed "
+            "before writing a summary is not available."
+        )
+
+    logger.bind(domain="analysis").info(
+        "reported the status of the run in {path}: {outcome}",
+        path=str(run),
+        outcome=outcome,
+    )
+    return RunStatusResult(
+        run_directory=run,
+        outcome=outcome,
+        acquisition=acquisition,
+        stages=stages,
+        problem_files=problems[:_SHOWN],
+        errors=sorted(errors.values(), key=lambda m: -m.count)[:_SHOWN],
+        warnings=sorted(warnings.values(), key=lambda m: -m.count)[:_SHOWN],
+        message=" ".join(parts),
     )
 
 
