@@ -335,7 +335,8 @@ class ProgramCheck(BaseModel):
 class InstallationCheckResult(BaseModel):
     hermes_version: str
     installed_from: str | None = Field(
-        description="Where HERMES was installed from: a git URL or a folder.",
+        description="Where HERMES was installed from: a git URL or a folder. "
+        "Empty when it was installed from a package index.",
     )
     editable: bool = Field(
         description="True when HERMES runs straight from a clone's source.",
@@ -394,6 +395,7 @@ def check_installation() -> InstallationCheckResult:
         timewalk_calibration = default_timewalk_calibration()
     except FileNotFoundError:
         timewalk_calibration = None
+    python_packages = {name: _package_version(name) for name in _PYTHON_PACKAGES}
 
     notes: list[str] = []
     for program in programs:
@@ -414,6 +416,15 @@ def check_installation() -> InstallationCheckResult:
         notes.append(
             "The default time-walk calibration is missing, so "
             "`timewalk_calibration_file: default` will fail."
+        )
+    missing_packages = [
+        name for name, found in python_packages.items() if found == "not installed"
+    ]
+    if missing_packages:
+        notes.append(
+            f"These Python packages are not installed: "
+            f"{', '.join(missing_packages)}. Reinstall with `pixi reinstall "
+            f"hermes`."
         )
     if not notes:
         notes.append(
@@ -447,7 +458,7 @@ def check_installation() -> InstallationCheckResult:
         programs=programs,
         timewalk_calibration=timewalk_calibration,
         empir_programs=empir_programs,
-        python_packages={name: _package_version(name) for name in _PYTHON_PACKAGES},
+        python_packages=python_packages,
         message=f"HERMES {hermes.version}. " + " ".join(notes),
     )
 

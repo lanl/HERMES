@@ -86,8 +86,9 @@ When something doesn't work, start by asking:
 
 The assistant reports:
 
-- **The HERMES version**, and where it was installed from: a git tag with its
-  commit, or a clone you are editing.
+- **The HERMES version**, and where it was installed from: the git URL and
+  commit for an install from git, or the folder for a clone you are editing.
+  Both are empty for an install from a package index.
 - **The three C++ programs** (`hermes-tpx3-spidr`, `hermes-photon-clusterer`,
   `hermes-event-reconstructor`): whether each is on `PATH`, where it is, and when
   it was built. HERMES looks them up the same way a run does, so the answer

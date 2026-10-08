@@ -97,3 +97,24 @@ def test_a_program_built_before_its_source_changed(
     assert result.programs[0].newer_source_file == edited
     assert result.programs[1].newer_source_file is None
     assert "hermes-tpx3-spidr was built before" in result.message
+
+
+def test_a_missing_python_package(
+    bin_folder: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_programs(bin_folder, _HERMES_PROGRAMS)
+    found = server.version
+
+    def version(name: str) -> str:
+        if name == "pyarrow":
+            raise server.PackageNotFoundError(name)
+        return found(name)
+
+    monkeypatch.setattr(server, "version", version)
+
+    result = check_installation()
+
+    assert result.python_packages["pyarrow"] == "not installed"
+    assert result.python_packages["numpy"] != "not installed"
+    assert "Python packages are not installed: pyarrow" in result.message
+    assert "are present" not in result.message
