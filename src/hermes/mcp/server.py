@@ -489,7 +489,8 @@ class OutputFolderSummary(BaseModel):
     )
     first_timestamp_canonical: int | float | None = Field(
         description="The earliest timestamp_canonical in the folder, in ticks; "
-        "empty when the files have no timestamp_canonical column.",
+        "empty when the files have no timestamp_canonical column, or when a "
+        "file has no statistics for it.",
     )
     last_timestamp_canonical: int | float | None
     time_span_seconds: float | None
@@ -497,7 +498,8 @@ class OutputFolderSummary(BaseModel):
     example_rows: list[dict[str, Any]]
     problems: list[str] = Field(
         description="Files that could not be read, for example one still "
-        "being written; they are left out of the counts.",
+        "being written, which are left out of the counts; and files with no "
+        "timestamp_canonical statistics, which leave out the time range.",
     )
 
 
@@ -513,18 +515,30 @@ class OutputFilesResult(BaseModel):
 def _timestamp_range(
     metadata: pq.FileMetaData,
 ) -> tuple[int | float, int | float] | None:
-    """Read the timestamp_canonical range from the column statistics."""
+    """Read the timestamp_canonical range from the column statistics.
+
+    Returns None when the file has no timestamp_canonical column or no values
+    in it. Raises ValueError when part of the column has values but no
+    statistics, because the range would then be incomplete.
+    """
     names = metadata.schema.names
     if "timestamp_canonical" not in names:
         return None
     column = names.index("timestamp_canonical")
     lows: list[int | float] = []
     highs: list[int | float] = []
-    for group in range(metadata.num_row_groups):
-        statistics = metadata.row_group(group).column(column).statistics
+    for index in range(metadata.num_row_groups):
+        group = metadata.row_group(index)
+        statistics = group.column(column).statistics
         if statistics is not None and statistics.has_min_max:
             lows.append(statistics.min)
             highs.append(statistics.max)
+        elif not (
+            statistics is not None
+            and statistics.has_null_count
+            and statistics.null_count == group.num_rows
+        ):
+            raise ValueError("timestamp_canonical has no statistics")
     if not lows:
         return None
     return min(lows), max(highs)
@@ -545,10 +559,19 @@ def _describe_folder(folder: Path, files: list[Path]) -> OutputFolderSummary:
     row_count = 0
     lows: list[int | float] = []
     highs: list[int | float] = []
+    range_is_complete = True
     for path, metadata in readable:
         total_bytes += path.stat().st_size
         row_count += metadata.num_rows
-        time_range = _timestamp_range(metadata)
+        try:
+            time_range = _timestamp_range(metadata)
+        except ValueError:
+            range_is_complete = False
+            problems.append(
+                f"{path.name} has no timestamp_canonical statistics, so the "
+                f"folder's time range is left out"
+            )
+            continue
         if time_range is not None:
             lows.append(time_range[0])
             highs.append(time_range[1])
@@ -571,8 +594,8 @@ def _describe_folder(folder: Path, files: list[Path]) -> OutputFolderSummary:
                 break
         example_file = path.name
 
-    first = min(lows) if lows else None
-    last = max(highs) if highs else None
+    first = min(lows) if lows and range_is_complete else None
+    last = max(highs) if highs and range_is_complete else None
     return OutputFolderSummary(
         folder=folder.name,
         file_count=len(readable),
@@ -613,7 +636,7 @@ def describe_output_files(request: OutputFilesRequest) -> OutputFilesResult:
         )
 
     file_count = sum(summary.file_count for summary in folders)
-    unreadable = sum(len(summary.problems) for summary in folders)
+    problem_count = sum(len(summary.problems) for summary in folders)
     logger.bind(domain="analysis").info(
         "described {files} Parquet file(s) in {folders} folder(s) under {path}",
         files=file_count,
@@ -625,12 +648,14 @@ def describe_output_files(request: OutputFilesRequest) -> OutputFilesResult:
         f"{', '.join(summary.folder for summary in folders)}. Every "
         f"timestamp_canonical column counts ticks of 25 ns / 12288 (about "
         f"2.03 ps), so times from different folders can be subtracted "
-        f"directly; multiply by tick_seconds to get seconds."
+        f"directly; multiply by tick_seconds to get seconds. If the "
+        f"hermes-config-and-files skill is installed, its output_files.md "
+        f"says what each column means and lists known timing limits."
     )
-    if unreadable:
+    if problem_count:
         message += (
-            f" {unreadable} file(s) could not be read and are left out; see "
-            f"each folder's problems."
+            f" {problem_count} file(s) had problems; see each folder's "
+            f"problems."
         )
     return OutputFilesResult(
         analysis_directory=directory,

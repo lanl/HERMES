@@ -95,7 +95,10 @@ For each folder in the run's `analysis/` folder (`pixel_hits/`, `tdc_triggers/`,
   seconds. Every `timestamp_canonical` counts the same ticks of 25 ns / 12288
   (about 2.03 ps), so times from different folders can be subtracted directly.
 - **A few example rows** from one file.
-- **Files it could not read**, such as one still being written.
+- **Files with problems**: a file it could not read, such as one still being
+  written, is left out of the counts. A file with no `timestamp_canonical`
+  statistics leaves out the folder's time range rather than giving a partial
+  one.
 
 It reads only the summary at the end of each file and a few rows, so it is quick
 even when a run is many gigabytes. The assistant can then write its own pandas or

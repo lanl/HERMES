@@ -74,7 +74,9 @@ def test_describes_pixel_hits_and_photons(analysis: Path) -> None:
     assert "Found 2 Parquet file(s) in 2 folder(s): photons, pixel_hits" in (
         result.message
     )
-    assert "could not be read" not in result.message
+    assert "hermes-config-and-files skill" in result.message
+    assert "output_files.md" in result.message
+    assert "had problems" not in result.message
 
 
 def test_adds_up_every_file_in_a_folder(analysis: Path) -> None:
@@ -97,7 +99,7 @@ def test_an_unreadable_file_is_left_out_and_named(analysis: Path) -> None:
     assert photons.row_count == 99_909
     assert len(photons.problems) == 1
     assert "still_writing.parquet" in photons.problems[0]
-    assert "1 file(s) could not be read" in result.message
+    assert "1 file(s) had problems" in result.message
 
 
 def test_a_folder_without_timestamp_canonical(analysis: Path) -> None:
@@ -133,3 +135,34 @@ def test_a_folder_with_no_parquet_files(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="no folders with Parquet files"):
         _describe(tmp_path)
+
+
+def test_a_file_with_no_timestamp_statistics(analysis: Path) -> None:
+    table = pq.read_table(_PHOTONS).slice(0, 10)
+    pq.write_table(
+        table, analysis / "photons" / "no_statistics.parquet", write_statistics=False
+    )
+
+    photons = _describe(analysis).folders[0]
+
+    assert photons.file_count == 2
+    assert photons.row_count == 99_909 + 10
+    assert photons.first_timestamp_canonical is None
+    assert photons.last_timestamp_canonical is None
+    assert photons.time_span_seconds is None
+    assert len(photons.problems) == 1
+    assert "no_statistics.parquet has no timestamp_canonical statistics" in (
+        photons.problems[0]
+    )
+
+
+def test_a_timestamp_column_with_only_empty_values(analysis: Path) -> None:
+    pq.write_table(
+        pa.table({"timestamp_canonical": pa.array([None, None], pa.uint64())}),
+        analysis / "photons" / "only_empty.parquet",
+    )
+
+    photons = _describe(analysis).folders[0]
+
+    assert photons.first_timestamp_canonical == pytest.approx(9_829_920_222.65438)
+    assert photons.problems == []
