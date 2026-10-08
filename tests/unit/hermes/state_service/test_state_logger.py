@@ -139,6 +139,8 @@ def test_state_logger_logs_change_with_value_summaries() -> None:
     assert fields["proposer"] == "serval_workflow"
     assert fields["approval_bypassed"] is False
     assert fields["change"]["change_id"] == "change-001"
+    assert "previous_value" not in fields["change"]
+    assert "proposed_value" not in fields["change"]
     assert fields["previous_value_summary"] == {
         "kind": "inline_scalar",
         "value": "running",
@@ -147,6 +149,30 @@ def test_state_logger_logs_change_with_value_summaries() -> None:
         "kind": "inline_scalar",
         "value": "completed",
     }
+
+
+def test_state_logger_logs_only_the_length_of_a_list_change() -> None:
+    logger = CapturingLogger()
+    state_logger = StateLogger(logger)
+    results = [
+        {"input_file": {"path": f"raw/run_{index:06d}.tpx3"}, "status": "completed"}
+        for index in range(3)
+    ]
+    change = ChangeRequest(
+        path="analysis.unpacking.results",
+        previous_value=results[:2],
+        proposed_value=results,
+        origin="trusted_workflow",
+        proposer="hermes_analysis",
+    )
+
+    state_logger.log_change(change)
+
+    fields = logger.events[0]["fields"]
+    assert fields["previous_value_summary"] == {"kind": "inline_list", "length": 2}
+    assert fields["proposed_value_summary"] == {"kind": "inline_list", "length": 3}
+    # No file path from the list is written anywhere in the log line.
+    assert "run_000000" not in repr(fields)
 
 
 def test_state_logger_logs_rejected_and_failed_change_metadata() -> None:

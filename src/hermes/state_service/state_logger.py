@@ -44,7 +44,14 @@ class StateLogger:
         )
 
     def log_change(self, change_request: ChangeRequest) -> None:
-        change = change_request.model_dump(mode="json")
+        # A value can be a long list, such as one result per raw file, and
+        # logging it in full on every change makes the log grow with the square
+        # of the file count. Only the summaries below are logged; a scalar is
+        # still shown in full there, and the final values are in the saved
+        # record.
+        change = change_request.model_dump(
+            mode="json", exclude={"previous_value", "proposed_value"}
+        )
         log = (
             self._logger.debug
             if change_request.status == "pending"

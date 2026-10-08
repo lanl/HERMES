@@ -200,10 +200,15 @@ otherwise be redundant. The `applied`, `approved`, `rejected`, and `failed`
 transitions are logged at INFO. Every transition is still written to the
 `state.jsonl` sink regardless of level, so the audit trail stays complete.
 
-For small scalar or bounded structured values, state logs may include old and
-new values inline. For saved `.bpc` and `.dacs` files, state logs should include
-the relative saved path, original source path when available, and file hash—not
-the file contents.
+A change logs a short summary of its old and new values, not the values
+themselves: a scalar in full, the length of a list, and the size and first keys
+of a mapping. A list such as one result per raw file is written again on every
+change, so logging it in full makes `state.jsonl` grow with the square of the
+file count. The final values are in `HERMES_record.yaml`.
+
+For saved `.bpc` and `.dacs` files, state logs should include the relative
+saved path, original source path when available, and file hash—not the file
+contents.
 
 ## Workflow domain
 
