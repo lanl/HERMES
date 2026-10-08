@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 from collections import Counter
 from datetime import datetime
 from importlib.metadata import PackageNotFoundError, distribution, version
@@ -25,6 +26,10 @@ from loguru import logger
 from mcp.server.mcpserver import MCPServer
 from pydantic import BaseModel, Field, ValidationError
 
+from hermes.runner.acquisition.serval.measurement import (
+    build_effective_detector_config,
+)
+from hermes.runner.acquisition.serval.run import MIN_FREE_DISK_BYTES
 from hermes.runner.analysis.executables import (
     newer_source_than_binary,
     resolve_executable,
@@ -223,7 +228,16 @@ class ConfigValidationResult(BaseModel):
     valid: bool
     config_file: Path
     stages: list[str]
-    problems: list[str]
+    problems: list[str] = Field(
+        description="What makes the config fail to load, or what would stop "
+        "the run, such as a missing calibration file or global timestamp "
+        "settings that give wrong times.",
+    )
+    warnings: list[str] = Field(
+        description="Things to check that do not make the config invalid: a "
+        "SERVAL .jar that is not found, which is needed only when SERVAL is "
+        "not already running, or less than 1 GB free where the raw files go.",
+    )
     message: str
 
 
@@ -236,21 +250,87 @@ def _format_validation_problems(error: ValidationError) -> list[str]:
 
 
 def _configured_stages(record: HermesRecord) -> list[str]:
+    stages = ["acquisition"] if record.acquisition is not None else []
     analysis = record.analysis
     if analysis is None or analysis.mode != "hermes":
-        return []
+        return stages
     named = (
         ("unpacking", analysis.unpacking),
         ("photon_reconstruction", analysis.photon_reconstruction),
         ("event_reconstruction", analysis.event_reconstruction),
     )
-    return [name for name, value in named if value is not None]
+    return stages + [name for name, value in named if value is not None]
+
+
+def _check_acquisition(
+    record: HermesRecord, problems: list[str], warnings: list[str]
+) -> float | None:
+    """Check an acquisition's files and settings without contacting SERVAL.
+
+    What would stop the run is added to `problems`, and what may not is added
+    to `warnings`. Returns the global timestamp interval HERMES will send, when
+    the run takes a measurement and its detector configuration is valid.
+    """
+    config = record.acquisition.config
+    program = config.serval.program_path
+    if program is not None and not program.is_file():
+        warnings.append(
+            f"SERVAL program_path not found: {program.resolve()}. HERMES needs "
+            f"it only to start SERVAL when nothing answers at "
+            f"{config.serval.url}."
+        )
+    calibration = config.calibration_files
+    if calibration is not None:
+        for path in (calibration.pixel_config_file, calibration.dacs_file):
+            if not path.is_file():
+                problems.append(f"calibration file not found: {path.resolve()}")
+
+    raw = record.environment.raw_data_directory.resolved_path
+    if raw is None and config.run_timing is not None:
+        problems.append(
+            "run_timing is set but environment.raw_data_directory is not, so "
+            "SERVAL would have nowhere to write the measurement"
+        )
+    if raw is not None:
+        # The run makes the raw data folder, so it may not exist yet.
+        folder = next(path for path in (raw, *raw.parents) if path.exists())
+        free = shutil.disk_usage(folder).free
+        if free < MIN_FREE_DISK_BYTES:
+            warnings.append(
+                f"only {free / 1024**3:.2f} GB free at {folder}, where the raw "
+                f"files go"
+            )
+
+    # The run sends a detector configuration only when it takes a
+    # measurement, and checks it with this same function before it starts.
+    if config.run_timing is None:
+        return None
+    try:
+        return build_effective_detector_config(config).global_timestamp_interval_s
+    except ValidationError as exc:
+        # For example a bad value in the detector_config_file JSON, or
+        # run_timing that breaks a rule of the detector configuration.
+        for item in exc.errors():
+            location = ".".join(str(part) for part in item["loc"])
+            text = item["msg"].removeprefix("Value error, ")
+            problems.append(
+                f"detector configuration: {location}: {text}"
+                if location
+                else f"detector configuration: {text}"
+            )
+    except ValueError as exc:
+        problems.append(f"detector configuration: {exc}")
+    return None
 
 
 @mcp_server.tool()
 def validate_config(request: ConfigValidationRequest) -> ConfigValidationResult:
     """Check whether a HERMES config YAML loads and validates against the
-    installed HERMES's rules, reporting each problem when it does not."""
+    installed HERMES's rules, reporting each problem when it does not. For an
+    acquisition it also checks, without contacting SERVAL, that the
+    calibration files and SERVAL .jar exist, that the global timestamp settings
+    give correct times, and that there is free disk space for the raw files.
+    Things that do not make the config invalid are listed as warnings."""
     path = request.config_file.expanduser().resolve()
 
     if not path.is_file():
@@ -260,6 +340,7 @@ def validate_config(request: ConfigValidationRequest) -> ConfigValidationResult:
             config_file=path,
             stages=[],
             problems=[problem],
+            warnings=[],
             message=problem,
         )
 
@@ -283,22 +364,40 @@ def validate_config(request: ConfigValidationRequest) -> ConfigValidationResult:
             config_file=path,
             stages=[],
             problems=problems,
+            warnings=[],
             message=f"Config is not valid: {len(problems)} problem(s).",
         )
 
     stages = _configured_stages(record)
+    problems: list[str] = []
+    warnings: list[str] = []
+    interval = None
+    if record.acquisition is not None:
+        interval = _check_acquisition(record, problems, warnings)
     logger.bind(domain="analysis").info(
-        "config {path} is valid; stages: {stages}",
+        "config {path}: {problems} problem(s), {warnings} warning(s); "
+        "stages: {stages}",
         path=str(path),
+        problems=len(problems),
+        warnings=len(warnings),
         stages=stages or ["none"],
     )
-    stage_text = ", ".join(stages) if stages else "no HERMES analysis stages"
+    if problems:
+        message = f"Config is not valid: {len(problems)} problem(s)."
+    else:
+        stage_text = ", ".join(stages) if stages else "no HERMES analysis stages"
+        message = f"Config is valid ({stage_text})."
+    if interval is not None:
+        message += f" HERMES will send a global timestamp every {interval} s."
+    if warnings:
+        message += f" {len(warnings)} warning(s); see warnings."
     return ConfigValidationResult(
-        valid=True,
+        valid=not problems,
         config_file=path,
         stages=stages,
-        problems=[],
-        message=f"Config is valid ({stage_text}).",
+        problems=problems,
+        warnings=warnings,
+        message=message,
     )
 
 

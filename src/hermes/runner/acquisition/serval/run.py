@@ -67,7 +67,7 @@ _DETECTOR_CONNECT_TIMEOUT_S = 30.0
 # the warning allows that much above the maximum.
 _BIAS_MAX_V = 40.0
 _BIAS_READ_BACK_MARGIN_V = 0.1
-_MIN_FREE_DISK_BYTES = 1 * 1024**3
+MIN_FREE_DISK_BYTES = 1 * 1024**3
 
 
 class ServalAcquisitionError(Exception):
@@ -633,7 +633,7 @@ def _refuse_failed_calibration(calibration: CalibrationState) -> None:
 def _warn_if_low_disk(directory: Path) -> None:
     directory.mkdir(parents=True, exist_ok=True)
     free_bytes = shutil.disk_usage(directory).free
-    if free_bytes < _MIN_FREE_DISK_BYTES:
+    if free_bytes < MIN_FREE_DISK_BYTES:
         _ACQUISITION_LOGGER.warning(
             "Only {free_bytes} bytes free at {directory} for raw data",
             event_type="acquisition.serval.preflight_low_disk",

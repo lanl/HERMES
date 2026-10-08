@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
+import yaml
 
+from hermes.mcp import server
 from hermes.mcp.server import (
     AnalysisConfigRequest,
     ConfigValidationRequest,
@@ -308,3 +311,199 @@ def test_validate_config_reports_a_missing_file(tmp_path: Path) -> None:
 
     assert not result.valid
     assert "config file not found" in result.problems[0]
+
+
+def _write_acquisition_config(
+    directory: Path,
+    *,
+    detector_config: dict | None = None,
+    run_timing: dict | None = None,
+) -> Path:
+    """Write a measurement config whose calibration files and SERVAL .jar
+    exist, so each test breaks only the one thing it checks."""
+    for name in ("settings.bpc", "settings.bpc.dacs", "serval-3.3.0.jar"):
+        (directory / name).write_bytes(b"")
+    config: dict = {
+        "measurement_info": {"measurement_id": "demo", "run": "run-1"},
+        "environment": {
+            "working_directory": str(directory),
+            "raw_data_directory": "raw",
+        },
+        "acquisition": {
+            "mode": "serval",
+            "config": {
+                "serval": {
+                    "url": "http://localhost:8080",
+                    "program_path": str(directory / "serval-3.3.0.jar"),
+                },
+                "calibration_files": {
+                    "pixel_config_file": str(directory / "settings.bpc"),
+                    "dacs_file": str(directory / "settings.bpc.dacs"),
+                },
+                "run_timing": run_timing
+                or {
+                    "trigger_mode": "AUTOTRIGSTART_TIMERSTOP",
+                    "exposure_time_s": 0.1,
+                    "trigger_period_s": 0.2,
+                    "trigger_count": 5,
+                },
+            },
+        },
+    }
+    if detector_config is not None:
+        config["acquisition"]["config"]["detector_config"] = detector_config
+    path = directory / "hermes-config.yaml"
+    path.write_text(yaml.safe_dump(config), encoding="utf-8")
+    return path
+
+
+def test_validate_config_accepts_an_acquisition_config(tmp_path: Path) -> None:
+    config = _write_acquisition_config(tmp_path)
+
+    result = validate_config(ConfigValidationRequest(config_file=config))
+
+    assert result.valid
+    assert result.problems == []
+    assert result.warnings == []
+    assert result.stages == ["acquisition"]
+    # Half the 0.2 s trigger period, which HERMES fills in when it is unset.
+    assert "global timestamp every 0.1 s" in result.message
+
+
+def test_validate_config_lists_acquisition_before_analysis(tmp_path: Path) -> None:
+    config = _write_acquisition_config(tmp_path)
+    data = yaml.safe_load(config.read_text(encoding="utf-8"))
+    data["analysis"] = {
+        "mode": "hermes",
+        "unpacking": {**server._UNPACKING, "tpx3_files": "auto"},
+    }
+    config.write_text(yaml.safe_dump(data), encoding="utf-8")
+
+    result = validate_config(ConfigValidationRequest(config_file=config))
+
+    assert result.valid
+    assert result.stages == ["acquisition", "unpacking"]
+
+
+def test_validate_config_reports_a_missing_calibration_file(tmp_path: Path) -> None:
+    config = _write_acquisition_config(tmp_path)
+    (tmp_path / "settings.bpc.dacs").unlink()
+
+    result = validate_config(ConfigValidationRequest(config_file=config))
+
+    assert not result.valid
+    assert result.problems == [
+        f"calibration file not found: {tmp_path.resolve() / 'settings.bpc.dacs'}"
+    ]
+
+
+def test_validate_config_reports_global_timestamps_turned_off(
+    tmp_path: Path,
+) -> None:
+    config = _write_acquisition_config(
+        tmp_path, detector_config={"GlobalTimestampInterval": 0}
+    )
+
+    result = validate_config(ConfigValidationRequest(config_file=config))
+
+    assert not result.valid
+    assert len(result.problems) == 1
+    assert "turns global timestamps off" in result.problems[0]
+
+
+def test_validate_config_reports_an_interval_over_half_the_trigger_period(
+    tmp_path: Path,
+) -> None:
+    config = _write_acquisition_config(
+        tmp_path, detector_config={"GlobalTimestampInterval": 0.15}
+    )
+
+    result = validate_config(ConfigValidationRequest(config_file=config))
+
+    assert not result.valid
+    assert len(result.problems) == 1
+    assert "longer than half the 0.2 s trigger period" in result.problems[0]
+
+
+def test_validate_config_reports_a_trigger_period_under_100_ms(
+    tmp_path: Path,
+) -> None:
+    config = _write_acquisition_config(
+        tmp_path,
+        run_timing={
+            "trigger_mode": "AUTOTRIGSTART_TIMERSTOP",
+            "exposure_time_s": 0.01,
+            "trigger_period_s": 0.05,
+        },
+    )
+
+    result = validate_config(ConfigValidationRequest(config_file=config))
+
+    assert not result.valid
+    assert len(result.problems) == 1
+    assert "shortest frame HERMES accepts" in result.problems[0]
+
+
+def test_validate_config_reports_a_missing_detector_config_file(
+    tmp_path: Path,
+) -> None:
+    config = _write_acquisition_config(tmp_path)
+    data = yaml.safe_load(config.read_text(encoding="utf-8"))
+    data["acquisition"]["config"]["detector_config_file"] = str(
+        tmp_path / "missing.json"
+    )
+    config.write_text(yaml.safe_dump(data), encoding="utf-8")
+
+    result = validate_config(ConfigValidationRequest(config_file=config))
+
+    assert not result.valid
+    assert len(result.problems) == 1
+    assert "cannot read detector_config_file" in result.problems[0]
+
+
+def test_validate_config_reports_a_measurement_with_no_raw_folder(
+    tmp_path: Path,
+) -> None:
+    config = _write_acquisition_config(tmp_path)
+    data = yaml.safe_load(config.read_text(encoding="utf-8"))
+    del data["environment"]["raw_data_directory"]
+    config.write_text(yaml.safe_dump(data), encoding="utf-8")
+
+    result = validate_config(ConfigValidationRequest(config_file=config))
+
+    assert not result.valid
+    assert len(result.problems) == 1
+    assert "nowhere to write the measurement" in result.problems[0]
+
+
+def test_validate_config_warns_about_a_missing_serval_jar(tmp_path: Path) -> None:
+    config = _write_acquisition_config(tmp_path)
+    (tmp_path / "serval-3.3.0.jar").unlink()
+
+    result = validate_config(ConfigValidationRequest(config_file=config))
+
+    # SERVAL may already be running, so the run may not need the .jar.
+    assert result.valid
+    assert result.problems == []
+    assert len(result.warnings) == 1
+    assert "SERVAL program_path not found" in result.warnings[0]
+
+
+def test_validate_config_warns_about_low_disk_space(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = _write_acquisition_config(tmp_path)
+    monkeypatch.setattr(
+        server.shutil,
+        "disk_usage",
+        lambda path: SimpleNamespace(free=0),
+    )
+
+    result = validate_config(ConfigValidationRequest(config_file=config))
+
+    assert result.valid
+    assert len(result.warnings) == 1
+    # The raw folder does not exist yet, so the check looks at the folder
+    # it will be made in, and does not make it.
+    assert f"free at {tmp_path.resolve()}," in result.warnings[0]
+    assert not (tmp_path / "run-1" / "raw").exists()
