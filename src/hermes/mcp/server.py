@@ -156,7 +156,12 @@ def create_analysis_config(request: AnalysisConfigRequest) -> AnalysisConfigResu
     if not raw_files:
         raise ValueError(f"no .tpx3 files found under {directory}")
 
-    unpacking = {**_UNPACKING, "tpx3_files": [{"path": name} for name in raw_files]}
+    # HERMES opens each listed .tpx3 path as written, from whatever folder the
+    # run script is launched in, so write full paths.
+    unpacking = {
+        **_UNPACKING,
+        "tpx3_files": [{"path": str(directory / name)} for name in raw_files],
+    }
     analysis: dict = {"mode": "hermes", "unpacking": unpacking}
     stages = ["unpacking"]
     if request.furthest_stage in ("photon_reconstruction", "event_reconstruction"):
@@ -180,9 +185,7 @@ def create_analysis_config(request: AnalysisConfigRequest) -> AnalysisConfigResu
         "analysis": analysis,
     }
 
-    # Validate against the installed HERMES's real rules before writing. The
-    # working directory is written into the config so the .tpx3 file list
-    # resolves no matter which directory the run script is launched from.
+    # Validate against the installed HERMES's real rules before writing.
     HermesRecord.model_validate(config)
 
     config_path = directory / "hermes-config.yaml"

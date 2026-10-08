@@ -51,29 +51,39 @@ def test_unpacking_writes_a_loadable_unpack_only_config(tmp_path: Path) -> None:
     assert unpacking.program.name == "tpx3-spidr-cpp"
     assert unpacking.program.executable_path == Path("hermes-tpx3-spidr")
     assert [entry.path for entry in unpacking.tpx3_files] == [
-        Path("first.tpx3"),
-        Path("second.tpx3"),
+        tmp_path.resolve() / "first.tpx3",
+        tmp_path.resolve() / "second.tpx3",
     ]
     assert record.analysis.photon_reconstruction is None
     assert record.analysis.event_reconstruction is None
 
 
-def test_generated_config_records_the_working_directory(tmp_path: Path) -> None:
-    _write_raw_files(tmp_path, ["only.tpx3"])
+def test_generated_config_finds_the_tpx3_files_from_any_folder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    data = tmp_path / "data"
+    _write_raw_files(data, ["only.tpx3", "raw/nested.tpx3"])
 
     result = create_analysis_config(
         AnalysisConfigRequest(
-            working_directory=tmp_path,
+            working_directory=data,
             measurement_id="demo",
             run="run-1",
             furthest_stage="unpacking",
         )
     )
 
-    # The config is self-contained: it names its own working directory, so the
-    # run script resolves the .tpx3 file list no matter where it is launched.
+    # HERMES opens each listed .tpx3 path from the folder the run script is
+    # launched in, which need not be the data folder.
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
     record = load_hermes_record_from_yaml(result.config_file)
-    assert record.environment.working_directory.path == tmp_path.resolve()
+    assert record.environment.working_directory.path == data.resolve()
+    assert isinstance(record.analysis, HermesTpx3AnalysisState)
+    unpacking = record.analysis.unpacking
+    assert unpacking is not None
+    assert all(entry.path.is_file() for entry in unpacking.tpx3_files)
 
 
 def test_generated_config_is_quiet_and_uses_the_default_timewalk(
