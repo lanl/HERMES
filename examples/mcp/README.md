@@ -78,6 +78,32 @@ Each stage writes one Parquet file per signal so times from different signals
 stay on one comparable clock. For what each stage produces, see the analysis
 examples under [`examples/analysis/`](../analysis/).
 
+## Check the installation
+
+When something doesn't work, start by asking:
+
+> Check my HERMES installation.
+
+The assistant reports:
+
+- **The HERMES version**, and where it was installed from: a git tag with its
+  commit, or a clone you are editing.
+- **The three C++ programs** (`hermes-tpx3-spidr`, `hermes-photon-clusterer`,
+  `hermes-event-reconstructor`): whether each is on `PATH`, where it is, and when
+  it was built. HERMES looks them up the same way a run does, so the answer
+  matches what a run would find.
+- **Out-of-date programs.** If you edit HERMES's C++ source in a clone,
+  the installed programs are not rebuilt, so they keep running the old code
+  until you run `pixi reinstall hermes`. The assistant names the source file that
+  changed after the program was built.
+- **The default time-walk calibration** that `timewalk_calibration_file: default`
+  uses.
+- **EMPIR** (`empir_pixel2photon_tpx3spidr`, `empir_photon2event`,
+  `empir_event2image`). HERMES doesn't install EMPIR and needs it only for an
+  EMPIR analysis, so "not on `PATH`" isn't an error.
+- **The versions of the main Python packages**: pydantic, pyarrow, numpy, and
+  mcp.
+
 ## Check a config
 
 You can also ask the assistant to check an existing config before you run it:
