@@ -29,18 +29,21 @@ one line in the user's config.
 The three areas become three groups of tools inside that one server, sharing a
 common core:
 
-- **Shared core** — report the installed version and environment (which HERMES and
-  which C++ programs are actually present), report what is in the user's working
-  directory, and diagnose a failure from the config and the workflow log.
-- **Setup group** — confirm the three C++ programs compiled and are on `PATH`, the
-  build dependencies are present, and whether EMPIR is available; explain a failed
-  setup.
-- **Acquisition group** — check the SERVAL server, report the camera connection and
-  detector snapshot, validate an acquisition config, and help start a run. On a
-  machine with no camera these tools report "no SERVAL or camera reachable", which
-  is the correct answer rather than an error.
-- **Analysis group** — generate a workflow config and a runnable script, validate a
-  config, report how far a workflow has progressed, and diagnose a failed workflow.
+- **Shared core** — `check_installation` reports which HERMES is installed and
+  whether everything it needs is present. `report_run_status` reports how far a
+  run got and why anything failed. `start_run` and `stop_run` start and stop a run
+  the user has approved. These serve setup, acquisition, and analysis alike.
+- **Setup group** — `check_installation` covers setup: whether the three C++
+  programs are on `PATH` and when they were built, whether the default time-walk
+  calibration is present, and whether EMPIR is available.
+- **Acquisition group** — `check_camera` reports whether SERVAL answers and a
+  detector is connected, without changing anything. `create_acquisition_config`
+  writes a measurement config, and `validate_config` checks it. On a machine with
+  no camera, `check_camera` reports "no SERVAL reachable", which is the correct
+  answer rather than an error.
+- **Analysis group** — `create_analysis_config` writes a workflow config and a
+  runnable script, `validate_config` checks it, and `describe_output_files`
+  reports what is in a run's Parquet files.
 
 The one reason to split this into separate servers is different machines:
 acquisition runs at the instrument with the camera and SERVAL attached, while
@@ -48,6 +51,70 @@ analysis often runs later on a laptop or cluster with no camera. The single-serv
 design handles that by having the acquisition tools report "not reachable" on an
 analysis machine. Start with one server; split only if that ever becomes a real
 problem.
+
+## MCP tools and skills
+
+To keep the assistant's context small, the work is split between MCP tools and
+skills.
+
+**MCP tools** are for small checks that give short answers. Every MCP assistant
+can use them. A tool that reads a large file returns a summary of it, not the
+file. `start_run` and `stop_run` are tools too, because a tool gets its own
+permission rule in the assistant, which keeps approval clear.
+
+**Skills** are for guides and long jobs. Only a skill's short description is
+always loaded. The rest of `SKILL.md` loads when the skill is used, and the other
+files in its folder load only if the assistant opens them. Scripts in a skill run
+in the shell, only what they print enters the conversation, and long jobs can run
+in the background. The skills are:
+
+- `hermes-config-and-files` — the config field guide (one section of the
+  installed `HermesRecord` models at a time) and the output file guide.
+- `hermes-analyze-run`, `hermes-set-up-measurement`, `hermes-fix-a-problem`, and
+  a guide for making movies of a run — the usual steps in order, which tool or
+  script to use at each step, and an "if this breaks, check that" list.
+- `hermes-firework-movies` and `hermes-find-clustering-settings` — each asks the
+  user its questions, runs a built-in HERMES function from a script, and reports a
+  short summary.
+
+Skills follow the open Agent Skills standard. An assistant that does not support
+skills still gets every MCP tool and loses only the guides and the two analysis
+skills; the skill files are plain markdown a person can read too.
+
+## Starting runs
+
+The assistant can start a run once the user approves. Approval is the
+assistant's own permission prompt for the `start_run` tool, or auto-approve if
+the user has turned it on; HERMES adds no approval step of its own. A user who
+wants to be asked every time, even with auto-approve on, adds
+`mcp__hermes__start_run` to the `ask` list in their assistant's settings.
+Approving one `start_run` call counts as approval for that whole run (see
+[State Services](state-service.md)).
+
+`start_run` takes a config that passes `validate_config`, starts the run script
+in the background, and returns right away. It saves the run's process ID in the
+run folder and refuses to start a second run in a folder where one is still
+going. `stop_run` stops the run the same way Ctrl-C does, so the camera is
+stopped and the record is saved.
+
+## Built-in analyses
+
+Analysis goes past the event Parquet files. HERMES gets built-in analyses that
+follow the time-walk calibration pattern (see [Analysis](analysis.md)): one plain
+function under `src/hermes/runner/analysis/hermes/`, run after a finished
+analysis, that writes a short report, with no change to the pipeline and no
+registry. A skill asks the questions, runs the function from a script, and
+reports a short summary; these analyses get no MCP tool. The first two are:
+
+- `make_firework_movies` — movies of the bursts after each TDC1 trigger, or of
+  the continuous photon stream when there is no TDC1 signal.
+- `find_clustering_settings` — scans photon clustering and event reconstruction
+  settings and recommends values, which the user approves before the config is
+  changed.
+
+For questions no built-in analysis covers, `describe_output_files` tells the
+assistant what is in the Parquet files, and the assistant writes its own pandas
+or matplotlib code.
 
 ## Ground truth it relies on
 
@@ -80,8 +147,13 @@ code:
   `pixi run hermes-mcp`, keeping any servers the file already lists. The content
   travels in the installed package (`src/hermes/mcp/setup.py`), so a user who
   installed HERMES has it without checking out the repository;
-  `examples/mcp/mcp.json` stays as the reference for that content and for Claude
+  `examples/mcp/mcp.json` stays as an example of that content and for Claude
   Desktop, whose config the user edits by hand.
+- The skills ship inside the package in `src/hermes/skills/<skill name>/`.
+  `hermes-mcp-setup` also copies every HERMES skill into `.claude/skills/` in the
+  user's folder, next to the `.mcp.json` it writes. It replaces older copies of
+  HERMES skills and leaves other skills alone, so users rerun it after upgrading
+  HERMES.
 
 ## Phased build
 
@@ -98,20 +170,37 @@ gold-plated.
   the installed HERMES's real rules and reports either that it is valid, with the
   stages it would run, or a clear per-field list of what is wrong. It pairs with
   `create_analysis_config`: generate, then check.
-- **Later:** the rest of the analysis group (report progress, diagnose a failure)
-  and the shared core, then the acquisition group, then the setup group. The
-  ordered "usual steps" for each area, and a short "if this breaks, check that"
-  list, ship as MCP prompts and resources so the assistant can map a request onto
-  the workflow without hard-coding it.
+- **Phase 3: the rest of the tools and skills.** The order follows what each
+  piece uses:
+  - `check_installation`, `describe_output_files`, `report_run_status`,
+    `check_camera`, and `start_run` with `stop_run` use only existing HERMES code
+    and can be built in any order.
+  - The `hermes-config-and-files` skill comes before any other skill, because it
+    adds `src/hermes/skills/` and the copying in `hermes-mcp-setup`.
+  - The acquisition checks in `validate_config` come before
+    `create_acquisition_config`, which runs the same checks on the config it
+    writes.
+  - The firework movies and the clustering settings finder come after the first
+    skill.
+  - Each step-by-step guide skill ships once the tools and scripts it names
+    exist. `hermes-analyze-run` can ship first.
+
+**Out of scope:** tools that change the bias voltage or DACs directly, making
+calibration files (SoPhy does that), and a network server or login.
 
 ## Package structure
 
 ```text
 src/
 └── hermes/
-    └── mcp/
-        ├── __init__.py   # keep empty
-        └── server.py     # the FastMCP server and its tools
+    ├── mcp/
+    │   ├── __init__.py   # keep empty
+    │   ├── server.py     # the MCP server and its tools
+    │   └── setup.py      # hermes-mcp-setup: writes .mcp.json and copies the skills
+    └── skills/           # one folder per skill, copied into .claude/skills/
+        └── <skill name>/
+            ├── SKILL.md  # when to use the skill, and which file or script to open
+            └── scripts/  # scripts the assistant runs in the shell
 ```
 
 The server uses the Python MCP SDK's `MCPServer` for the server and tool

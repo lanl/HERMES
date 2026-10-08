@@ -51,7 +51,9 @@ Responsibilities
 State_Service Module Design Principles
 - Single entry point for mutation: no direct state edits allowed elsewhere
 - AI safety: Future AI agents can propose changes but cannot apply them without
-  explicit approval
+  explicit approval. When an assistant starts a run through the MCP server's
+  `start_run` tool, the user's approval of that call in the assistant counts as
+  approval for that whole run (see [MCP Server](mcp-server.md))
 - Trusted workflows may apply validated changes without per-change approval only
   when the approval-bypass setting is enabled
 - Auditability: every change is tracked and reversible (if designed)
