@@ -2,12 +2,15 @@
 
 One local MCP server (standard input/output, no network) that ships inside the
 HERMES package so any MCP-speaking LLM tool can help a user configure and run a
-HERMES analysis. The first slice exposes a single analysis tool that writes a
-workflow config and a runnable script for the ``.tpx3`` files in a folder.
+HERMES analysis. Its tools write a workflow config and a runnable script for the
+``.tpx3`` files in a folder, check a config, and check the installation.
 """
 
 from __future__ import annotations
 
+import json
+from datetime import datetime
+from importlib.metadata import PackageNotFoundError, distribution, version
 from pathlib import Path
 from typing import Literal
 
@@ -16,6 +19,11 @@ from loguru import logger
 from mcp.server.mcpserver import MCPServer
 from pydantic import BaseModel, Field, ValidationError
 
+from hermes.runner.analysis.executables import (
+    newer_source_than_binary,
+    resolve_executable,
+)
+from hermes.shipped_files import default_timewalk_calibration
 from hermes.state.state import HermesRecord
 from hermes.state_service.shared_types import StateIOError
 from hermes.state_service.state_io import load_hermes_record_from_yaml
@@ -279,6 +287,179 @@ def validate_config(request: ConfigValidationRequest) -> ConfigValidationResult:
         stages=stages,
         problems=[],
         message=f"Config is valid ({stage_text}).",
+    )
+
+
+# The three C++ programs HERMES builds, each with the source folders under
+# src/backends/ it is compiled from.
+_HERMES_PROGRAMS: dict[str, tuple[str, ...]] = {
+    "hermes-tpx3-spidr": ("unpackers/tpx3-spidr/cpp",),
+    "hermes-photon-clusterer": ("reconstruction/photons/cpp",),
+    "hermes-event-reconstructor": (
+        "reconstruction/events/connected-components/cpp",
+        "reconstruction/events/common/cpp",
+    ),
+}
+# HERMES can drive EMPIR but does not install it.
+_EMPIR_PROGRAMS = (
+    "empir_pixel2photon_tpx3spidr",
+    "empir_photon2event",
+    "empir_event2image",
+)
+_PYTHON_PACKAGES = ("pydantic", "pyarrow", "numpy", "mcp")
+# The C++ source in a clone. An editable install builds each program from here
+# once and does not rebuild it when the source changes. A wheel install has no
+# source here, so the check for an out-of-date program is skipped.
+_CPP_SOURCE = Path(__file__).resolve().parents[2] / "backends"
+
+
+class ProgramCheck(BaseModel):
+    name: str
+    path: Path | None = Field(
+        default=None,
+        description="Where the program was found; empty when it was not found.",
+    )
+    built: datetime | None = Field(
+        default=None,
+        description="When the program file was last written. For a C++ "
+        "program this is when it was built.",
+    )
+    newer_source_file: Path | None = Field(
+        default=None,
+        description="A C++ source file that changed after the program was "
+        "built, so the program runs old code until it is rebuilt.",
+    )
+    problem: str | None = None
+
+
+class InstallationCheckResult(BaseModel):
+    hermes_version: str
+    installed_from: str | None = Field(
+        description="Where HERMES was installed from: a git URL or a folder. "
+        "Empty when it was installed from a package index.",
+    )
+    editable: bool = Field(
+        description="True when HERMES runs straight from a clone's source.",
+    )
+    git_commit: str | None = Field(
+        description="The commit HERMES was installed from, when it was "
+        "installed from git.",
+    )
+    programs: list[ProgramCheck]
+    timewalk_calibration: Path | None = Field(
+        description="The default time-walk calibration HERMES ships; empty "
+        "when it is missing.",
+    )
+    empir_programs: list[ProgramCheck]
+    python_packages: dict[str, str]
+    message: str
+
+
+def _check_program(name: str, source_folders: tuple[str, ...] = ()) -> ProgramCheck:
+    try:
+        path = resolve_executable(Path(name))
+    except (FileNotFoundError, PermissionError) as exc:
+        return ProgramCheck(name=name, problem=str(exc))
+    built = datetime.fromtimestamp(path.stat().st_mtime).astimezone()
+    newer_source_file = None
+    for folder in source_folders:
+        newer_source_file = newer_source_than_binary(path, _CPP_SOURCE / folder)
+        if newer_source_file is not None:
+            break
+    return ProgramCheck(
+        name=name, path=path, built=built, newer_source_file=newer_source_file
+    )
+
+
+def _package_version(name: str) -> str:
+    try:
+        return version(name)
+    except PackageNotFoundError:
+        return "not installed"
+
+
+@mcp_server.tool()
+def check_installation() -> InstallationCheckResult:
+    """Report which HERMES is installed and whether everything it needs is
+    present: the three C++ programs, the default time-walk calibration, EMPIR,
+    and the main Python packages. Run this first when something does not work."""
+    hermes = distribution("hermes")
+    # pip and uv record where a package came from in direct_url.json.
+    direct_url = json.loads(hermes.read_text("direct_url.json") or "{}")
+
+    programs = [
+        _check_program(name, folders) for name, folders in _HERMES_PROGRAMS.items()
+    ]
+    empir_programs = [_check_program(name) for name in _EMPIR_PROGRAMS]
+    try:
+        timewalk_calibration = default_timewalk_calibration()
+    except FileNotFoundError:
+        timewalk_calibration = None
+    python_packages = {name: _package_version(name) for name in _PYTHON_PACKAGES}
+
+    notes: list[str] = []
+    for program in programs:
+        if program.path is None:
+            notes.append(
+                f"{program.name} cannot be used ({program.problem}). Either the "
+                f"pixi environment is not active or the install did not build "
+                f"it; reinstall with `pixi reinstall hermes` and check its "
+                f"build output."
+            )
+        elif program.newer_source_file is not None:
+            notes.append(
+                f"{program.name} was built before {program.newer_source_file} "
+                f"changed, so it runs old code. Rebuild it with `pixi reinstall "
+                f"hermes`."
+            )
+    if timewalk_calibration is None:
+        notes.append(
+            "The default time-walk calibration is missing, so "
+            "`timewalk_calibration_file: default` will fail."
+        )
+    missing_packages = [
+        name for name, found in python_packages.items() if found == "not installed"
+    ]
+    if missing_packages:
+        notes.append(
+            f"These Python packages are not installed: "
+            f"{', '.join(missing_packages)}. Reinstall with `pixi reinstall "
+            f"hermes`."
+        )
+    if not notes:
+        notes.append(
+            "The three C++ programs and the default time-walk calibration "
+            "are present."
+        )
+    missing_empir = [p.name for p in empir_programs if p.path is None]
+    if not missing_empir:
+        notes.append("EMPIR is installed.")
+    elif len(missing_empir) == len(empir_programs):
+        notes.append(
+            "EMPIR is not on PATH. HERMES does not install it and needs it only "
+            "for EMPIR analysis."
+        )
+    else:
+        notes.append(
+            f"Some EMPIR programs are not on PATH: {', '.join(missing_empir)}."
+        )
+
+    logger.bind(domain="mcp").info(
+        "checked the HERMES {version} installation: {programs} of 3 C++ "
+        "programs found",
+        version=hermes.version,
+        programs=sum(p.path is not None for p in programs),
+    )
+    return InstallationCheckResult(
+        hermes_version=hermes.version,
+        installed_from=direct_url.get("url"),
+        editable=direct_url.get("dir_info", {}).get("editable", False),
+        git_commit=direct_url.get("vcs_info", {}).get("commit_id"),
+        programs=programs,
+        timewalk_calibration=timewalk_calibration,
+        empir_programs=empir_programs,
+        python_packages=python_packages,
+        message=f"HERMES {hermes.version}. " + " ".join(notes),
     )
 
 
