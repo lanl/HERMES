@@ -56,6 +56,8 @@ def test_acquisition_only_writes_a_loadable_measurement_config(
     assert result.config_file == tmp_path / "hermes-config.yaml"
     assert result.run_script == tmp_path / "run_hermes.py"
     assert "Workflow(record).run()" in result.run_script.read_text()
+    # The script is in the working folder, not the folder the user is in.
+    assert f"pixi run python {result.run_script}" in result.message
     # Half the 0.2 s trigger period, which HERMES fills in when it is unset.
     assert "global timestamp every 0.1 s" in result.message
 
@@ -171,6 +173,16 @@ def test_a_missing_serval_jar_is_a_warning(tmp_path: Path) -> None:
     assert result.config_file.is_file()
     assert len(result.warnings) == 1
     assert "SERVAL program_path not found" in result.warnings[0]
+
+
+@pytest.mark.parametrize("run", ["..", "../other", "/tmp/elsewhere", "a/b", "."])
+def test_a_run_label_that_is_not_one_folder_name_is_refused(
+    tmp_path: Path, run: str
+) -> None:
+    with pytest.raises(ValueError, match="must be a single folder name"):
+        create_acquisition_config(_request(tmp_path, run=run))
+
+    assert not (tmp_path / "hermes-config.yaml").exists()
 
 
 def test_a_trigger_mode_is_required(tmp_path: Path) -> None:

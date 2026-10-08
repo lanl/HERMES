@@ -120,10 +120,12 @@ run folder that already has raw files in it, it writes nothing and says what to
 fix. Warnings, such as a SERVAL `.jar` that is not found, are returned with the
 config.
 
-It does not contact SERVAL and does not start the measurement. You start it:
+It does not contact SERVAL and does not start the measurement. You start it,
+giving the path to the script it wrote; the assistant's answer has the full
+command:
 
 ```bash
-pixi run python run_hermes.py
+pixi run python beamtime/run_hermes.py
 ```
 
 ## Check how a run went

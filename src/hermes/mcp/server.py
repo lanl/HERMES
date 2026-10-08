@@ -535,6 +535,14 @@ def create_acquisition_config(
 
     # Validate against the installed HERMES's real rules before writing.
     record = HermesRecord.model_validate(config)
+    # HERMES uses the run label as the run folder's name, so a label such as
+    # "../other" or an absolute path would put the run outside `directory`.
+    run_directory = record.environment.run_directory.resolved_path
+    if run_directory is None or run_directory.parent != directory:
+        raise ValueError(
+            f"the run label {request.run!r} must be a single folder name, such "
+            f"as run-1, because it names the run's folder under {directory}"
+        )
     problems: list[str] = []
     warnings: list[str] = []
     interval = _check_acquisition(record, problems, warnings)
@@ -547,7 +555,6 @@ def create_acquisition_config(
     script_path.write_text(_RUN_SCRIPT, encoding="utf-8")
 
     stages = _configured_stages(record)
-    run_directory = record.environment.run_directory.resolved_path
     logger.bind(domain="mcp").info(
         "wrote a HERMES measurement config ({stages}) to {path}",
         stages=", ".join(stages),
@@ -562,8 +569,7 @@ def create_acquisition_config(
     if warnings:
         message += f" {len(warnings)} warning(s); see warnings."
     message += (
-        f" Nothing has been started. Run it with: pixi run python "
-        f"{script_path.name}"
+        f" Nothing has been started. Run it with: pixi run python {script_path}"
     )
     return AcquisitionConfigResult(
         config_file=config_path,
