@@ -8,8 +8,14 @@ from hermes.state.models.shared_models import JsonObject, StrictBaseModel
 class MeasurementInfo(StrictBaseModel):
     """Human and facility metadata needed to identify a measurement."""
 
-    measurement_id: str = Field(min_length=1)
-    run: str = Field(min_length=1)
+    measurement_id: str = Field(
+        min_length=1, description="Names the measurement; written into every summary."
+    )
+    run: str = Field(
+        min_length=1,
+        description="Names this run; also the run folder's name unless "
+        "environment.run_directory is set.",
+    )
     run_number: int | None = Field(default=None, ge=0)
     beamline: str | None = None
     proposal_id: str | None = None

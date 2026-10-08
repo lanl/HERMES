@@ -96,6 +96,11 @@ Claude Code and other tools that read a project `.mcp.json` are ready after
 this. Claude Desktop has no project `.mcp.json`, so add the same block to its
 own config file by hand.
 
+It also copies the HERMES skills into `.claude/skills/` there. These are short
+guides the assistant opens when it needs them, such as what each config field
+does and what each output file holds. Older HERMES copies are replaced and
+other skills are left alone, so rerun `hermes-mcp-setup` after upgrading HERMES.
+
 **3. Restart your assistant** so it picks up the new `.mcp.json`. It now launches
 `pixi run hermes-mcp` from your project, so it uses the HERMES you installed
 rather than guessing.

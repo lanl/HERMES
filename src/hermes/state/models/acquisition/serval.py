@@ -141,11 +141,30 @@ class ServalServer(StrictBaseModel):
     HERMES uses `major_version` to emit the launch flags that version accepts.
     """
 
-    url: str = Field(min_length=1)
-    program_path: Path | None = None
-    version: str | None = None
-    tcp_ip: str | None = None
-    tcp_port: int | None = Field(default=None, ge=1, le=65535)
+    url: str = Field(
+        min_length=1, description="Where SERVAL answers, e.g. http://localhost:8080."
+    )
+    program_path: Path | None = Field(
+        default=None,
+        description="The SERVAL .jar file. HERMES starts SERVAL with it when "
+        "nothing answers at url.",
+    )
+    version: str | None = Field(
+        default=None,
+        description='The SERVAL version, e.g. "3.3.0"; it decides which launch '
+        "flags HERMES uses.",
+    )
+    tcp_ip: str | None = Field(
+        default=None,
+        description="The camera's IP address (SERVAL 3.0 or newer), e.g. "
+        "192.168.100.10. Unset: SERVAL looks for the camera itself.",
+    )
+    tcp_port: int | None = Field(
+        default=None,
+        ge=1,
+        le=65535,
+        description="The camera's TCP port, usually 50000.",
+    )
 
     @property
     def major_version(self) -> int | None:
@@ -323,8 +342,12 @@ class CalibrationFiles(StrictBaseModel):
     the saved copies and hashes on `CalibrationState`.
     """
 
-    pixel_config_file: Path
-    dacs_file: Path
+    pixel_config_file: Path = Field(
+        description="The SoPhy pixel configuration file (.bpc) for this camera."
+    )
+    dacs_file: Path = Field(
+        description="The SoPhy DAC settings file (.dacs) for this camera."
+    )
 
     @field_validator("pixel_config_file")
     @classmethod
@@ -356,11 +379,40 @@ class ServalRunTiming(StrictBaseModel):
     triggers).
     """
 
-    trigger_mode: DetectorTriggerMode | None = None
-    exposure_time_s: float | None = Field(default=None, ge=0, le=10)
-    trigger_period_s: float | None = Field(default=None, ge=0, le=50)
-    trigger_count: int | None = Field(default=None, ge=0)
-    max_wait_s: float | None = Field(default=None, gt=0)
+    trigger_mode: DetectorTriggerMode | None = Field(
+        default=None,
+        description="What starts and stops each frame. AUTOTRIGSTART_TIMERSTOP: "
+        "the camera starts a frame every trigger_period_s and keeps it open "
+        "for exposure_time_s.",
+    )
+    exposure_time_s: float | None = Field(
+        default=None,
+        ge=0,
+        le=10,
+        description="How long each frame stays open, in seconds. In "
+        "AUTOTRIGSTART_TIMERSTOP it must be at least 0.002 s shorter than "
+        "trigger_period_s.",
+    )
+    trigger_period_s: float | None = Field(
+        default=None,
+        ge=0,
+        le=50,
+        description="Time from one frame's start to the next, in seconds. HERMES "
+        "refuses less than 0.1 s in AUTOTRIGSTART_TIMERSTOP and CONTINUOUS.",
+    )
+    trigger_count: int | None = Field(
+        default=None,
+        ge=0,
+        description="How many frames to take. Each frame is one raw .tpx3 file. "
+        "SERVAL sends 0 to the camera as 1.",
+    )
+    max_wait_s: float | None = Field(
+        default=None,
+        gt=0,
+        description="Longest HERMES waits for the measurement to finish before "
+        "stopping it, in seconds. Unset: HERMES works it out from the timing, or "
+        "waits 300 s.",
+    )
 
 
 class ServalAcquisitionConfig(StrictBaseModel):
@@ -372,10 +424,27 @@ class ServalAcquisitionConfig(StrictBaseModel):
     """
 
     serval: ServalServer
-    calibration_files: CalibrationFiles | None = None
-    detector_config: DetectorConfiguration | None = None
-    detector_config_file: Path | None = None
-    run_timing: ServalRunTiming | None = None
+    calibration_files: CalibrationFiles | None = Field(
+        default=None,
+        description="Loaded into the camera before the run. HERMES copies them "
+        "into the run's config/ folder.",
+    )
+    detector_config: DetectorConfiguration | None = Field(
+        default=None,
+        description="Camera settings to send to SERVAL, using SERVAL's names "
+        "(TriggerMode, Tdc, GlobalTimestampInterval, BiasVoltage, ...).",
+    )
+    detector_config_file: Path | None = Field(
+        default=None,
+        description="A .json file of camera settings; used instead of "
+        "detector_config when both are given.",
+    )
+    run_timing: ServalRunTiming | None = Field(
+        default=None,
+        description="Set it to take a measurement. Without it HERMES only "
+        "configures the camera, or, with no raw_data_directory or "
+        "calibration_files either, only connects and reads its settings.",
+    )
 
     @field_validator("detector_config_file")
     @classmethod

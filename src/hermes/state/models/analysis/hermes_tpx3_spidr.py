@@ -116,18 +116,61 @@ def _expand_results_list(value: object) -> object:
 
 
 class HermesTpx3PhotonClusteringSettings(StrictBaseModel):
-    max_time_spread_ticks: int = Field(gt=0)
-    min_cluster_size: int = Field(gt=0)
-    max_cluster_size: int = Field(gt=0)
-    min_pixel_tot_raw: int = Field(ge=0, le=1023)
-    min_cluster_tot_raw: int = Field(ge=0)
-    max_cluster_tot_raw: int = Field(ge=0)
-    max_aspect_ratio: float = Field(ge=1)
-    min_filled_fraction: float = Field(gt=0, le=1)
-    adjacency: Literal[4, 8] = 8
-    position_averaging: Literal["arithmetic"] = "arithmetic"
-    photon_time_estimator: PhotonTimeEstimator = "leading_edge"
-    timewalk_calibration_file: Literal["default"] | Path | None = None
+    max_time_spread_ticks: int = Field(
+        gt=0,
+        description="Longest time from a photon's first pixel to its last, in "
+        "ticks of 25 ns / 12288 (491520 ticks is 1 microsecond).",
+    )
+    min_cluster_size: int = Field(
+        gt=0,
+        description="Fewest pixels a photon may have; no larger than "
+        "max_cluster_size.",
+    )
+    max_cluster_size: int = Field(gt=0, description="Most pixels a photon may have.")
+    min_pixel_tot_raw: int = Field(
+        ge=0,
+        le=1023,
+        description="Pixels with a smaller tot_raw are dropped before clustering.",
+    )
+    min_cluster_tot_raw: int = Field(
+        ge=0,
+        description="Smallest sum of tot_raw over a photon's pixels; no larger "
+        "than max_cluster_tot_raw.",
+    )
+    max_cluster_tot_raw: int = Field(
+        ge=0, description="Largest sum of tot_raw over a photon's pixels."
+    )
+    max_aspect_ratio: float = Field(
+        ge=1,
+        description="Largest ratio of the long side to the short side of a "
+        "photon's bounding box; rejects long tracks.",
+    )
+    min_filled_fraction: float = Field(
+        gt=0,
+        le=1,
+        description="Smallest share of a photon's bounding box that its pixels "
+        "must fill; rejects sparse clusters.",
+    )
+    adjacency: Literal[4, 8] = Field(
+        default=8,
+        description="4: pixels join when they share a side. 8: corners count too.",
+    )
+    position_averaging: Literal["arithmetic"] = Field(
+        default="arithmetic",
+        description="How a photon's x and y are found; only the plain mean of "
+        "its pixels for now.",
+    )
+    photon_time_estimator: PhotonTimeEstimator = Field(
+        default="leading_edge",
+        description="How a photon's time is found; only leading_edge (its "
+        "earliest pixel) runs for now.",
+    )
+    timewalk_calibration_file: Literal["default"] | Path | None = Field(
+        default=None,
+        description='Time-walk correction of photon times: "default" uses the '
+        "calibration shipped with HERMES, a path uses that JSON file, and null "
+        "turns the correction off.",
+    )
 
     @field_validator("photon_time_estimator")
     @classmethod
@@ -158,8 +201,15 @@ class HermesTpx3PhotonClusteringSettings(StrictBaseModel):
 class HermesTpx3PhotonClustering(StrictBaseModel):
     # Groups the clustering choice: which algorithm runs, whether to also save
     # the source pixels of each photon, and the algorithm's numeric settings.
-    name: ClusteringAlgorithm = "connected_components"
-    save_photon_pixels: bool = False
+    name: ClusteringAlgorithm = Field(
+        default="connected_components",
+        description="Only connected_components runs; dbscan is not available yet.",
+    )
+    save_photon_pixels: bool = Field(
+        default=False,
+        description="Also write pixel_clusters/ files that list each photon's "
+        "pixels.",
+    )
     settings: HermesTpx3PhotonClusteringSettings
 
 
@@ -172,12 +222,39 @@ class HermesTpx3EventReconstructionSettings(StrictBaseModel):
     # One field per key the event-reconstructor binary reads, with the same
     # bounds its validateReconParams enforces. model_dump(mode="json") produces
     # exactly these keys, which is what is written to the binary's settings file.
-    spatial_link_radius_pixels: float = Field(gt=0)
-    spatial_cells_per_axis: int = Field(ge=1, le=EVENT_CHIP_WIDTH_PIXELS)
-    max_time_difference_ticks: float = Field(gt=0)
-    max_event_duration_ticks: float = Field(gt=0)
-    min_photon_count: int = Field(ge=1)
-    save_event_photons: bool = False
+    spatial_link_radius_pixels: float = Field(
+        gt=0,
+        description="Photons this close or closer, in sensor pixels, can join "
+        "one event.",
+    )
+    spatial_cells_per_axis: int = Field(
+        ge=1,
+        le=EVENT_CHIP_WIDTH_PIXELS,
+        description="Grid cells per axis used to find nearby photons quickly; it "
+        "changes speed, not the events. 256 / spatial_cells_per_axis, rounded "
+        "up, must be at least spatial_link_radius_pixels.",
+    )
+    max_time_difference_ticks: float = Field(
+        gt=0,
+        description="Photons this close in time or closer, in ticks of "
+        "25 ns / 12288, can join one event (4915200 ticks is 10 microseconds).",
+    )
+    max_event_duration_ticks: float = Field(
+        gt=0,
+        description="Events that last longer, in ticks, get the "
+        "duration_exceeded flag and are kept (14745600 ticks is 30 "
+        "microseconds).",
+    )
+    min_photon_count: int = Field(
+        ge=1,
+        description="Recorded for later analysis only; events with fewer "
+        "photons are still kept.",
+    )
+    save_event_photons: bool = Field(
+        default=False,
+        description="Also write event_photons/ files that list each event's "
+        "photons.",
+    )
 
     @model_validator(mode="after")
     def require_cell_width_at_least_link_radius(
@@ -578,20 +655,35 @@ class HermesTpx3EventReconstructionResult(StrictBaseModel):
 
 
 class Tpx3UnpackingRuntimeOptions(StrictBaseModel):
-    overwrite: bool = False
-    time_sort: bool = True
-    # Delete each raw .tpx3 file after it has been successfully unpacked, to
-    # reclaim disk. While the camera is recording, files are kept until the
-    # recording ends, since SERVAL may still be writing them. Off by default;
-    # deletion is irreversible.
-    delete_raw_after_unpack: bool = False
+    overwrite: bool = Field(
+        default=False,
+        description="Unpack a raw file again even when its outputs already "
+        "exist; otherwise it is skipped.",
+    )
+    time_sort: bool = Field(
+        default=True,
+        description="Sort each output file by timestamp_canonical.",
+    )
+    delete_raw_after_unpack: bool = Field(
+        default=False,
+        description="Delete each raw .tpx3 file after it unpacks without "
+        "error, to free disk space. While the camera is recording, files are "
+        "kept until the recording ends, since SERVAL may still be writing them. "
+        "This cannot be undone.",
+    )
 
 
 class Tpx3Unpacking(StrictBaseModel):
-    program: BinaryProgram
-    # "auto" gathers every *.tpx3 in the run's raw data directory; a list names
-    # specific raw files to unpack.
-    tpx3_files: Literal["auto"] | list[FileReference] = "auto"
+    program: BinaryProgram = Field(
+        description="The unpacker: name tpx3-spidr-cpp, executable_path "
+        "hermes-tpx3-spidr.",
+    )
+    tpx3_files: Literal["auto"] | list[FileReference] = Field(
+        default="auto",
+        description='"auto": every .tpx3 in environment.raw_data_directory. Or a '
+        "list of {path: ...} entries, or {file_list: <text file with one path "
+        "per line>}.",
+    )
     runtime_options: Tpx3UnpackingRuntimeOptions = Field(
         default_factory=Tpx3UnpackingRuntimeOptions
     )
@@ -633,14 +725,24 @@ class Tpx3Unpacking(StrictBaseModel):
 
 
 class HermesTpx3PhotonReconstructionRuntimeOptions(StrictBaseModel):
-    overwrite: bool = False
+    overwrite: bool = Field(
+        default=False,
+        description="Redo a pixel file even when its outputs already exist; "
+        "otherwise it is skipped.",
+    )
 
 
 class HermesTpx3PhotonReconstruction(StrictBaseModel):
-    program: BinaryProgram
-    # "auto" gathers pixel files from the unpacking stage's output; a list names
-    # specific pixel_hits Parquet files to reconstruct.
-    pixel_files: Literal["auto"] | list[FileReference] = "auto"
+    program: BinaryProgram = Field(
+        description="The photon program: name photon-clusterer-cpp, "
+        "executable_path hermes-photon-clusterer.",
+    )
+    pixel_files: Literal["auto"] | list[FileReference] = Field(
+        default="auto",
+        description='"auto": every file in pixel_hits/ in the analysis folder. '
+        "Or a list of {path: ...} entries, or {file_list: <text file with one "
+        "path per line>}.",
+    )
     clustering_algorithm: HermesTpx3PhotonClustering
     runtime_options: HermesTpx3PhotonReconstructionRuntimeOptions = Field(
         default_factory=HermesTpx3PhotonReconstructionRuntimeOptions
@@ -668,15 +770,28 @@ class HermesTpx3PhotonReconstruction(StrictBaseModel):
 
 
 class HermesTpx3EventReconstructionRuntimeOptions(StrictBaseModel):
-    overwrite: bool = False
+    overwrite: bool = Field(
+        default=False,
+        description="Redo a raw file's events even when its outputs already "
+        "exist; otherwise it is skipped.",
+    )
 
 
 class HermesTpx3EventReconstruction(StrictBaseModel):
-    program: BinaryProgram
-    # "auto" gathers photon files from the photon reconstruction stage's output;
-    # a list names specific photon_events Parquet files to reconstruct.
-    photon_parquet_files: Literal["auto"] | list[FileReference] = "auto"
-    clustering_algorithm: ClusteringAlgorithm = "connected_components"
+    program: BinaryProgram = Field(
+        description="The event program: name event-reconstructor-cpp, "
+        "executable_path hermes-event-reconstructor.",
+    )
+    photon_parquet_files: Literal["auto"] | list[FileReference] = Field(
+        default="auto",
+        description='"auto": every file in photons/ in the analysis folder. Or a '
+        "list of {path: ...} entries, or {file_list: <text file with one path "
+        "per line>}.",
+    )
+    clustering_algorithm: ClusteringAlgorithm = Field(
+        default="connected_components",
+        description="Only connected_components runs; dbscan is not available yet.",
+    )
     settings: HermesTpx3EventReconstructionSettings
     runtime_options: HermesTpx3EventReconstructionRuntimeOptions = Field(
         default_factory=HermesTpx3EventReconstructionRuntimeOptions
@@ -721,7 +836,11 @@ class SensorLayout(StrictBaseModel):
     # event stage can group light that lands on more than one chip. Named
     # SensorLayout to stay distinct from the SERVAL /detector/layout response
     # model (detector.py), which is a different concept.
-    kind: SensorLayoutKind = "quad"
+    kind: SensorLayoutKind = Field(
+        default="quad",
+        description="quad: four chips tiled 2x2 into one 516x516 frame with a "
+        "four-pixel gap. single_chip: one 256x256 chip.",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -730,11 +849,31 @@ class SensorLayout(StrictBaseModel):
 
 
 class HermesTpx3AnalysisState(StrictBaseModel):
-    mode: Literal["hermes"] = "hermes"
-    resource_limit_percent: int = Field(default=90, ge=1, le=100)
-    detector_layout: SensorLayout = Field(default_factory=SensorLayout)
+    mode: Literal["hermes"] = Field(
+        default="hermes",
+        description="hermes runs the HERMES programs. (empir runs EMPIR and "
+        "has other fields.)",
+    )
+    resource_limit_percent: int = Field(
+        default=90,
+        ge=1,
+        le=100,
+        description="Share of the CPU cores and free memory HERMES uses when it "
+        "picks how many files to work on at once.",
+    )
+    detector_layout: SensorLayout = Field(
+        default_factory=SensorLayout,
+        description="How the chips fit together; photon and event x and y are "
+        "in this frame.",
+    )
     # Optional so reconstruction can run on its own when unpacking is already
     # done and the pixel/photon files it needs are already on disk.
-    unpacking: Tpx3Unpacking | None = None
-    photon_reconstruction: HermesTpx3PhotonReconstruction | None = None
-    event_reconstruction: HermesTpx3EventReconstruction | None = None
+    unpacking: Tpx3Unpacking | None = Field(
+        default=None, description="Leave out to skip unpacking."
+    )
+    photon_reconstruction: HermesTpx3PhotonReconstruction | None = Field(
+        default=None, description="Leave out to skip photon reconstruction."
+    )
+    event_reconstruction: HermesTpx3EventReconstruction | None = Field(
+        default=None, description="Leave out to skip event reconstruction."
+    )
