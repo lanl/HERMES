@@ -2,10 +2,10 @@
 
 One local MCP server (standard input/output, no network) that ships inside the
 HERMES package so any MCP-speaking LLM tool can help a user configure and run a
-HERMES analysis. Its tools write a workflow config and a runnable script for the
-``.tpx3`` files in a folder, check a config, check the installation, describe
-a run's Parquet output files, and report how far a run got and why anything
-failed.
+HERMES analysis or measurement. Its tools write a workflow config and a
+runnable script for the ``.tpx3`` files in a folder, or for a measurement with
+the camera, check a config, check the installation, describe a run's Parquet
+output files, and report how far a run got and why anything failed.
 """
 
 from __future__ import annotations
@@ -35,6 +35,11 @@ from hermes.runner.analysis.executables import (
     resolve_executable,
 )
 from hermes.shipped_files import default_timewalk_calibration
+from hermes.state.models.acquisition.serval import (
+    CalibrationFiles,
+    ServalRunTiming,
+    ServalServer,
+)
 from hermes.state.state import HermesRecord
 from hermes.state_service.shared_types import StateIOError
 from hermes.state_service.state_io import load_hermes_record_from_yaml
@@ -42,6 +47,12 @@ from hermes.state_service.state_io import load_hermes_record_from_yaml
 mcp_server = MCPServer("hermes")
 
 FurthestStage = Literal[
+    "unpacking",
+    "photon_reconstruction",
+    "event_reconstruction",
+]
+AcquisitionFurthestStage = Literal[
+    "acquisition",
     "unpacking",
     "photon_reconstruction",
     "event_reconstruction",
@@ -106,6 +117,9 @@ _EVENT_RECONSTRUCTION: dict = {
 _LOG_DIRECTORY = "logs"
 _QUIET_LOG_LEVEL = "ERROR"
 
+# The raw data folder a measurement config names, under the run folder.
+_RAW_DATA_DIRECTORY = "raw"
+
 _RUN_SCRIPT = '''from pathlib import Path
 
 from hermes.state_service.state_io import load_hermes_record_from_yaml
@@ -121,6 +135,19 @@ def main() -> None:
 if __name__ == "__main__":
     main()
 '''
+
+
+def _analysis_section(furthest_stage: str, tpx3_files: object) -> dict:
+    """The analysis section, running from unpacking through `furthest_stage`."""
+    analysis: dict = {
+        "mode": "hermes",
+        "unpacking": {**_UNPACKING, "tpx3_files": tpx3_files},
+    }
+    if furthest_stage in ("photon_reconstruction", "event_reconstruction"):
+        analysis["photon_reconstruction"] = _PHOTON_RECONSTRUCTION
+    if furthest_stage == "event_reconstruction":
+        analysis["event_reconstruction"] = _EVENT_RECONSTRUCTION
+    return analysis
 
 
 class AnalysisConfigRequest(BaseModel):
@@ -163,18 +190,10 @@ def create_analysis_config(request: AnalysisConfigRequest) -> AnalysisConfigResu
 
     # HERMES opens each listed .tpx3 path as written, from whatever folder the
     # run script is launched in, so write full paths.
-    unpacking = {
-        **_UNPACKING,
-        "tpx3_files": [{"path": str(directory / name)} for name in raw_files],
-    }
-    analysis: dict = {"mode": "hermes", "unpacking": unpacking}
-    stages = ["unpacking"]
-    if request.furthest_stage in ("photon_reconstruction", "event_reconstruction"):
-        analysis["photon_reconstruction"] = _PHOTON_RECONSTRUCTION
-        stages.append("photon_reconstruction")
-    if request.furthest_stage == "event_reconstruction":
-        analysis["event_reconstruction"] = _EVENT_RECONSTRUCTION
-        stages.append("event_reconstruction")
+    analysis = _analysis_section(
+        request.furthest_stage,
+        [{"path": str(directory / name)} for name in raw_files],
+    )
 
     config = {
         "measurement_info": {
@@ -191,7 +210,7 @@ def create_analysis_config(request: AnalysisConfigRequest) -> AnalysisConfigResu
     }
 
     # Validate against the installed HERMES's real rules before writing.
-    HermesRecord.model_validate(config)
+    stages = _configured_stages(HermesRecord.model_validate(config))
 
     config_path = directory / "hermes-config.yaml"
     config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
@@ -300,6 +319,15 @@ def _check_acquisition(
                 f"only {free / 1024**3:.2f} GB free at {folder}, where the raw "
                 f"files go"
             )
+    if raw is not None and config.run_timing is not None:
+        # The same check the run makes before it measures.
+        old_files = list(raw.glob("*.tpx3"))
+        if old_files:
+            problems.append(
+                f"the raw data folder {raw} already holds {len(old_files)} "
+                f".tpx3 file(s) from an earlier run, and the run refuses to "
+                f"measure into it; use a new run name, or move those files away"
+            )
 
     # The run sends a detector configuration only when it takes a
     # measurement, and checks it with this same function before it starts.
@@ -396,6 +424,158 @@ def validate_config(request: ConfigValidationRequest) -> ConfigValidationResult:
         config_file=path,
         stages=stages,
         problems=problems,
+        warnings=warnings,
+        message=message,
+    )
+
+
+class AcquisitionConfigRequest(BaseModel):
+    working_directory: Path = Field(
+        description="An existing folder; the config and run script are "
+        "written here. Each run writes into its own folder under it, named "
+        "after the run.",
+    )
+    measurement_id: str = Field(min_length=1)
+    run: str = Field(
+        min_length=1,
+        description="The run label, which is also the name of the run's "
+        "folder. Use a new one for each measurement.",
+    )
+    serval: ServalServer
+    calibration_files: CalibrationFiles
+    run_timing: ServalRunTiming = Field(
+        description="The measurement's timing. trigger_mode is required; "
+        "fields left out are not sent to SERVAL.",
+    )
+    furthest_stage: AcquisitionFurthestStage = Field(
+        description="How far to analyze while recording: 'acquisition' "
+        "(only record raw .tpx3 files), 'unpacking' (also unpack each raw "
+        "file into pixel and TDC Parquet once SERVAL has finished it), "
+        "'photon_reconstruction' (also cluster pixels into photons), or "
+        "'event_reconstruction' (also group photons into events). Ask the "
+        "user how far they want to go.",
+    )
+
+
+class AcquisitionConfigResult(BaseModel):
+    config_file: Path
+    run_script: Path
+    run_directory: Path = Field(
+        description="Where the run writes its raw files, analysis, logs and "
+        "HERMES_record.yaml.",
+    )
+    stages: list[str]
+    warnings: list[str] = Field(
+        description="The warnings validate_config gives for this config, such "
+        "as a SERVAL .jar that is not found.",
+    )
+    message: str
+
+
+def _full_path(path: Path) -> str:
+    return str(path.expanduser().resolve())
+
+
+@mcp_server.tool()
+def create_acquisition_config(
+    request: AcquisitionConfigRequest,
+) -> AcquisitionConfigResult:
+    """Write a HERMES config and a runnable script that take one measurement
+    with the camera through SERVAL, analyzing the raw files while they are
+    recorded through the chosen stage. Makes the same checks as
+    validate_config and writes nothing when one fails. It does not contact
+    SERVAL or start the run; the user starts it."""
+    directory = request.working_directory.expanduser().resolve()
+    if not directory.is_dir():
+        raise ValueError(f"working directory does not exist: {directory}")
+    if request.run_timing.trigger_mode is None:
+        raise ValueError(
+            "run_timing.trigger_mode is required, so the measurement does not "
+            "depend on the trigger mode SERVAL last held"
+        )
+
+    # HERMES opens these files from whatever folder the run script is
+    # launched in, so write full paths.
+    serval = request.serval.model_dump(mode="json", exclude_none=True)
+    if request.serval.program_path is not None:
+        serval["program_path"] = _full_path(request.serval.program_path)
+    calibration = request.calibration_files
+    analyze = request.furthest_stage != "acquisition"
+    config: dict = {
+        "measurement_info": {
+            "measurement_id": request.measurement_id,
+            "run": request.run,
+        },
+        "environment": {
+            "working_directory": str(directory),
+            "raw_data_directory": _RAW_DATA_DIRECTORY,
+            **({"analysis_directory": "analysis"} if analyze else {}),
+            "log_directory": _LOG_DIRECTORY,
+            "log_level": _QUIET_LOG_LEVEL,
+        },
+        # No detector_config: HERMES fills in the global timestamp interval,
+        # and run_timing sets the trigger mode and timing.
+        "acquisition": {
+            "mode": "serval",
+            "config": {
+                "serval": serval,
+                "calibration_files": {
+                    "pixel_config_file": _full_path(calibration.pixel_config_file),
+                    "dacs_file": _full_path(calibration.dacs_file),
+                },
+                "run_timing": request.run_timing.model_dump(
+                    mode="json", exclude_none=True
+                ),
+            },
+        },
+    }
+    if analyze:
+        # "auto" analyzes every .tpx3 file in the raw data folder.
+        config["analysis"] = _analysis_section(request.furthest_stage, "auto")
+
+    # Validate against the installed HERMES's real rules before writing.
+    record = HermesRecord.model_validate(config)
+    # HERMES uses the run label as the run folder's name, so a label such as
+    # "../other" or an absolute path would put the run outside `directory`.
+    run_directory = record.environment.run_directory.resolved_path
+    if run_directory is None or run_directory.parent != directory:
+        raise ValueError(
+            f"the run label {request.run!r} must be a single folder name, such "
+            f"as run-1, because it names the run's folder under {directory}"
+        )
+    problems: list[str] = []
+    warnings: list[str] = []
+    interval = _check_acquisition(record, problems, warnings)
+    if problems:
+        raise ValueError("the config was not written: " + "; ".join(problems))
+
+    config_path = directory / "hermes-config.yaml"
+    config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+    script_path = directory / "run_hermes.py"
+    script_path.write_text(_RUN_SCRIPT, encoding="utf-8")
+
+    stages = _configured_stages(record)
+    logger.bind(domain="mcp").info(
+        "wrote a HERMES measurement config ({stages}) to {path}",
+        stages=", ".join(stages),
+        path=str(config_path),
+    )
+    message = (
+        f"Wrote a measurement config ({', '.join(stages)}). The run writes "
+        f"into {run_directory}."
+    )
+    if interval is not None:
+        message += f" HERMES will send a global timestamp every {interval} s."
+    if warnings:
+        message += f" {len(warnings)} warning(s); see warnings."
+    message += (
+        f" Nothing has been started. Run it with: pixi run python {script_path}"
+    )
+    return AcquisitionConfigResult(
+        config_file=config_path,
+        run_script=script_path,
+        run_directory=run_directory,
+        stages=stages,
         warnings=warnings,
         message=message,
     )

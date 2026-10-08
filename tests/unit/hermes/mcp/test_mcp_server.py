@@ -476,6 +476,21 @@ def test_validate_config_reports_a_measurement_with_no_raw_folder(
     assert "nowhere to write the measurement" in result.problems[0]
 
 
+def test_validate_config_reports_a_raw_folder_with_old_files(
+    tmp_path: Path,
+) -> None:
+    config = _write_acquisition_config(tmp_path)
+    raw = tmp_path / "run-1" / "raw"
+    raw.mkdir(parents=True)
+    (raw / "old.tpx3").write_bytes(b"raw")
+
+    result = validate_config(ConfigValidationRequest(config_file=config))
+
+    assert not result.valid
+    assert len(result.problems) == 1
+    assert "already holds 1 .tpx3 file(s)" in result.problems[0]
+
+
 def test_validate_config_warns_about_a_missing_serval_jar(tmp_path: Path) -> None:
     config = _write_acquisition_config(tmp_path)
     (tmp_path / "serval-3.3.0.jar").unlink()

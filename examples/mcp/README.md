@@ -2,7 +2,7 @@
 
 HERMES ships one small MCP server so an LLM assistant that speaks MCP — Claude
 Code, Claude Desktop, Cursor, and others — can help you configure and run a
-HERMES analysis in your own project. One command wires it up for you; this
+HERMES analysis or measurement in your own project. One command wires it up for you; this
 folder also holds [`mcp.json`](mcp.json) as a reference for what that command
 writes, plus this walkthrough.
 
@@ -83,6 +83,50 @@ pixi run python run_hermes.py
 Each stage writes one Parquet file per signal so times from different signals
 stay on one comparable clock. For what each stage produces, see the analysis
 examples under [`examples/analysis/`](../analysis/).
+
+## Set up a measurement
+
+At the instrument, with the camera and SERVAL attached, say something like:
+
+> Set up a HERMES measurement in ./beamtime.
+
+The assistant asks for what it can't guess:
+
+- **A measurement id and a run label.** The run label is also the name of the
+  run's folder, so use a new one for each measurement.
+- **SERVAL**: its URL, the path to the SERVAL `.jar`, and the camera's IP address
+  and port.
+- **The SoPhy calibration files**: the `.bpc` and `.dacs` files for your camera.
+- **The timing**: trigger mode, exposure time, trigger period, and how many
+  frames to take. Each frame is one raw `.tpx3` file.
+- **How far to analyze while recording**: nothing, unpacking, photon
+  reconstruction, or event reconstruction. Each raw file is analyzed once SERVAL
+  has finished writing it, and a last pass after the recording picks up the
+  rest. The analysis stages use the same defaults as an analysis run.
+
+It writes `hermes-config.yaml` and `run_hermes.py` into that folder. The run
+writes into its own folder under it, named after the run: raw files in `raw/`,
+the calibration files copied into `config/`, and `analysis/`, `logs/` and
+`HERMES_record.yaml`.
+
+- **Global timestamps are on.** The config leaves the interval unset, so HERMES
+  uses 1 s, or half the trigger period when frames are shorter than 2 s. The
+  answer says which.
+- **The run is quiet**, as for an analysis run.
+
+Before writing anything, it makes the same checks as `validate_config` (see
+"Check a config" below). When one fails, such as a missing calibration file or a
+run folder that already has raw files in it, it writes nothing and says what to
+fix. Warnings, such as a SERVAL `.jar` that is not found, are returned with the
+config.
+
+It does not contact SERVAL and does not start the measurement. You start it,
+giving the path to the script it wrote; the assistant's answer has the full
+command:
+
+```bash
+pixi run python beamtime/run_hermes.py
+```
 
 ## Check how a run went
 
@@ -218,6 +262,8 @@ These are problems, so the config is not valid:
   one HERMES will use.
 - **A measurement has nowhere to write**: `run_timing` is set but
   `environment.raw_data_directory` is not.
+- **The raw data folder already has `.tpx3` files** from an earlier run. The run
+  refuses to measure into it, because the old and new files would be mixed.
 
 These are warnings, so the config can still be valid:
 
