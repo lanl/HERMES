@@ -899,11 +899,19 @@ def _count_message(
     source: str,
     text: str,
     event_type: str = "",
-    file: str | None = None,
+    extra: dict | None = None,
 ) -> None:
     """Count a message, treating ones of the same event type that differ only
-    in their numbers, or in the file they name, as one kind."""
-    kind = text.replace(file, "FILE") if file else text
+    in their numbers, or in the files they name, as one kind."""
+    kind = text
+    files = [
+        str(value)
+        for key, value in (extra or {}).items()
+        if key.endswith(("_file", "_stem")) and value
+    ]
+    # Longest first, so a path is replaced before a shorter name inside it.
+    for file in sorted(files, key=len, reverse=True):
+        kind = kind.replace(file, "FILE")
     key = (source, event_type, re.sub(r"\d+", "N", kind))
     if key in groups:
         groups[key].count += 1
@@ -911,18 +919,15 @@ def _count_message(
         groups[key] = LoggedMessage(source=source, text=text, count=1)
 
 
-def _file_named_in(extra: dict) -> tuple[str, str, str] | None:
-    """The stage and file name a log line is about, if it is about one file,
-    and the file as the line gives it."""
+def _file_named_in(extra: dict) -> tuple[str, str] | None:
+    """The stage and file name a log line is about, if it is about one file."""
     if "raw_tpx3_file" in extra:
-        value = str(extra["raw_tpx3_file"])
-        return "unpacking", Path(value).name, value
+        return "unpacking", Path(str(extra["raw_tpx3_file"])).name
     if "pixel_file" in extra:
-        value = str(extra["pixel_file"])
-        return "photon_reconstruction", Path(value).name, value
+        return "photon_reconstruction", Path(str(extra["pixel_file"])).name
     if "raw_file_stem" in extra:
-        value = str(extra["raw_file_stem"])
-        return "event_reconstruction", f"{value}_event_candidates.parquet", value
+        stem = str(extra["raw_file_stem"])
+        return "event_reconstruction", f"{stem}_event_candidates.parquet"
     return None
 
 
@@ -1022,6 +1027,38 @@ def _saved_acquisition(record_file: Path) -> AcquisitionStatus | None:
     )
 
 
+def _starting_config(logs: Path, process: int | None) -> dict | None:
+    """The config the last run started with, which HERMES logs as one line in
+    state.jsonl when the run starts."""
+    # Newest file first. Decode only that one line, since state.jsonl can be
+    # tens of megabytes.
+    for path in sorted(logs.glob("state*.jsonl"), reverse=True):
+        found = None
+        with path.open(encoding="utf-8", errors="replace") as handle:
+            for line in handle:
+                if '"state.initial_record"' in line:
+                    record = _parse_log_line(line)
+                    if record and record["process"]["id"] == process:
+                        found = record["extra"].get("record")
+        if found:
+            return found
+    return None
+
+
+def _raw_names_to_unpack(config: dict) -> set[str]:
+    """The names, without .tpx3, of the raw files a run's config unpacks."""
+    unpacking = (config.get("analysis") or {}).get("unpacking") or {}
+    tpx3_files = unpacking.get("tpx3_files")
+    if isinstance(tpx3_files, list):
+        return {Path(entry["path"]).stem for entry in tpx3_files}
+    if tpx3_files != "auto":
+        return set()
+    # "auto" unpacks every .tpx3 in the raw data folder, as it is now.
+    environment = config.get("environment") or {}
+    folder = (environment.get("raw_data_directory") or {}).get("resolved_path")
+    return {path.stem for path in Path(folder).glob("*.tpx3")} if folder else set()
+
+
 def _logged_acquisition(line: dict | None) -> AcquisitionStatus | None:
     """The acquisition so far, from its newest measurement log line."""
     if line is None:
@@ -1048,9 +1085,8 @@ def _count_stages(
 
     A raw file a stage has no result for is "not run" when the stage before
     finished it. While a run is going, `waiting` holds the names of the .tpx3
-    files in the run folder, which are waiting to be unpacked; nothing is
-    listed as a problem file for not having run yet. Once the run has ended,
-    `waiting` is None.
+    files the run will unpack; nothing is listed as a problem file for not
+    having run yet. Once the run has ended, `waiting` is None.
     """
     stages: list[StageStatus] = []
     problems: list[ProblemFile] = []
@@ -1159,16 +1195,16 @@ def report_run_status(request: RunStatusRequest) -> RunStatusResult:
             is_error = record["level"]["no"] >= 40
             named = _file_named_in(extra)
             if named and is_error:
-                file_errors.setdefault(named[:2], []).append(record["message"])
+                file_errors.setdefault(named, []).append(record["message"])
                 continue
             if named and event_type.endswith(".skipped"):
-                skipped.add(named[:2])
+                skipped.add(named)
             _count_message(
                 errors if is_error else warnings,
                 source,
                 record["message"],
                 event_type,
-                named[2] if named else None,
+                extra,
             )
 
     statuses = _read_summaries(analysis, warnings, file_errors)
@@ -1178,21 +1214,27 @@ def report_run_status(request: RunStatusRequest) -> RunStatusResult:
         if closing.get("error"):
             _count_message(errors, workflow_log.name, closing["error"])
         acquisition = _saved_acquisition(record_file)
+        waiting = None
     else:
         for stage, name in skipped:
             statuses.setdefault(stage, {})[name] = "skipped"
         outcome = "not finished"
         acquisition = _logged_acquisition(measurement)
+        # The raw files can be outside the run folder, as with a config from
+        # create_analysis_config, so take them and the stages from the config
+        # the run started with. Without logs, look in the run folder.
+        waiting = {path.stem for path in run.rglob("*.tpx3")}
+        config = _starting_config(logs, process)
+        if config is not None:
+            waiting = _raw_names_to_unpack(config)
+            for stage in _STAGES:
+                if (config.get("analysis") or {}).get(stage):
+                    statuses.setdefault(stage, {})
     # A file that failed before it wrote a summary is known only from its log
     # line.
     for stage, name in file_errors:
         statuses.setdefault(stage, {}).setdefault(name, "failed")
-    stages, problems = _count_stages(
-        statuses,
-        file_errors,
-        None if finished else {path.stem for path in run.rglob("*.tpx3")},
-        analysis,
-    )
+    stages, problems = _count_stages(statuses, file_errors, waiting, analysis)
 
     if finished:
         parts = [f"The run ended: {outcome}."]
@@ -1207,10 +1249,9 @@ def report_run_status(request: RunStatusRequest) -> RunStatusResult:
         if acquisition.stop_reason:
             text += f" ({acquisition.stop_reason})"
         if acquisition.frames is not None:
-            text += (
-                f", {acquisition.frames} frame(s), "
-                f"{acquisition.dropped_frames} dropped"
-            )
+            text += f", {acquisition.frames} frame(s)"
+        if acquisition.dropped_frames is not None:
+            text += f", {acquisition.dropped_frames} dropped"
         parts.append(text + ".")
     for stage in stages:
         counts = [

@@ -317,6 +317,55 @@ def test_a_run_that_has_not_finished(tmp_path: Path) -> None:
     assert "Acquisition: running, 3 frame(s), 0 dropped." in result.message
 
 
+def test_a_run_going_on_files_outside_the_run_folder(tmp_path: Path) -> None:
+    # A config from create_analysis_config lists .tpx3 files in the data
+    # folder, not the run folder. The config the run started with, logged to
+    # state.jsonl, names them and the stages to run.
+    data = tmp_path / "data"
+    data.mkdir()
+    for raw in ("a", "b", "c"):
+        (data / f"{raw}.tpx3").write_bytes(b"raw")
+    run = data / "run-1"
+    _write_summary(
+        run / "analysis" / "logs" / "unpacking" / "a_unpacker_summary.json",
+        "unpacking",
+        warnings=[],
+        errors=[],
+    )
+    config = {
+        "analysis": {
+            "unpacking": {
+                "tpx3_files": [{"path": str(data / f"{raw}.tpx3")} for raw in "abc"]
+            },
+            "photon_reconstruction": {"pixel_files": "auto"},
+            "event_reconstruction": {"photon_parquet_files": "auto"},
+        }
+    }
+    _write_lines(
+        run / "logs" / "state.jsonl",
+        [
+            _log_line(
+                "INFO",
+                "Initialized HERMES Record for measurement demo, run run-1",
+                "state.initial_record",
+                record=config,
+            )
+        ],
+    )
+
+    result = _report(run)
+
+    assert result.outcome == "not finished"
+    assert [
+        (stage.stage, stage.succeeded, stage.not_run) for stage in result.stages
+    ] == [
+        ("unpacking", 1, 2),
+        ("photon_reconstruction", 0, 1),
+        ("event_reconstruction", 0, 0),
+    ]
+    assert result.problem_files == []
+
+
 def test_a_new_run_in_an_old_run_folder_has_not_finished(finished_run: Path) -> None:
     # The workflow log is from the run before; a new process is now logging.
     _write_lines(
@@ -399,11 +448,24 @@ def test_repeated_warnings_are_shown_once_with_a_count(finished_run: Path) -> No
                 )
                 for raw in raw_files
             ],
-            _log_line(
-                "WARNING",
-                "Earlier global timestamp too far from this one",
-                "analysis.tpx3_unpacking.earlier_timestamp_too_far",
-            ),
+            # A warning that names three files whose names differ in more
+            # than their numbers.
+            *[
+                _log_line(
+                    "WARNING",
+                    f"raw/{now}.tpx3: the last global timestamp of "
+                    f"raw/{earlier}.tpx3 is 20.0 s before the next one, in "
+                    f"raw/{later}.tpx3",
+                    "analysis.tpx3_unpacking.earlier_timestamp_too_far",
+                    raw_tpx3_file=f"raw/{now}.tpx3",
+                    earlier_tpx3_file=f"raw/{earlier}.tpx3",
+                    later_tpx3_file=f"raw/{later}.tpx3",
+                )
+                for earlier, now, later in (
+                    ("iron", "lead", "tin"),
+                    ("open", "beam", "dark"),
+                )
+            ],
         ],
     )
 
@@ -412,7 +474,11 @@ def test_repeated_warnings_are_shown_once_with_a_count(finished_run: Path) -> No
     logged = [w for w in result.warnings if w.source == "analysis.jsonl"]
     assert [(w.text, w.count) for w in logged] == [
         ("Skipped raw/000000.tpx3: valid outputs already exist", 12),
-        ("Earlier global timestamp too far from this one", 1),
+        (
+            "raw/lead.tpx3: the last global timestamp of raw/iron.tpx3 is "
+            "20.0 s before the next one, in raw/tin.tpx3",
+            2,
+        ),
     ]
 
 
@@ -431,6 +497,17 @@ def test_a_summary_with_errors_marks_its_file_failed(tmp_path: Path) -> None:
     assert result.problem_files[0].file == "a.tpx3"
     assert result.problem_files[0].errors == ["Truncated chunk at byte 4096"]
     assert "There is no logs/ folder" in result.message
+
+
+def test_an_acquisition_with_no_dropped_frame_count(finished_run: Path) -> None:
+    record = finished_run / "HERMES_record.yaml"
+    saved = yaml.safe_load(record.read_text(encoding="utf-8"))
+    saved["acquisition"]["result"]["dropped_frames"] = None
+    record.write_text(yaml.safe_dump(saved), encoding="utf-8")
+
+    result = _report(finished_run)
+
+    assert "Acquisition: completed (completed), 2 frame(s)." in result.message
 
 
 def test_a_missing_folder(tmp_path: Path) -> None:
