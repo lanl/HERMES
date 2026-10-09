@@ -4,8 +4,9 @@ One local MCP server (standard input/output, no network) that ships inside the
 HERMES package so any MCP-speaking LLM tool can help a user configure and run a
 HERMES analysis or measurement. Its tools write a workflow config and a
 runnable script for the ``.tpx3`` files in a folder, or for a measurement with
-the camera, check a config, check the installation, describe a run's Parquet
-output files, and report how far a run got and why anything failed.
+the camera, check a config, check the installation, check whether SERVAL and
+the camera are ready, describe a run's Parquet output files, and report how far
+a run got and why anything failed.
 """
 
 from __future__ import annotations
@@ -26,6 +27,11 @@ from loguru import logger
 from mcp.server.mcpserver import MCPServer
 from pydantic import BaseModel, Field, ValidationError
 
+from hermes.runner.acquisition.serval.client import (
+    ServalClient,
+    ServalClientError,
+    ServalConnectError,
+)
 from hermes.runner.acquisition.serval.measurement import (
     build_effective_detector_config,
 )
@@ -37,9 +43,11 @@ from hermes.runner.analysis.executables import (
 from hermes.shipped_files import default_timewalk_calibration
 from hermes.state.models.acquisition.serval import (
     CalibrationFiles,
+    ServalDashboard,
     ServalRunTiming,
     ServalServer,
 )
+from hermes.state.models.detector import DetectorSnapshot
 from hermes.state.state import HermesRecord
 from hermes.state_service.shared_types import StateIOError
 from hermes.state_service.state_io import load_hermes_record_from_yaml
@@ -316,7 +324,7 @@ def _check_acquisition(
         free = shutil.disk_usage(folder).free
         if free < MIN_FREE_DISK_BYTES:
             warnings.append(
-                f"only {free / 1024**3:.2f} GB free at {folder}, where the raw "
+                f"only {free / 1e9:.2f} GB free at {folder}, where the raw "
                 f"files go"
             )
     if raw is not None and config.run_timing is not None:
@@ -578,6 +586,208 @@ def create_acquisition_config(
         stages=stages,
         warnings=warnings,
         message=message,
+    )
+
+
+CameraStatus = Literal["no SERVAL", "SERVAL error", "no camera", "camera connected"]
+# SERVAL answers every /detector/* read with 409 until a camera is connected.
+_NOT_CONNECTED_STATUS = 409
+
+
+class CameraCheckRequest(BaseModel):
+    serval_url: str = Field(
+        pattern=r"^https?://",
+        description="Where SERVAL answers, such as http://localhost:8080. It "
+        "is acquisition.config.serval.url in the user's config.",
+    )
+
+
+class DiskSpaceCheck(BaseModel):
+    path: str | None = Field(
+        description="The folder of one of SERVAL's output destinations."
+    )
+    free_gb: float | None
+    disk_limit_reached: bool | None = Field(
+        description="True when SERVAL has stopped writing there because free "
+        "space fell below its limit.",
+    )
+
+
+class DetectorCheck(BaseModel):
+    detector_type: str | None = Field(description="Such as Tpx3.")
+    chips: list[str] = Field(description="The chip names, such as W0062_B09.")
+    width_pixels: int | None
+    height_pixels: int | None
+    orientation: str | None
+    board_temperature_c: float | None
+    fpga_temperature_c: float | None
+    chip_temperatures_c: list[int] = Field(
+        description="As SERVAL reports them, one for each chip position.",
+    )
+    bias_voltage_v: float | None = Field(
+        description="The bias voltage SERVAL reads back from the camera.",
+    )
+    humidity_percent: int | None
+
+
+class CameraCheckResult(BaseModel):
+    serval_url: str
+    status: CameraStatus = Field(
+        description="'no SERVAL': nothing answers at the URL, which is the "
+        "expected answer on a machine with no camera. 'SERVAL error': "
+        "something answers, but with an error or an answer HERMES cannot "
+        "read. 'no camera': SERVAL is running but no camera is connected. "
+        "'camera connected': SERVAL and the camera are both there.",
+    )
+    serval_version: str | None
+    measurement_status: str | None = Field(
+        description="DA_IDLE when no measurement is running; DA_PREPARING, "
+        "DA_RECORDING or DA_STOPPING while one is.",
+    )
+    detector: DetectorCheck | None = Field(
+        description="The camera's readings; empty unless a camera is connected.",
+    )
+    disk_space: list[DiskSpaceCheck]
+    notices: list[str] = Field(description="The notices on SERVAL's dashboard.")
+    problem: str | None = Field(
+        description="What went wrong when the status is 'SERVAL error'.",
+    )
+    message: str
+
+
+def _detector_check(
+    dashboard: ServalDashboard, snapshot: DetectorSnapshot
+) -> DetectorCheck:
+    info, health, layout = snapshot.info, snapshot.health, snapshot.layout
+    canvas = layout.original
+    return DetectorCheck(
+        detector_type=dashboard.detector.detector_type if dashboard.detector else None,
+        chips=[chip.name for board in info.boards for chip in board.chips],
+        width_pixels=canvas.width if canvas else None,
+        height_pixels=canvas.height if canvas else None,
+        orientation=layout.detector_orientation,
+        board_temperature_c=health.local_temperature_c,
+        fpga_temperature_c=health.fpga_temperature_c,
+        chip_temperatures_c=health.chip_temperatures_c,
+        bias_voltage_v=health.bias_voltage_v,
+        humidity_percent=health.humidity_percent,
+    )
+
+
+@mcp_server.tool()
+def check_camera(request: CameraCheckRequest) -> CameraCheckResult:
+    """Report whether SERVAL answers at a URL and which version it is,
+    whether a measurement is running, and, when a camera is connected, its
+    chips, layout, temperatures, bias voltage and humidity, along with
+    SERVAL's free disk space and notices. It only reads from SERVAL: it never
+    changes SERVAL or the camera, and it does not start SERVAL. On a machine
+    with no camera, 'no SERVAL' is the expected answer."""
+    url = request.serval_url
+    dashboard: ServalDashboard | None = None
+    detector: DetectorCheck | None = None
+    problem: str | None = None
+    with ServalClient(url) as client:
+        try:
+            dashboard = client.get_dashboard()
+            snapshot = client.get_detector_snapshot()
+            detector = _detector_check(dashboard, snapshot)
+            status: CameraStatus = "camera connected"
+        except ServalConnectError:
+            status = "no SERVAL"
+        except ServalClientError as exc:
+            answer = exc.response
+            if (
+                dashboard is not None
+                and answer is not None
+                and answer.status_code == _NOT_CONNECTED_STATUS
+            ):
+                status = "no camera"
+            else:
+                status = "SERVAL error"
+                problem = str(exc)
+        except ValueError as exc:
+            # A normal answer that is not JSON, or not the JSON HERMES reads,
+            # for example from another program listening at the URL.
+            status = "SERVAL error"
+            problem = f"HERMES could not read SERVAL's answer: {exc}"
+
+    server = dashboard.server if dashboard is not None else None
+    version = server.software_version if server is not None else None
+    measurement = dashboard.measurement if dashboard is not None else None
+    measurement_status = measurement.status if measurement is not None else None
+    disk_space = [
+        DiskSpaceCheck(
+            path=disk.path,
+            # SERVAL counts 1 GB as 10^9 bytes, so this matches its message.
+            free_gb=(
+                round(disk.free_space / 1e9, 2)
+                if disk.free_space is not None
+                else None
+            ),
+            disk_limit_reached=disk.disk_limit_reached,
+        )
+        for disk in (server.disk_space if server is not None else [])
+    ]
+    notices = [
+        f"{notification.type or 'notice'}: {notification.message}"
+        for notification in (server.notifications if server is not None else [])
+    ]
+
+    serval = f"SERVAL {version}" if version else "SERVAL"
+    if status == "no SERVAL":
+        parts = [
+            f"No SERVAL reachable at {url}. That is the expected answer on a "
+            f"machine with no camera. A HERMES measurement starts SERVAL "
+            f"itself when serval.program_path is set."
+        ]
+    elif status == "SERVAL error" and dashboard is None:
+        parts = [f"Something answers at {url}, but not as SERVAL should: {problem}"]
+    elif status == "SERVAL error":
+        parts = [
+            f"{serval} is running at {url}, but reading the camera failed: "
+            f"{problem}"
+        ]
+    elif status == "no camera":
+        parts = [
+            f"{serval} is running at {url} but no camera is connected. If "
+            f"SERVAL has only just started, the camera can take a few more "
+            f"seconds to connect; otherwise check that the camera is on and "
+            f"its network cable is plugged in."
+        ]
+    else:
+        readings = f"{len(detector.chips)} chip(s)"
+        if detector.bias_voltage_v is not None:
+            readings += f", bias {detector.bias_voltage_v} V"
+        parts = [
+            f"{serval} is running at {url} with a camera connected ({readings})."
+        ]
+    if measurement_status not in (None, "DA_IDLE"):
+        parts.append(
+            f"A measurement is already running (status {measurement_status}); "
+            f"a HERMES measurement refuses to start until it stops."
+        )
+    full = [disk.path for disk in disk_space if disk.disk_limit_reached]
+    if full:
+        parts.append(
+            f"SERVAL has stopped writing because its disk is full at "
+            f"{', '.join(str(path) for path in full)}."
+        )
+    if notices:
+        parts.append(f"SERVAL shows {len(notices)} notice(s); see notices.")
+
+    logger.bind(domain="mcp").info(
+        "checked the camera at {url}: {status}", url=url, status=status
+    )
+    return CameraCheckResult(
+        serval_url=url,
+        status=status,
+        serval_version=version,
+        measurement_status=measurement_status,
+        detector=detector,
+        disk_space=disk_space,
+        notices=notices,
+        problem=problem,
+        message=" ".join(parts),
     )
 
 

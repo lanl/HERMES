@@ -120,12 +120,10 @@ def _calculate_worker_count(
         resource_fraction=resource_fraction,
         physical_cpu_count=physical_cpu_count,
         cpu_slots=cpu_slots,
-        available_memory_gb=round(available_memory_bytes / (1024**3), 2),
-        largest_input_mb=round(largest_input_bytes / (1024**2), 2),
-        estimated_worker_memory_gb=round(
-            estimated_worker_memory_bytes / (1024**3), 2
-        ),
-        memory_budget_gb=round(memory_budget_bytes / (1024**3), 2),
+        available_memory_gb=round(available_memory_bytes / 1e9, 2),
+        largest_input_mb=round(largest_input_bytes / 1e6, 2),
+        estimated_worker_memory_gb=round(estimated_worker_memory_bytes / 1e9, 2),
+        memory_budget_gb=round(memory_budget_bytes / 1e9, 2),
         memory_slots=memory_slots,
         pending_count=pending_count,
         worker_count=worker_count,
@@ -135,10 +133,8 @@ def _calculate_worker_count(
         _ANALYSIS_LOGGER.warning(
             "analysis.tpx3_unpacking.memory_warning",
             event_type="analysis.tpx3_unpacking.memory_warning",
-            estimated_worker_memory_gb=round(
-                estimated_worker_memory_bytes / (1024**3), 2
-            ),
-            memory_budget_gb=round(memory_budget_bytes / (1024**3), 2),
+            estimated_worker_memory_gb=round(estimated_worker_memory_bytes / 1e9, 2),
+            memory_budget_gb=round(memory_budget_bytes / 1e9, 2),
             message=(
                 "estimated worker memory exceeds selected memory allowance; "
                 "allowing at least one worker for forward progress"
