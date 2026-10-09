@@ -84,6 +84,35 @@ Each stage writes one Parquet file per signal so times from different signals
 stay on one comparable clock. For what each stage produces, see the analysis
 examples under [`examples/analysis/`](../analysis/).
 
+## Check the camera
+
+At the instrument, before a measurement, ask:
+
+> Is the camera ready?
+
+The assistant needs the SERVAL URL, such as `http://localhost:8080`. It can
+read it from your config (`acquisition.config.serval.url`). It reports:
+
+- **Whether SERVAL answers** at that URL, and its version. On a machine with
+  no SERVAL, such as a laptop for analysis, the answer is "no SERVAL reachable",
+  which is the expected answer there and not an error.
+- **Whether a camera is connected.** When SERVAL is running but no camera is
+  connected, it says so. The camera can take a few seconds to connect after
+  SERVAL starts.
+- **Whether a measurement is already running.** A HERMES measurement refuses to
+  start until it stops.
+- **The camera's readings**, when one is connected: its chips, size in pixels
+  and orientation, the board, FPGA and chip temperatures, the bias voltage, and
+  the humidity.
+- **SERVAL's free disk space** for each place it writes to, and any notices on
+  its dashboard.
+- **What went wrong** when something answers at the URL but with an error, or
+  with something HERMES cannot read.
+
+It only reads from SERVAL. It never changes SERVAL or the camera, and it does
+not start SERVAL; a HERMES measurement starts SERVAL itself when `program_path`
+is set.
+
 ## Set up a measurement
 
 At the instrument, with the camera and SERVAL attached, say something like:
