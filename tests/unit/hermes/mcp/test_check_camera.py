@@ -137,7 +137,8 @@ def test_serval_with_a_camera(requests_seen) -> None:
     assert detector.humidity_percent == 21
     assert len(result.disk_space) == 1
     assert result.disk_space[0].path == "/data/raw"
-    assert result.disk_space[0].free_gb == pytest.approx(624.69, abs=0.01)
+    # The manual's dashboard example reports these bytes as "670.8 GB".
+    assert result.disk_space[0].free_gb == 670.76
     assert result.notices == ["severe: Stopped writing to file channel."]
     assert result.measurement_status == "DA_RECORDING"
     assert "with a camera connected (1 chip(s), bias 12.6 V)" in result.message

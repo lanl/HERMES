@@ -718,8 +718,9 @@ def check_camera(request: CameraCheckRequest) -> CameraCheckResult:
     disk_space = [
         DiskSpaceCheck(
             path=disk.path,
+            # SERVAL counts 1 GB as 10^9 bytes, so this matches its message.
             free_gb=(
-                round(disk.free_space / 1024**3, 2)
+                round(disk.free_space / 1e9, 2)
                 if disk.free_space is not None
                 else None
             ),
