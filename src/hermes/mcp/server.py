@@ -324,7 +324,7 @@ def _check_acquisition(
         free = shutil.disk_usage(folder).free
         if free < MIN_FREE_DISK_BYTES:
             warnings.append(
-                f"only {free / 1024**3:.2f} GB free at {folder}, where the raw "
+                f"only {free / 1e9:.2f} GB free at {folder}, where the raw "
                 f"files go"
             )
     if raw is not None and config.run_timing is not None:

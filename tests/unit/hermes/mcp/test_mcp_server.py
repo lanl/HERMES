@@ -522,3 +522,23 @@ def test_validate_config_warns_about_low_disk_space(
     # it will be made in, and does not make it.
     assert f"free at {tmp_path.resolve()}," in result.warnings[0]
     assert not (tmp_path / "run-1" / "raw").exists()
+
+
+def test_validate_config_counts_gigabytes_as_serval_does(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = _write_acquisition_config(tmp_path)
+    # SERVAL calls 670758268928 bytes "670.8 GB", so 1 GB is 10^9 bytes.
+    free = {"bytes": 1_000_000_000}
+    monkeypatch.setattr(
+        server.shutil,
+        "disk_usage",
+        lambda path: SimpleNamespace(free=free["bytes"]),
+    )
+
+    assert validate_config(ConfigValidationRequest(config_file=config)).warnings == []
+
+    free["bytes"] = 500_000_000
+    warnings = validate_config(ConfigValidationRequest(config_file=config)).warnings
+    assert len(warnings) == 1
+    assert warnings[0].startswith("only 0.50 GB free at")

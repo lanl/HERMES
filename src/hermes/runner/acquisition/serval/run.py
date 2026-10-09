@@ -62,12 +62,13 @@ _SERVER_READY_TIMEOUT_S = 60.0
 _DETECTOR_CONNECT_TIMEOUT_S = 30.0
 
 # The manual's maximum bias for normal operation, and a floor of free disk
-# space to warn below before a run writes raw data. The bias SERVAL reads back
-# wanders a little around the set value (40.027 V seen at a 40 V setting), so
-# the warning allows that much above the maximum.
+# space (1 GB, counted as SERVAL counts it) to warn below before a run writes
+# raw data. The bias SERVAL reads back wanders a little around the set value
+# (40.027 V seen at a 40 V setting), so the warning allows that much above the
+# maximum.
 _BIAS_MAX_V = 40.0
 _BIAS_READ_BACK_MARGIN_V = 0.1
-MIN_FREE_DISK_BYTES = 1 * 1024**3
+MIN_FREE_DISK_BYTES = 1_000_000_000
 
 
 class ServalAcquisitionError(Exception):
