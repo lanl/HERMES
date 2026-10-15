@@ -750,8 +750,12 @@ HermesTpx3PhotonClusteringSettings
   min_filled_fraction: float
   adjacency: 4 | 8 = 8
   position_averaging: arithmetic
-  photon_time_estimator: leading_edge
-  timewalk_calibration_file: default | Path | None
+  photon_time_estimator: average | leading_edge | brightest = average
+  timewalk: HermesTpx3TimewalkSettings
+
+HermesTpx3TimewalkSettings
+  method: none | calibration = none
+  calibration_file: default | Path | None = None
 
 HermesTpx3EventReconstruction
   program: BinaryProgram
@@ -823,17 +827,23 @@ Cluster-size bounds are positive and ordered. Pixel ToT is within the native
 `max_aspect_ratio` is at least 1, and `min_filled_fraction` is greater than 0
 and at most 1.
 
-`position_averaging="arithmetic"` and
-`photon_time_estimator="leading_edge"` are the only implemented values.
-`timewalk_calibration_file` has three cases: omitted or `null` applies zero
-correction and the reconstruction summary records `correction_model="none"`;
-`default` uses the time-walk calibration that ships with HERMES; an explicit path
-uses that file. The `default` calibration ships into the environment's
+`position_averaging="arithmetic"` is the only implemented position rule.
+`photon_time_estimator` accepts `average` (the default arithmetic mean of all
+source-hit times), `leading_edge` (the minimum), or `brightest` (the time of the
+largest-ToT hit). The independent `timewalk.method` defaults to `none`, with
+`calibration_file: null`. Choosing `calibration` requires a JSON path or
+`default`, and applies one global correction curve to hits before calculating
+photon time. A file with `method: none` is invalid.
+The `default` calibration ships into the environment's
 `share/hermes/calibrations/` folder (a sibling of `bin/` and `lib/`), and the
 runner resolves the `default` keyword to that path at run time while the saved
 record keeps the word `default` so it stays portable. When a calibration is
-present the leading-edge estimator applies the selected normalized correction
-saved in that file. HERMES must not insert guessed timing parameters.
+present all estimators use the selected normalized correction saved in that
+file. HERMES must not insert guessed timing parameters. The old
+`timewalk_calibration_file` setting is accepted with a deprecation warning,
+translated into `timewalk`, and omitted from newly saved records. Both forms
+in one configuration are an error. An omitted estimator now means `average`;
+old runs must explicitly select `leading_edge` to preserve their timing.
 The clustering thresholds remain explicit saved settings because their useful
 values depend on the image intensifier, phosphor, detector threshold, and
 measurement.

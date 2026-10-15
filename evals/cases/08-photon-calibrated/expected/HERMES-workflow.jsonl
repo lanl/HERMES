@@ -1,0 +1,4 @@
+{"event": "HERMES_record_initialized", "record": "data/08-photon-calibrated/timing/HERMES_record.yaml", "time": "<TIMESTAMP>"}
+{"event": "workflow_initialized", "stages": ["reconstruction"], "time": "<TIMESTAMP>"}
+{"event": "stage_completed", "stage": "reconstruction", "file": "data/08-photon-calibrated/timing/analysis/pixel_hits/timing_chip_0_pixels_00000.parquet", "status": "success", "start": "<TIMESTAMP>", "stop": "<TIMESTAMP>", "summary": "data/08-photon-calibrated/timing/analysis/logs/photon_reconstruction/timing_chip_0_photon_reconstruction_summary_00000.json"}
+{"event": "workflow_completed", "stages": ["reconstruction"], "time": "<TIMESTAMP>"}

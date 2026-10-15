@@ -90,7 +90,7 @@ int main() {
     test.expect(loadThrows("bad_adjacency.json", R"({"adjacency": 6})"),
                 "adjacency other than 4 or 8 rejected");
     test.expect(loadThrows("reserved_estimator.json",
-                           R"({"photon_time_estimator": "brightest"})"),
+                           R"({"photon_time_estimator": "tot_weighted"})"),
                 "reserved time estimator rejected");
     test.expect(loadThrows("reserved_position.json",
                            R"({"position_averaging": "tot_weighted"})"),
@@ -112,6 +112,28 @@ int main() {
     test.expect(loadThrows("bad_layout.json",
                            R"({"detector_layout": "double"})"),
                 "unknown detector_layout rejected");
+
+    for (const auto& method : {"none", "calibration"}) {
+        for (const auto& file : {"", " ", "\t\n"}) {
+            nlohmann::json document = {
+                {"timewalk", {{"method", method}, {"calibration_file", file}}},
+            };
+            test.expect(loadThrows("blank_file.json", document.dump()),
+                        "blank calibration file rejected for either method");
+        }
+    }
+    test.expect(loadThrows("legacy_blank.json",
+                           R"({"timewalk_calibration_file": ""})"),
+                "legacy blank calibration file rejected");
+    for (const auto& document : {
+             R"({"timewalk": {"method": "none"}})",
+             R"({"timewalk": {"method": "none", "calibration_file": null}})",
+             R"({"timewalk_calibration_file": null})"}) {
+        auto settings = loadClusteringSettings(writeTemp("no_file.json", document));
+        test.expect(settings.timewalk_method == "none" &&
+                        settings.timewalk_calibration_file.empty(),
+                    "omitted or null file disables calibration");
+    }
 
     return test.finish();
 }

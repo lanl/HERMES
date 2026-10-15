@@ -2,6 +2,7 @@
 #define HERMES_PHOTON_CLUSTERER_PHOTON_H
 
 #include <cstdint>
+#include <string>
 
 #include "cluster_filter.h"
 #include "clustering.h"
@@ -10,8 +11,7 @@
 namespace hermes_photon_clusterer {
 
 // One reconstructed photon, matching the photon_events schema. timestamp_canonical
-// is float64 to carry the fractional time-walk-corrected leading edge; when no
-// calibration is applied it equals the earliest source-pixel timestamp.
+// is float64 to carry fractional averages and time-walk corrections.
 struct Photon {
     double x = 0.0;
     double y = 0.0;
@@ -22,12 +22,11 @@ struct Photon {
 
 // Builds a photon from an accepted cluster and its evaluation. Position is the
 // arithmetic mean of the source-pixel coordinates and tot is the summed
-// tot_raw. When correction is non-null, timestamp_canonical is the earliest
-// time-walk-corrected source-pixel ToA; when null it is the earliest raw
-// source-pixel timestamp (the uncorrected fallback).
+// tot_raw. The estimator uses source-hit times after optional global correction.
 Photon buildPhoton(const PixelCluster& cluster,
                    const ClusterEvaluation& evaluation,
-                   const TimewalkCorrection* correction);
+                   const TimewalkCorrection* correction,
+                   const std::string& estimator = "average");
 
 }  // namespace hermes_photon_clusterer
 

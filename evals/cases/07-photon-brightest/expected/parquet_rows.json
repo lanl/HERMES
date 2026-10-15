@@ -1,0 +1,172 @@
+{
+  "analysis/pixel_hits/timing_chip_0_pixels_00000.parquet": [
+    {
+      "local_x": 0,
+      "local_y": 0,
+      "tot_raw": 10,
+      "timestamp_canonical": 100
+    },
+    {
+      "local_x": 1,
+      "local_y": 0,
+      "tot_raw": 30,
+      "timestamp_canonical": 106
+    },
+    {
+      "local_x": 1,
+      "local_y": 1,
+      "tot_raw": 20,
+      "timestamp_canonical": 110
+    },
+    {
+      "local_x": 1,
+      "local_y": 1,
+      "tot_raw": 30,
+      "timestamp_canonical": 110
+    },
+    {
+      "local_x": 10,
+      "local_y": 0,
+      "tot_raw": 30,
+      "timestamp_canonical": 200
+    },
+    {
+      "local_x": 12,
+      "local_y": 0,
+      "tot_raw": 10,
+      "timestamp_canonical": 202
+    },
+    {
+      "local_x": 11,
+      "local_y": 0,
+      "tot_raw": 1023,
+      "timestamp_canonical": 204
+    },
+    {
+      "local_x": 11,
+      "local_y": 0,
+      "tot_raw": 20,
+      "timestamp_canonical": 206
+    },
+    {
+      "local_x": 20,
+      "local_y": 20,
+      "tot_raw": 10,
+      "timestamp_canonical": 9007199254740993
+    },
+    {
+      "local_x": 21,
+      "local_y": 20,
+      "tot_raw": 30,
+      "timestamp_canonical": 9007199254740994
+    }
+  ],
+  "analysis/photons/timing_chip_0_photon_00000.parquet": [
+    {
+      "photon_id": 0,
+      "x": 0.75,
+      "y": 0.5,
+      "timestamp_canonical": 106.0,
+      "tot": 90,
+      "quality_flags": 0
+    },
+    {
+      "photon_id": 1,
+      "x": 11.0,
+      "y": 0.0,
+      "timestamp_canonical": 204.0,
+      "tot": 1083,
+      "quality_flags": 3
+    },
+    {
+      "photon_id": 2,
+      "x": 20.5,
+      "y": 20.0,
+      "timestamp_canonical": 9007199254740994.0,
+      "tot": 40,
+      "quality_flags": 0
+    }
+  ],
+  "analysis/pixel_clusters/timing_chip_0_pixel_clusters_00000.parquet": [
+    {
+      "photon_id": 0,
+      "pixel_event_id": 0,
+      "x": 0,
+      "y": 0,
+      "tot_raw": 10,
+      "timestamp_canonical": 100
+    },
+    {
+      "photon_id": 0,
+      "pixel_event_id": 1,
+      "x": 1,
+      "y": 0,
+      "tot_raw": 30,
+      "timestamp_canonical": 106
+    },
+    {
+      "photon_id": 0,
+      "pixel_event_id": 2,
+      "x": 1,
+      "y": 1,
+      "tot_raw": 20,
+      "timestamp_canonical": 110
+    },
+    {
+      "photon_id": 0,
+      "pixel_event_id": 3,
+      "x": 1,
+      "y": 1,
+      "tot_raw": 30,
+      "timestamp_canonical": 110
+    },
+    {
+      "photon_id": 1,
+      "pixel_event_id": 4,
+      "x": 10,
+      "y": 0,
+      "tot_raw": 30,
+      "timestamp_canonical": 200
+    },
+    {
+      "photon_id": 1,
+      "pixel_event_id": 6,
+      "x": 11,
+      "y": 0,
+      "tot_raw": 1023,
+      "timestamp_canonical": 204
+    },
+    {
+      "photon_id": 1,
+      "pixel_event_id": 5,
+      "x": 12,
+      "y": 0,
+      "tot_raw": 10,
+      "timestamp_canonical": 202
+    },
+    {
+      "photon_id": 1,
+      "pixel_event_id": 7,
+      "x": 11,
+      "y": 0,
+      "tot_raw": 20,
+      "timestamp_canonical": 206
+    },
+    {
+      "photon_id": 2,
+      "pixel_event_id": 8,
+      "x": 20,
+      "y": 20,
+      "tot_raw": 10,
+      "timestamp_canonical": 9007199254740993
+    },
+    {
+      "photon_id": 2,
+      "pixel_event_id": 9,
+      "x": 21,
+      "y": 20,
+      "tot_raw": 30,
+      "timestamp_canonical": 9007199254740994
+    }
+  ]
+}

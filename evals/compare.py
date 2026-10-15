@@ -11,6 +11,9 @@ import json
 import re
 from pathlib import Path
 
+import pyarrow as pa
+import pyarrow.parquet as pq
+
 _WILDCARD = re.compile(r"^<.*>$")
 
 # Expected summary file -> glob (relative to the working dir) for the produced file.
@@ -118,6 +121,26 @@ def compare_tree(expected_tree_file: Path, working_dir: Path) -> list[str]:
     return problems
 
 
+def compare_parquet_rows(expected_file: Path, working_dir: Path) -> list[str]:
+    """Compare every row of the explicitly named Parquet files, exactly."""
+    expected = json.loads(expected_file.read_text())
+    problems: list[str] = []
+    for relative_path, expected_rows in expected.items():
+        actual_file = working_dir / relative_path
+        if not actual_file.is_file():
+            problems.append(f"missing produced Parquet file: {relative_path}")
+            continue
+        try:
+            actual_rows = pq.read_table(actual_file).to_pylist()
+        except (OSError, pa.ArrowException) as error:
+            problems.append(f"cannot read Parquet file {relative_path}: {error}")
+            continue
+        problems += _diff(
+            expected_rows, actual_rows, f"{expected_file.name}/{relative_path}"
+        )
+    return problems
+
+
 def compare_case(expected_dir: Path, working_dir: Path) -> list[str]:
     """Compare a case's expected/ files against a produced working directory."""
     problems = []
@@ -153,5 +176,9 @@ def compare_case(expected_dir: Path, working_dir: Path) -> list[str]:
     expected_tree = expected_dir / "output_tree.txt"
     if expected_tree.exists():
         problems += compare_tree(expected_tree, working_dir)
+
+    expected_rows = expected_dir / "parquet_rows.json"
+    if expected_rows.exists():
+        problems += compare_parquet_rows(expected_rows, working_dir)
 
     return problems

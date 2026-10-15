@@ -43,6 +43,8 @@ ReconstructionSummaryContent consistentContent() {
     content.bridged_components_count = 3;
 
     content.clustering_algorithm = "connected_components";
+    content.settings.photon_time_estimator = "leading_edge";
+    content.settings.timewalk_method = "calibration";
     content.settings.timewalk_calibration_file =
         "calibrations/tpx3/time-walk_example.json";
     content.settings.save_photon_pixels = true;
@@ -114,7 +116,7 @@ int main() {
                          std::string("connected_components"),
                          "clustering algorithm rendered");
         test.expectEqual(
-            j["clustering"]["settings"]["timewalk_calibration_file"]
+            j["clustering"]["settings"]["timewalk"]["calibration_file"]
                 .get<std::string>(),
             std::string("calibrations/tpx3/time-walk_example.json"),
             "settings calibration path rendered");
@@ -167,6 +169,7 @@ int main() {
     {
         auto content = consistentContent();
         content.has_correction = false;
+        content.settings.timewalk_method = "none";
         content.settings.timewalk_calibration_file.clear();
         auto j = nlohmann::json::parse(
             generateReconstructionSummaryJson(content));
@@ -180,7 +183,7 @@ int main() {
         test.expect(j["photon_timing"]["high_tot_anchor"].is_null(),
                     "null high_tot_anchor");
         test.expect(
-            j["clustering"]["settings"]["timewalk_calibration_file"].is_null(),
+            j["clustering"]["settings"]["timewalk"]["calibration_file"].is_null(),
             "null settings calibration path");
     }
 

@@ -29,6 +29,7 @@ from hermes.state.models.analysis.hermes_tpx3_spidr import (
     HermesTpx3PhotonClustering,
     HermesTpx3PhotonClusteringSettings,
     HermesTpx3PhotonReconstruction,
+    HermesTpx3PhotonReconstructionResult,
     Tpx3Unpacking,
 )
 from hermes.state.models.environment import RuntimeEnvironment
@@ -387,6 +388,163 @@ def test_run_groups_two_chips_of_one_stem_into_one_result(
     assert [(r.raw_file_stem, r.status) for r in results] == [
         ("run_000000", "completed")
     ]
+
+
+def test_photon_overwrite_regenerates_photons_and_existing_events(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    analysis = _analysis(tmp_path, "run_000000_chip_0_photon_00000.parquet")
+    analysis.unpacking = None
+    analysis.photon_reconstruction.runtime_options.overwrite = True
+    analysis_root = tmp_path / "analysis"
+    pixel_file = analysis_root / "pixel_hits/run_000000_chip_0_pixels_00000.parquet"
+    pixel_file.parent.mkdir()
+    pixel_file.touch()
+    # Even an unreadable old photon summary is superseded when overwrite is on.
+    from hermes.runner.analysis.hermes.photon_reconstruction import (
+        derive_summary_path as photon_summary_path,
+    )
+    summary = photon_summary_path(analysis_root, FileReference(path=pixel_file))
+    summary.parent.mkdir(parents=True)
+    summary.touch()
+    event_summary = derive_summary_path(analysis_root, "run_000000")
+    event_summary.parent.mkdir(parents=True)
+    event_summary.touch()
+    manager = StateManager(
+        _event_only_record(analysis, tmp_path),
+        config=StateServiceConfig(allow_trusted_workflow_bypass=True),
+    )
+    overwrites: list[tuple[str, bool]] = []
+
+    def reconstruct_photons(
+        analysis: HermesTpx3AnalysisState, analysis_root: Path,
+        input_file: FileReference, measurement_info: MeasurementInfo,
+        *, overwrite: bool = False,
+    ) -> HermesTpx3PhotonReconstructionResult:
+        overwrites.append(("photons", overwrite))
+        return HermesTpx3PhotonReconstructionResult(
+            input_file=input_file,
+            output_file=analysis_root / "photons/run_000000_chip_0_photon_00000.parquet",
+            status="completed",
+        )
+
+    def reconstruct_events(
+        analysis: HermesTpx3AnalysisState, analysis_root: Path,
+        raw_file_stems: list[str], grouping: dict[str, list[Path]],
+        *, overwrite: bool = False,
+    ) -> list[HermesTpx3EventReconstructionResult]:
+        overwrites.append(("events", overwrite))
+        return [HermesTpx3EventReconstructionResult(
+            raw_file_stem=stem, output_file=derive_output_path(analysis_root, stem),
+            status="completed",
+        ) for stem in raw_file_stems]
+
+    monkeypatch.setattr(
+        "hermes.runner.analysis.hermes.run.execute_reconstruction", reconstruct_photons,
+    )
+    monkeypatch.setattr(
+        "hermes.runner.analysis.hermes.run.execute_event_reconstruction_batch",
+        reconstruct_events,
+    )
+    run_hermes_analysis(manager)
+    assert overwrites == [("photons", True), ("events", True)]
+    assert manager.get_state().analysis.event_reconstruction.results[0].status == "completed"
+
+
+@pytest.mark.parametrize("failed_suffix", ["chip_1_photon_00000", "chip_0_photon_00001"])
+@pytest.mark.parametrize("global_overwrite", [False, True])
+def test_partial_photon_failure_preserves_previous_events_until_retry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    failed_suffix: str, global_overwrite: bool,
+) -> None:
+    from hermes.runner.analysis.hermes.photon_reconstruction import (
+        HermesPhotonReconstructionExecutionError,
+        derive_output_path as photon_output_path,
+    )
+
+    analysis = _analysis(
+        tmp_path, "run_000000_chip_0_photon_00000.parquet",
+        f"run_000000_{failed_suffix}.parquet",
+    )
+    analysis.unpacking = None
+    analysis.photon_reconstruction.runtime_options.overwrite = not global_overwrite
+    analysis_root = tmp_path / "analysis"
+    pixel_directory = analysis_root / "pixel_hits"
+    pixel_directory.mkdir()
+    inputs = [
+        pixel_directory / "run_000000_chip_0_pixels_00000.parquet",
+        pixel_directory / f"run_000000_{failed_suffix.replace('_photon_', '_pixels_')}.parquet",
+    ]
+    for path in inputs:
+        path.touch()
+    old_photon = photon_output_path(analysis_root, FileReference(path=inputs[1]))
+    old_photon.write_bytes(b"old photon timing")
+    event_file = derive_output_path(analysis_root, "run_000000")
+    event_file.parent.mkdir()
+    event_file.write_bytes(b"previous events")
+    summary_file = derive_summary_path(analysis_root, "run_000000")
+    summary_file.parent.mkdir(parents=True)
+    summary_file.write_bytes(b"previous event summary")
+    previous = HermesTpx3EventReconstructionResult(
+        raw_file_stem="run_000000", output_file=event_file, status="completed",
+    )
+    analysis.event_reconstruction.results = [previous]
+    manager = StateManager(
+        _event_only_record(analysis, tmp_path),
+        config=StateServiceConfig(allow_trusted_workflow_bypass=True),
+    )
+    fail = True
+    event_calls: list[str] = []
+
+    def reconstruct_photons(
+        analysis: HermesTpx3AnalysisState, analysis_root: Path,
+        input_file: FileReference, measurement_info: MeasurementInfo,
+        *, overwrite: bool = False,
+    ) -> HermesTpx3PhotonReconstructionResult:
+        assert overwrite
+        if fail and input_file.path == inputs[1]:
+            raise HermesPhotonReconstructionExecutionError("simulated photon failure")
+        output = photon_output_path(analysis_root, input_file)
+        output.write_bytes(b"new photon timing")
+        return HermesTpx3PhotonReconstructionResult(
+            input_file=input_file, output_file=output, status="completed",
+        )
+
+    def reconstruct_events(
+        analysis: HermesTpx3AnalysisState, analysis_root: Path,
+        raw_file_stems: list[str], grouping: dict[str, list[Path]],
+        *, overwrite: bool = False,
+    ) -> list[HermesTpx3EventReconstructionResult]:
+        assert overwrite
+        event_calls.extend(raw_file_stems)
+        event_file.write_bytes(b"rebuilt events")
+        summary_file.write_bytes(b"rebuilt summary")
+        return [previous]
+
+    monkeypatch.setattr(
+        "hermes.runner.analysis.hermes.run.execute_reconstruction", reconstruct_photons,
+    )
+    monkeypatch.setattr(
+        "hermes.runner.analysis.hermes.run.execute_event_reconstruction_batch",
+        reconstruct_events,
+    )
+    run_hermes_analysis(manager, overwrite=global_overwrite)
+    assert event_calls == []
+    assert old_photon.read_bytes() == b"old photon timing"
+    assert event_file.read_bytes() == b"previous events"
+    assert summary_file.read_bytes() == b"previous event summary"
+    current = manager.get_state().analysis
+    assert current.event_reconstruction.results == [previous]
+    assert sorted(result.status for result in current.photon_reconstruction.results) == [
+        "completed", "failed",
+    ]
+
+    # A successful retry may now replace the old events using both refreshed files.
+    fail = False
+    run_hermes_analysis(manager, overwrite=global_overwrite)
+    assert event_calls == ["run_000000"]
+    assert event_file.read_bytes() == b"rebuilt events"
+    assert summary_file.read_bytes() == b"rebuilt summary"
 
 
 def test_run_skips_stems_with_existing_summary(

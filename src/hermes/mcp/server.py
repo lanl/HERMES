@@ -96,8 +96,8 @@ _PHOTON_RECONSTRUCTION: dict = {
             "min_filled_fraction": 0.5,
             "adjacency": 8,
             "position_averaging": "arithmetic",
-            "photon_time_estimator": "leading_edge",
-            "timewalk_calibration_file": "default",
+            "photon_time_estimator": "average",
+            "timewalk": {"method": "none", "calibration_file": None},
         },
     },
 }
@@ -916,7 +916,7 @@ def check_installation() -> InstallationCheckResult:
     if timewalk_calibration is None:
         notes.append(
             "The default time-walk calibration is missing, so "
-            "`timewalk_calibration_file: default` will fail."
+            "`timewalk: {method: calibration, calibration_file: default}` will fail."
         )
     missing_packages = [
         name for name, found in python_packages.items() if found == "not installed"

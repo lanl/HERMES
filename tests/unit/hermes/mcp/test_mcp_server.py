@@ -89,7 +89,7 @@ def test_generated_config_finds_the_tpx3_files_from_any_folder(
     assert all(entry.path.is_file() for entry in unpacking.tpx3_files)
 
 
-def test_generated_config_is_quiet_and_uses_the_default_timewalk(
+def test_generated_config_is_quiet_and_uses_uncorrected_average_timing(
     tmp_path: Path,
 ) -> None:
     _write_raw_files(tmp_path, ["only.tpx3"])
@@ -111,10 +111,10 @@ def test_generated_config_is_quiet_and_uses_the_default_timewalk(
     assert isinstance(record.analysis, HermesTpx3AnalysisState)
     reconstruction = record.analysis.photon_reconstruction
     assert reconstruction is not None
-    assert (
-        reconstruction.clustering_algorithm.settings.timewalk_calibration_file
-        == "default"
-    )
+    settings = reconstruction.clustering_algorithm.settings
+    assert settings.photon_time_estimator == "average"
+    assert settings.timewalk.method == "none"
+    assert settings.timewalk.calibration_file is None
 
 
 def test_photon_stage_adds_default_clustering_settings(tmp_path: Path) -> None:
@@ -140,7 +140,8 @@ def test_photon_stage_adds_default_clustering_settings(tmp_path: Path) -> None:
     settings = reconstruction.clustering_algorithm.settings
     assert settings.max_time_spread_ticks == 491520
     assert settings.max_cluster_size == 64
-    assert settings.timewalk_calibration_file == "default"
+    assert settings.timewalk.method == "none"
+    assert settings.timewalk.calibration_file is None
     assert record.analysis.event_reconstruction is None
 
 

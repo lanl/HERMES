@@ -25,6 +25,8 @@ struct PhotonFileMetadata {
     std::string clustering_settings_json;
     std::string position_averaging;
     std::string photon_time_estimator;
+    std::string timewalk_method = "none";
+    std::string calibration_file;
     // Correction model name ("inverse", "linear", or "none"), fitted parameters
     // as JSON, and the anchor. When correction_model == "none" the parameter and
     // anchor fields are ignored.

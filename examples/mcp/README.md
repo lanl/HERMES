@@ -67,8 +67,10 @@ for the stages you chose:
 
 Two of those defaults are worth calling out:
 
-- **Time-walk correction is on**, using the calibration HERMES ships with
-  (`timewalk_calibration_file: default` under photon reconstruction).
+- **Photon time is the arithmetic average of uncorrected source-hit times**
+  (`photon_time_estimator: average`, `timewalk: {method: none}`). See
+  [photon timing](../../docs/photon-timing.md) for calibrated timing and
+  brightest-hit timing; both are explicit choices.
 - **The run is quiet**, showing only errors on your terminal
   (`log_level: ERROR`). HERMES still writes its full, structured logs to
   JSON-lines files in the run's `logs/` folder (`log_directory: logs`), so
@@ -253,8 +255,9 @@ The assistant reports:
   the installed programs are not rebuilt, so they keep running the old code
   until you run `pixi reinstall hermes`. The assistant names the source file that
   changed after the program was built.
-- **The default time-walk calibration** that `timewalk_calibration_file: default`
-  uses.
+- **The shipped example time-walk calibration**, selected with
+  `timewalk: {method: calibration, calibration_file: default}`. New runs leave
+  correction off.
 - **EMPIR** (`empir_pixel2photon_tpx3spidr`, `empir_photon2event`,
   `empir_event2image`). HERMES doesn't install EMPIR and needs it only for an
   EMPIR analysis, so "not on `PATH`" isn't an error.

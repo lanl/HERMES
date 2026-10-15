@@ -12,30 +12,6 @@ using json = nlohmann::ordered_json;
 
 namespace {
 
-// The complete clustering settings, in the same key order the photon-file
-// metadata uses. The calibration path is null when no file was configured.
-json settingsJson(const ClusteringSettings& s) {
-    json j;
-    j["max_time_spread_ticks"] = s.max_time_spread_ticks;
-    j["min_cluster_size"] = s.min_cluster_size;
-    j["max_cluster_size"] = s.max_cluster_size;
-    j["min_pixel_tot_raw"] = s.min_pixel_tot_raw;
-    j["min_cluster_tot_raw"] = s.min_cluster_tot_raw;
-    j["max_cluster_tot_raw"] = s.max_cluster_tot_raw;
-    j["max_aspect_ratio"] = s.max_aspect_ratio;
-    j["min_filled_fraction"] = s.min_filled_fraction;
-    j["adjacency"] = s.adjacency;
-    j["position_averaging"] = s.position_averaging;
-    j["photon_time_estimator"] = s.photon_time_estimator;
-    j["timewalk_calibration_file"] =
-        s.timewalk_calibration_file.empty()
-            ? json(nullptr)
-            : json(s.timewalk_calibration_file);
-    j["save_photon_pixels"] = s.save_photon_pixels;
-    j["detector_layout"] = s.detector_layout;
-    return j;
-}
-
 // The photon_timing block: the estimator, the correction model name, the
 // calibration path, the fitted parameters, and the high-ToT anchor. When no
 // correction was loaded the model is "none" with empty parameters and null
@@ -129,7 +105,7 @@ std::string generateReconstructionSummaryJson(
 
     j["clustering"] = {
         {"algorithm", content.clustering_algorithm},
-        {"settings", settingsJson(content.settings)},
+        {"settings", clusteringSettingsJson(content.settings)},
     };
 
     j["photon_timing"] = photonTimingJson(content);

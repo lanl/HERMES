@@ -1,0 +1,29 @@
+measurement_info:
+  measurement_id: harness-06-photon-average
+  run: timing
+environment:
+  working_directory: data/06-photon-average
+  run_directory: timing
+  log_directory: logs
+  analysis_directory: analysis
+analysis:
+  mode: hermes
+  detector_layout:
+    kind: single_chip
+  photon_reconstruction:
+    program:
+      name: photon-clusterer-cpp
+      executable_path: hermes-photon-clusterer
+    pixel_files: auto
+    clustering_algorithm:
+      name: connected_components
+      save_photon_pixels: true
+      settings:
+        max_time_spread_ticks: 20
+        min_cluster_size: 2
+        max_cluster_size: 64
+        min_pixel_tot_raw: 1
+        min_cluster_tot_raw: 2
+        max_cluster_tot_raw: 65472
+        max_aspect_ratio: 3.0
+        min_filled_fraction: 0.5

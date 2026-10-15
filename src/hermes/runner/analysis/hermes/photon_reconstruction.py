@@ -8,6 +8,7 @@ one file and reads its summary JSON for the per-file counts.
 from __future__ import annotations
 
 import json
+import math
 import subprocess
 import tempfile
 from pathlib import Path
@@ -21,6 +22,7 @@ from hermes.state.models.analysis.hermes_tpx3_spidr import (
     HermesTpx3PhotonReconstructionResult,
     HermesTpx3PhotonReconstruction,
     HermesTpx3PhotonReconstructionSummary,
+    HermesTpx3PhotonTimingSummary,
 )
 from hermes.state.models.measurement import MeasurementInfo
 from hermes.state.models.shared_models import FileReference
@@ -128,14 +130,110 @@ def derive_output_path(
 def check_previous_reconstructed_file(
     analysis_root: Path,
     input_file: FileReference,
+    analysis: HermesTpx3AnalysisState | None = None,
+    *,
+    expected_timing: HermesTpx3PhotonTimingSummary | None = None,
 ) -> bool:
     """Return True when this pixel file was already reconstructed before.
 
     The binary writes a per-file reconstruction summary on every success
     (including zero-photon runs that produce no photon parquet), so its presence
-    means the file is already done.
+    means the file is already done. Before reusing it, the runner also checks
+    the selected timing settings and the current fitted curve.
     """
-    return derive_summary_path(analysis_root, input_file).is_file()
+    summary_path = derive_summary_path(analysis_root, input_file)
+    if not summary_path.is_file():
+        return False
+    if expected_timing is None and analysis is not None:
+        expected_timing = load_photon_timing(analysis)
+    if expected_timing is not None:
+        summary = _load_summary(summary_path)
+        timing = summary.photon_timing
+        if timing.calibration_file is not None:
+            timing = timing.model_copy(
+                update={"calibration_file": timing.calibration_file.resolve()}
+            )
+        if timing != expected_timing:
+            raise HermesPhotonReconstructionPreflightError(
+                f"photon timing differs from completed input {input_file.path}; "
+                "set photon_reconstruction.runtime_options.overwrite=true "
+                "or use a fresh analysis directory"
+            )
+    return True
+
+
+def load_photon_timing(
+    analysis: HermesTpx3AnalysisState,
+) -> HermesTpx3PhotonTimingSummary:
+    """Validate the requested curve once before checking completed inputs.
+
+    Keep the numeric checks and delay calculation aligned with the C++ loader,
+    including JSON booleans, which Python otherwise treats as numbers.
+    """
+    settings = _require_reconstruction(analysis).clustering_algorithm.settings
+    path = _calibration_path(analysis)
+    if path is None:
+        return HermesTpx3PhotonTimingSummary(
+            estimator=settings.photon_time_estimator,
+            correction_model="none",
+            calibration_file=None,
+            parameters={},
+            high_tot_anchor=None,
+        )
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(document, dict):
+            raise ValueError("calibration must be a JSON object")
+        if document.get("time_unit") != "canonical_ticks":
+            raise ValueError("time_unit must be 'canonical_ticks'")
+        model = document.get("model")
+        if model not in ("linear", "inverse"):
+            raise ValueError("model must be 'linear' or 'inverse'")
+        raw_parameters = document.get("parameters")
+        if not isinstance(raw_parameters, dict):
+            raise ValueError("parameters must be an object")
+        names = ("a", "b") if model == "inverse" else ("m",)
+        parameters = {
+            name: _finite_calibration_number(raw_parameters.get(name), name)
+            for name in names
+        }
+        anchor = _finite_calibration_number(
+            document.get("high_tot_anchor"), "high_tot_anchor"
+        )
+        if not 0 <= anchor <= 1023:
+            raise ValueError("high_tot_anchor must be in 0-1023")
+        if model == "inverse" and -1023 <= parameters["b"] <= 0:
+            raise ValueError("inverse curve has a pole in ToT range 0-1023")
+        for tot in range(1024):
+            if model == "inverse":
+                delay = parameters["a"] * (
+                    1.0 / (tot + parameters["b"])
+                    - 1.0 / (anchor + parameters["b"])
+                )
+            else:
+                delay = parameters["m"] * (tot - anchor)
+            if not math.isfinite(delay):
+                raise ValueError("correction must be finite over ToT range 0-1023")
+    except (OSError, UnicodeError, ValueError, ArithmeticError) as exc:
+        raise HermesPhotonReconstructionPreflightError(
+            f"invalid time-walk calibration {path}: {exc}"
+        ) from exc
+    return HermesTpx3PhotonTimingSummary(
+        estimator=settings.photon_time_estimator,
+        correction_model=model,
+        calibration_file=path.resolve(),
+        parameters=parameters,
+        high_tot_anchor=anchor,
+    )
+
+
+def _finite_calibration_number(value: object, name: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{name} must be numeric")
+    number = float(value)
+    if not math.isfinite(number):
+        raise ValueError(f"{name} must be finite")
+    return number
 
 
 def derive_summary_path(
@@ -214,15 +312,28 @@ def build_clustering_settings_json(
     settings_json = clustering.settings.model_dump(mode="json")
     settings_json["save_photon_pixels"] = clustering.save_photon_pixels
     settings_json["detector_layout"] = analysis.detector_layout.kind
-    if settings_json.get("timewalk_calibration_file") == "default":
-        calibration_path = default_timewalk_calibration()
-        settings_json["timewalk_calibration_file"] = str(calibration_path)
+    calibration_path = _calibration_path(analysis)
+    settings_json["timewalk"] = {
+        "method": clustering.settings.timewalk.method,
+        "calibration_file": str(calibration_path) if calibration_path is not None else None,
+    }
+    if clustering.settings.timewalk.calibration_file == "default":
         _ANALYSIS_LOGGER.info(
             "Using the time-walk calibration that ships with HERMES: {path}",
             event_type="analysis.tpx3_reconstruction.default_timewalk_calibration",
             path=str(calibration_path),
         )
     return settings_json
+
+
+def _calibration_path(analysis: HermesTpx3AnalysisState) -> Path | None:
+    calibration_file = (
+        _require_reconstruction(analysis).clustering_algorithm.settings
+        .timewalk.calibration_file
+    )
+    if calibration_file == "default":
+        return default_timewalk_calibration()
+    return calibration_file
 
 
 def execute_reconstruction(
