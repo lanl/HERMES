@@ -576,8 +576,9 @@ def test_photon_clustering_settings_use_structural_defaults() -> None:
 
     assert settings.adjacency == 8
     assert settings.position_averaging == "arithmetic"
-    assert settings.photon_time_estimator == "leading_edge"
-    assert settings.timewalk_calibration_file is None
+    assert settings.photon_time_estimator == "average"
+    assert settings.timewalk.method == "none"
+    assert settings.timewalk.calibration_file is None
     assert HermesTpx3PhotonClustering(settings=settings).save_photon_pixels is False
 
 
@@ -589,8 +590,11 @@ def test_photon_clustering_settings_keep_default_timewalk_keyword() -> None:
 
     # "default" must stay the keyword string, not be coerced into a Path, so the
     # saved record stays portable across machines.
-    assert settings.timewalk_calibration_file == "default"
-    assert settings.model_dump(mode="json")["timewalk_calibration_file"] == "default"
+    assert settings.timewalk.calibration_file == "default"
+    saved = settings.model_dump(mode="json")
+    assert saved["timewalk"] == {"method": "calibration", "calibration_file": "default"}
+    assert "timewalk_calibration_file" not in saved
+    assert HermesTpx3PhotonClusteringSettings.model_validate(saved) == settings
 
 
 def test_photon_clustering_settings_keep_explicit_timewalk_path() -> None:
@@ -599,7 +603,45 @@ def test_photon_clustering_settings_keep_explicit_timewalk_path() -> None:
 
     settings = HermesTpx3PhotonClusteringSettings.model_validate(data)
 
-    assert settings.timewalk_calibration_file == Path("/tmp/my-cal.json")
+    assert settings.timewalk.calibration_file == Path("/tmp/my-cal.json")
+
+
+@pytest.mark.parametrize("method", ["none", "calibration"])
+@pytest.mark.parametrize("filename", ["", " ", "\t\n"])
+def test_timewalk_rejects_blank_filename_before_path_conversion(
+    method: str, filename: str,
+) -> None:
+    data = _clustering_settings_data()
+    data["timewalk"] = {"method": method, "calibration_file": filename}
+    with pytest.raises(ValidationError, match="must not be blank"):
+        HermesTpx3PhotonClusteringSettings.model_validate(data)
+
+
+@pytest.mark.parametrize("filename", ["", " \t\n"])
+def test_legacy_timewalk_setting_rejects_blank_filename(filename: str) -> None:
+    data = _clustering_settings_data()
+    data["timewalk_calibration_file"] = filename
+    with pytest.raises(ValidationError, match="must not be blank"):
+        HermesTpx3PhotonClusteringSettings.model_validate(data)
+
+
+@pytest.mark.parametrize("timewalk", [
+    {"method": "calibration"},
+    {"method": "calibration", "calibration_file": None},
+    {"method": "none", "calibration_file": "curve.json"},
+])
+def test_timewalk_requires_a_file_only_for_calibration(timewalk: dict) -> None:
+    data = _clustering_settings_data()
+    data["timewalk"] = timewalk
+    with pytest.raises(ValidationError, match="calibration_file is required"):
+        HermesTpx3PhotonClusteringSettings.model_validate(data)
+
+
+def test_timewalk_rejects_both_legacy_and_nested_settings() -> None:
+    data = _clustering_settings_data()
+    data.update(timewalk={"method": "none"}, timewalk_calibration_file=None)
+    with pytest.raises(ValidationError, match="not both"):
+        HermesTpx3PhotonClusteringSettings.model_validate(data)
 
 
 @pytest.mark.parametrize(
@@ -647,7 +689,7 @@ def test_photon_clustering_settings_reject_inverted_bounds(
 
 @pytest.mark.parametrize(
     "reserved_estimator",
-    ["brightest", "mean", "tot_weighted"],
+    ["mean", "tot_weighted"],
 )
 def test_photon_clustering_settings_reject_reserved_time_estimators(
     reserved_estimator: str,

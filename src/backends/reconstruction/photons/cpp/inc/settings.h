@@ -4,6 +4,8 @@
 #include <cstdint>
 #include <string>
 
+#include <nlohmann/json.hpp>
+
 namespace hermes_photon_clusterer {
 
 // Complete clustering settings with built-in defaults. Every field has a value,
@@ -20,8 +22,8 @@ struct ClusteringSettings {
     double min_filled_fraction = 0.5;
     int adjacency = 8;
     std::string position_averaging = "arithmetic";
-    std::string photon_time_estimator = "leading_edge";
-    // Empty means no time-walk calibration file (uncorrected leading edge).
+    std::string photon_time_estimator = "average";
+    std::string timewalk_method = "none";
     std::string timewalk_calibration_file;
     bool save_photon_pixels = false;
     // How this chip's photon x/y map into the shared sensor coordinate frame:
@@ -40,6 +42,9 @@ ClusteringSettings loadClusteringSettings(const std::string& path);
 // Validates a settings struct, throwing std::runtime_error on any violation.
 // Applied by loadClusteringSettings and reusable for the built-in defaults.
 void validateClusteringSettings(const ClusteringSettings& settings);
+
+// Shared by the reconstruction summary and Parquet metadata.
+nlohmann::ordered_json clusteringSettingsJson(const ClusteringSettings& settings);
 
 }  // namespace hermes_photon_clusterer
 

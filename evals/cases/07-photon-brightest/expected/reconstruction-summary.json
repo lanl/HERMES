@@ -1,0 +1,74 @@
+{
+  "measurement_info": {
+    "measurement_id": "harness-07-photon-brightest",
+    "run": "timing"
+  },
+  "reconstruction": {
+    "pixels_read": 10,
+    "clusters_formed": 3,
+    "rejected_clusters": 0,
+    "rejection_reasons": {
+      "below_min_cluster_size": 0,
+      "above_max_cluster_size": 0,
+      "below_min_cluster_tot": 0,
+      "above_max_cluster_tot": 0,
+      "above_max_aspect_ratio": 0,
+      "below_min_filled_fraction": 0
+    },
+    "quality_flag_counts": {
+      "saturated_pixel": 1,
+      "bridged_components": 1
+    },
+    "warnings": [],
+    "errors": [],
+    "total_photons": 3
+  },
+  "clustering": {
+    "algorithm": "connected_components",
+    "settings": {
+      "max_time_spread_ticks": 20,
+      "min_cluster_size": 2,
+      "max_cluster_size": 64,
+      "min_pixel_tot_raw": 1,
+      "min_cluster_tot_raw": 2,
+      "max_cluster_tot_raw": 65472,
+      "max_aspect_ratio": 3.0,
+      "min_filled_fraction": 0.5,
+      "photon_time_estimator": "brightest",
+      "timewalk": {
+        "method": "none",
+        "calibration_file": null
+      },
+      "adjacency": 8,
+      "position_averaging": "arithmetic",
+      "save_photon_pixels": true,
+      "detector_layout": "single_chip"
+    }
+  },
+  "photon_timing": {
+    "estimator": "brightest",
+    "correction_model": "none",
+    "calibration_file": null,
+    "parameters": {},
+    "high_tot_anchor": null
+  },
+  "parquet_files": {
+    "input_pixel_data_file": [
+      "data/07-photon-brightest/timing/analysis/pixel_hits/timing_chip_0_pixels_00000.parquet"
+    ],
+    "photons": {
+      "row_count": 3,
+      "files": [
+        "data/07-photon-brightest/timing/analysis/photons/timing_chip_0_photon_00000.parquet"
+      ]
+    },
+    "pixel_clusters": {
+      "requested": true,
+      "row_count": 10,
+      "files": [
+        "data/07-photon-brightest/timing/analysis/pixel_clusters/timing_chip_0_pixel_clusters_00000.parquet"
+      ]
+    }
+  },
+  "processing_times_seconds": "<IGNORE: non-deterministic timing>"
+}

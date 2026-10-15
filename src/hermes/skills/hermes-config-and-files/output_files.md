@@ -17,8 +17,8 @@ or have fewer files than expected; the summaries still count them.
   can be subtracted directly. For example, time-of-flight is an event's time
   minus the time of the TDC trigger just before it.
 - Pixel, TDC and global timestamp times are whole numbers (uint64). Photon and
-  event times are float64, because the time-walk correction gives fractions of a
-  tick.
+  event times are float64 to retain fractional averages and time-walk corrections,
+  within float64 precision.
 - TDC1 and TDC2 have independent fixed offsets, set by their cables and
   electronics. Find each one from the data, and never use one channel's offset
   for the other.
@@ -64,8 +64,16 @@ part. A pixel file with no photons gives no photon file, only its summary.
     use the file name together with `photon_id`.
   - `x` and `y` are the mean of the photon's pixels, in the sensor frame (see
     below).
-  - `timestamp_canonical` is the earliest time of the photon's pixels, after
-    time-walk correction when it is on.
+  - `timestamp_canonical` follows `photon_time_estimator`: `average` (the default)
+    is the arithmetic mean of all source-hit times, including repeated hits at
+    one coordinate; `leading_edge` is the minimum time; `brightest` is the time
+    of the hit with the largest raw ToT. Brightest ties use earliest raw time,
+    then source order. The average is not ToT-weighted.
+  - `timewalk.method` defaults to `none`. With `calibration`, one shared curve
+    corrects hit times according to raw ToT before the estimator is applied.
+    `timewalk.calibration_file` is then required: a JSON path or the explicit
+    keyword `default` for the shipped example curve. Correction and the estimator
+    are independent choices; they do not change clustering or source-hit files.
   - `tot` is the sum of `tot_raw` over the photon's pixels.
   - `quality_flags` bits: 1 = a pixel was saturated (`tot_raw` 1023); 2 = the
     photon joined two groups of pixels that had started apart.
@@ -112,8 +120,10 @@ Photon and event `x` and `y` use `analysis.detector_layout.kind`:
 ## File metadata
 
 The photon and pixel cluster files carry the settings that made them in their
-Parquet metadata: `clustering_settings`, `correction_model`,
-`correction_parameters`, `detector_layout` and `chip_index`. The event files
+Parquet metadata: `clustering_settings`, `photon_time_estimator`,
+`timewalk_method`, `calibration_file`, `correction_model`, `detector_layout`
+and `chip_index`. With calibration, they also include `correction_parameters`
+and `high_tot_anchor`. The event files
 carry `event_settings` and `detector_layout`. Read it with
 `pyarrow.parquet.read_schema(path).metadata`. The unpacking files have none.
 
@@ -135,8 +145,9 @@ There is one JSON file per file processed, under `analysis/logs/`:
   - `reconstruction`: `pixels_read`, `clusters_formed`, `rejected_clusters`,
     `rejection_reasons` (counts for each limit), `quality_flag_counts`,
     `total_photons`, `warnings` and `errors`.
-  - `clustering` (the settings used), `photon_timing` (the time-walk
-    correction used), `parquet_files` and `processing_times_seconds`.
+  - `clustering` (the settings used, including nested `timewalk`), `photon_timing`
+    (the estimator, correction model, calibration file, parameters, and anchor),
+    `parquet_files` and `processing_times_seconds`.
 - `event_reconstruction/<raw name>_event_reconstruction_summary.json`
   - `reconstruction`: `photons_read`, `event_count`, `quality_flag_counts`,
     `min_photon_count_below` (events under `min_photon_count`), `warnings` and

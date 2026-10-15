@@ -19,10 +19,12 @@ no prebuilt binaries: the install compiles them with the compiler and libraries
 your environment provides and places them on `PATH`, so the Python workflow
 finds them by name.
 
-HERMES also ships a default time-walk calibration into the environment's
-`share/hermes/` folder, so an installed HERMES has one to fall back on. In a
-photon-reconstruction config, set `timewalk_calibration_file: default` to use it,
-a path to use your own, or leave it unset for no correction.
+Photon times default to the arithmetic average of the source-hit times, with
+time-walk correction off. Users can independently choose `average`,
+`leading_edge`, or `brightest` timing and enable a shared calibration curve.
+HERMES ships an example curve in the environment's `share/hermes/` folder;
+selecting it is explicit. See [photon timing](docs/photon-timing.md) for YAML
+examples, calibration settings, and how to regenerate existing results.
 
 ## Use HERMES in your own pixi project
 

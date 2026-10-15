@@ -1,6 +1,7 @@
 #include "settings.h"
 
 #include <fstream>
+#include <iostream>
 #include <set>
 #include <stdexcept>
 
@@ -67,6 +68,15 @@ void overrideBool(const json& document, const char* key, bool& target) {
     target = value.get<bool>();
 }
 
+void overrideCalibrationFile(const json& document, const char* key,
+                             std::string& target) {
+    overrideString(document, key, target);
+    if (document.contains(key) && document.at(key).is_string() &&
+        target.find_first_not_of(" \t\n\r\f\v") == std::string::npos) {
+        throw std::runtime_error("calibration_file must not be blank");
+    }
+}
+
 }  // namespace
 
 void validateClusteringSettings(const ClusteringSettings& s) {
@@ -103,10 +113,21 @@ void validateClusteringSettings(const ClusteringSettings& s) {
             "position_averaging='" + s.position_averaging +
             "' is reserved and not implemented");
     }
-    if (s.photon_time_estimator != "leading_edge") {
+    if (s.photon_time_estimator != "average" &&
+        s.photon_time_estimator != "leading_edge" &&
+        s.photon_time_estimator != "brightest") {
         throw std::runtime_error(
             "photon_time_estimator='" + s.photon_time_estimator +
             "' is reserved and not implemented");
+    }
+    if (s.timewalk_method != "none" && s.timewalk_method != "calibration") {
+        throw std::runtime_error("timewalk.method must be 'none' or 'calibration'");
+    }
+    if ((s.timewalk_method == "calibration") !=
+        !s.timewalk_calibration_file.empty()) {
+        throw std::runtime_error(
+            "timewalk.calibration_file is required for method='calibration' "
+            "and must be null for method='none'");
     }
     if (s.detector_layout != "single_chip" && s.detector_layout != "quad") {
         throw std::runtime_error(
@@ -139,7 +160,7 @@ ClusteringSettings loadClusteringSettings(const std::string& path) {
         "min_cluster_tot_raw",   "max_cluster_tot_raw",
         "max_aspect_ratio",      "min_filled_fraction",
         "adjacency",             "position_averaging",
-        "photon_time_estimator", "timewalk_calibration_file",
+        "photon_time_estimator", "timewalk_calibration_file", "timewalk",
         "save_photon_pixels",    "detector_layout",
     };
     for (const auto& item : document.items()) {
@@ -165,13 +186,62 @@ ClusteringSettings loadClusteringSettings(const std::string& path) {
     overrideString(document, "position_averaging", settings.position_averaging);
     overrideString(document, "photon_time_estimator",
                    settings.photon_time_estimator);
-    overrideString(document, "timewalk_calibration_file",
-                   settings.timewalk_calibration_file);
+    if (document.contains("timewalk") &&
+        document.contains("timewalk_calibration_file")) {
+        throw std::runtime_error(
+            "use timewalk or timewalk_calibration_file, not both");
+    }
+    if (document.contains("timewalk")) {
+        const auto& timing = document.at("timewalk");
+        if (!timing.is_object()) {
+            throw std::runtime_error("timewalk must be an object");
+        }
+        for (const auto& item : timing.items()) {
+            if (item.key() != "method" && item.key() != "calibration_file") {
+                throw std::runtime_error("unknown timewalk field '" + item.key() + "'");
+            }
+        }
+        overrideString(timing, "method", settings.timewalk_method);
+        overrideCalibrationFile(timing, "calibration_file",
+                                settings.timewalk_calibration_file);
+    } else if (document.contains("timewalk_calibration_file")) {
+        overrideCalibrationFile(document, "timewalk_calibration_file",
+                                settings.timewalk_calibration_file);
+        settings.timewalk_method =
+            settings.timewalk_calibration_file.empty() ? "none" : "calibration";
+        std::cerr << "Warning: timewalk_calibration_file is deprecated; use "
+                     "timewalk.method and timewalk.calibration_file\n";
+    }
     overrideBool(document, "save_photon_pixels", settings.save_photon_pixels);
     overrideString(document, "detector_layout", settings.detector_layout);
 
     validateClusteringSettings(settings);
     return settings;
+}
+
+nlohmann::ordered_json clusteringSettingsJson(const ClusteringSettings& s) {
+    using json = nlohmann::ordered_json;
+    json j;
+    j["max_time_spread_ticks"] = s.max_time_spread_ticks;
+    j["min_cluster_size"] = s.min_cluster_size;
+    j["max_cluster_size"] = s.max_cluster_size;
+    j["min_pixel_tot_raw"] = s.min_pixel_tot_raw;
+    j["min_cluster_tot_raw"] = s.min_cluster_tot_raw;
+    j["max_cluster_tot_raw"] = s.max_cluster_tot_raw;
+    j["max_aspect_ratio"] = s.max_aspect_ratio;
+    j["min_filled_fraction"] = s.min_filled_fraction;
+    j["adjacency"] = s.adjacency;
+    j["position_averaging"] = s.position_averaging;
+    j["photon_time_estimator"] = s.photon_time_estimator;
+    j["timewalk"] = {
+        {"method", s.timewalk_method},
+        {"calibration_file", s.timewalk_calibration_file.empty()
+                                 ? json(nullptr)
+                                 : json(s.timewalk_calibration_file)},
+    };
+    j["save_photon_pixels"] = s.save_photon_pixels;
+    j["detector_layout"] = s.detector_layout;
+    return j;
 }
 
 }  // namespace hermes_photon_clusterer

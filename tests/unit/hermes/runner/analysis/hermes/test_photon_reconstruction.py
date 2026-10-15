@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -13,6 +14,7 @@ from hermes.runner.analysis.hermes.photon_reconstruction import (
     derive_output_path,
     derive_reconstruction_command,
     derive_summary_path,
+    load_photon_timing,
     resolve_pixel_files,
     validate_program_and_algorithm,
 )
@@ -24,6 +26,7 @@ from hermes.state.models.analysis.hermes_tpx3_spidr import (
     HermesTpx3PhotonClusteringSettings,
     HermesTpx3PhotonReconstruction,
     HermesTpx3PhotonReconstructionResult,
+    HermesTpx3PhotonTimingSummary,
     Tpx3Unpacking,
 )
 from hermes.state.models.environment import RuntimeEnvironment
@@ -109,6 +112,40 @@ def _analysis(
 
 def _measurement_info() -> MeasurementInfo:
     return MeasurementInfo(measurement_id="stage-5", run="test-run")
+
+
+def _write_summary(
+    analysis_root: Path,
+    input_file: FileReference,
+    timing: HermesTpx3PhotonTimingSummary,
+) -> None:
+    summary_path = derive_summary_path(analysis_root, input_file)
+    summary_path.parent.mkdir(parents=True, exist_ok=True)
+    summary_path.write_text(json.dumps({
+        "measurement_info": {"measurement_id": "stage-5", "run": "test-run"},
+        "reconstruction": {
+            "pixels_read": 0, "clusters_formed": 0, "rejected_clusters": 0,
+            "total_photons": 0, "warnings": [], "errors": [],
+            "rejection_reasons": {
+                "below_min_cluster_size": 0, "above_max_cluster_size": 0,
+                "below_min_cluster_tot": 0, "above_max_cluster_tot": 0,
+                "above_max_aspect_ratio": 0, "below_min_filled_fraction": 0,
+            },
+            "quality_flag_counts": {"saturated_pixel": 0, "bridged_components": 0},
+        },
+        "clustering": {"algorithm": "connected_components", "settings": {}},
+        "photon_timing": timing.model_dump(mode="json"),
+        "parquet_files": {
+            "input_pixel_data_file": [str(input_file.path)],
+            "photons": {"row_count": 0, "files": []},
+            "pixel_clusters": {"requested": False, "row_count": 0, "files": []},
+        },
+        "processing_times_seconds": {
+            "parquet_reading": 0, "clustering_and_filtering": 0,
+            "parquet_writing": 0, "total": 0,
+            "throughput": {"pixels_per_second": 0, "photons_per_second": 0},
+        },
+    }), encoding="utf-8")
 
 
 # ---- skip detection -----------------------------------------------------
@@ -242,7 +279,7 @@ def test_settings_json_resolves_default_timewalk_calibration(tmp_path: Path) -> 
     settings_json = build_clustering_settings_json(analysis)
 
     # The binary needs a real file, never the literal keyword.
-    assert settings_json["timewalk_calibration_file"] == str(
+    assert settings_json["timewalk"]["calibration_file"] == str(
         default_timewalk_calibration()
     )
 
@@ -256,7 +293,7 @@ def test_settings_json_keeps_explicit_timewalk_path(tmp_path: Path) -> None:
 
     settings_json = build_clustering_settings_json(analysis)
 
-    assert settings_json["timewalk_calibration_file"] == "/tmp/my-cal.json"
+    assert settings_json["timewalk"]["calibration_file"] == "/tmp/my-cal.json"
 
 
 def test_settings_json_omits_correction_when_unset(tmp_path: Path) -> None:
@@ -264,7 +301,7 @@ def test_settings_json_omits_correction_when_unset(tmp_path: Path) -> None:
 
     settings_json = build_clustering_settings_json(analysis)
 
-    assert settings_json["timewalk_calibration_file"] is None
+    assert settings_json["timewalk"] == {"method": "none", "calibration_file": None}
 
 
 # ---- derive_reconstruction_command --------------------------------------
@@ -333,9 +370,7 @@ def test_run_keeps_completed_results_the_record_already_lists(
     analysis_root = tmp_path / "analysis"
     listed, other = resolve_pixel_files(analysis, analysis_root)
     for input_file in (listed, other):
-        summary_path = derive_summary_path(analysis_root, input_file)
-        summary_path.parent.mkdir(parents=True, exist_ok=True)
-        summary_path.touch()
+        _write_summary(analysis_root, input_file, load_photon_timing(analysis))
     # The first pixel file was reconstructed by an earlier pass of this run.
     analysis.photon_reconstruction.results = [
         HermesTpx3PhotonReconstructionResult(
@@ -378,3 +413,105 @@ def test_run_keeps_completed_results_the_record_already_lists(
     assert [Path(record["extra"]["pixel_file"]).name for record in records] == [
         "run_000001_chip_0_pixels_00000.parquet"
     ]
+
+
+@pytest.mark.parametrize("conflict_index", [0, 1])
+def test_restart_timing_conflict_preserves_all_previous_results(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, conflict_index: int,
+) -> None:
+    analysis = _analysis(
+        tmp_path, "run_000000_chip_0_pixels_00000.parquet",
+        "run_000001_chip_0_pixels_00000.parquet",
+    )
+    analysis.unpacking = None
+    analysis_root = tmp_path / "analysis"
+    inputs = resolve_pixel_files(analysis, analysis_root)
+    timing = load_photon_timing(analysis)
+    for index, input_file in enumerate(inputs):
+        _write_summary(
+            analysis_root, input_file,
+            timing.model_copy(update={"estimator": "leading_edge"})
+            if index == conflict_index else timing,
+        )
+    analysis.photon_reconstruction.results = [
+        HermesTpx3PhotonReconstructionResult(
+            input_file=file, output_file=derive_output_path(analysis_root, file),
+            status="completed",
+        ) for file in inputs
+    ]
+    # A new input queued before a conflict must not be executed or marked failed.
+    new_input = analysis_root / "pixel_hits/aaa_chip_0_pixels_00000.parquet"
+    new_input.touch()
+    manager = StateManager(
+        HermesRecord(
+            measurement_info=_measurement_info(),
+            environment=RuntimeEnvironment(
+                working_directory=tmp_path, analysis_directory=analysis_root,
+            ),
+            acquisition=None, analysis=analysis,
+        ),
+        config=StateServiceConfig(allow_trusted_workflow_bypass=True),
+    )
+    before = manager.get_state().analysis.photon_reconstruction.results
+    summary_bytes = {
+        derive_summary_path(analysis_root, file):
+            derive_summary_path(analysis_root, file).read_bytes()
+        for file in inputs
+    }
+    def unexpected_execution(*args: object, **kwargs: object) -> None:
+        pytest.fail("reconstruction started before all restart checks completed")
+    monkeypatch.setattr(
+        "hermes.runner.analysis.hermes.run.execute_reconstruction",
+        unexpected_execution,
+    )
+    with pytest.raises(HermesPhotonReconstructionPreflightError, match="overwrite"):
+        run_hermes_analysis(manager)
+    assert manager.get_state().analysis.photon_reconstruction.results == before
+    assert all(path.read_bytes() == contents for path, contents in summary_bytes.items())
+
+
+def test_restart_rejects_boolean_slope_even_when_it_equals_saved_number(
+    tmp_path: Path,
+) -> None:
+    calibration = tmp_path / "curve.json"
+    curve = {
+        "model": "linear", "parameters": {"m": 1.0},
+        "high_tot_anchor": 30, "time_unit": "canonical_ticks",
+    }
+    calibration.write_text(json.dumps(curve), encoding="utf-8")
+    analysis = _analysis(
+        tmp_path, "run_chip_0_pixels_00000.parquet",
+        settings=_settings(timewalk={
+            "method": "calibration", "calibration_file": calibration,
+        }),
+    )
+    analysis.unpacking = None
+    analysis_root = tmp_path / "analysis"
+    input_file = resolve_pixel_files(analysis, analysis_root)[0]
+    _write_summary(analysis_root, input_file, load_photon_timing(analysis))
+    assert check_previous_reconstructed_file(analysis_root, input_file, analysis)
+    curve["parameters"] = {"m": True}
+    calibration.write_text(json.dumps(curve), encoding="utf-8")
+    with pytest.raises(HermesPhotonReconstructionPreflightError, match="numeric"):
+        check_previous_reconstructed_file(analysis_root, input_file, analysis)
+    analysis.photon_reconstruction.results = [
+        HermesTpx3PhotonReconstructionResult(
+            input_file=input_file,
+            output_file=derive_output_path(analysis_root, input_file),
+            status="completed",
+        ),
+    ]
+    manager = StateManager(
+        HermesRecord(
+            measurement_info=_measurement_info(),
+            environment=RuntimeEnvironment(
+                working_directory=tmp_path, analysis_directory=analysis_root,
+            ),
+            acquisition=None, analysis=analysis,
+        ),
+        config=StateServiceConfig(allow_trusted_workflow_bypass=True),
+    )
+    before = manager.get_state().analysis.photon_reconstruction.results
+    with pytest.raises(HermesPhotonReconstructionPreflightError, match="numeric"):
+        run_hermes_analysis(manager)
+    assert manager.get_state().analysis.photon_reconstruction.results == before

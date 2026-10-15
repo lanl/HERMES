@@ -41,8 +41,8 @@ struct PhotonReconstruction {
 // dropped rows), streams the survivors through connected-components clustering on
 // integer ticks, evaluates each closed cluster against the shape/ToT filters, and
 // builds a photon for every accepted cluster. When correction is non-null the
-// photon time is the earliest time-walk-corrected ToA; otherwise it is the
-// earliest raw ToA. When collect_pixels is true, photon_pixels rows are emitted
+// source-hit times are corrected before the selected estimator is applied.
+// When collect_pixels is true, photon_pixels rows are emitted
 // for accepted photons, each tagged with its photon_id (the photon's index in
 // the photons vector).
 PhotonReconstruction reconstructPhotons(

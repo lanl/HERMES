@@ -42,7 +42,8 @@ PhotonReconstruction reconstructPhotons(
         }
 
         const std::uint64_t photon_id = result.photons.size();
-        Photon photon = buildPhoton(cluster, evaluation, correction);
+        Photon photon = buildPhoton(cluster, evaluation, correction,
+                                    settings.photon_time_estimator);
         result.photons.push_back(photon);
         ++result.counts.photon_count;
 

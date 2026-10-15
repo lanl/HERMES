@@ -33,8 +33,9 @@ analysis:
         min_filled_fraction: 0.5
         adjacency: 8
         position_averaging: arithmetic
-        photon_time_estimator: leading_edge
-        timewalk_calibration_file: default
+        photon_time_estimator: average
+        timewalk:
+          method: none
   event_reconstruction:
     program:
       name: event-reconstructor-cpp

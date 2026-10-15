@@ -37,7 +37,10 @@
       "adjacency": 8,
       "position_averaging": "arithmetic",
       "photon_time_estimator": "leading_edge",
-      "timewalk_calibration_file": "calibrations/tpx3/time-walk_example.json",
+      "timewalk": {
+        "method": "calibration",
+        "calibration_file": "calibrations/tpx3/time-walk_example.json"
+      },
       "save_photon_pixels": true,
       "detector_layout": "single_chip"
     }

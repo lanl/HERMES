@@ -81,6 +81,25 @@ data/examples/analysis/timewalk_calibration/
 The correction file (`model`, `parameters`, `high_tot_anchor`, `time_unit`,
 `date_created`, `note`) is the file the photon reconstruction clusterer reads.
 It matches the format of the checked-in
-`calibrations/tpx3/time-walk_example.json`, which HERMES ships as its built-in
-default: setting `timewalk_calibration_file: default` in a photon-reconstruction
-config uses that file, so you do not have to fit your own to get started.
+`calibrations/tpx3/time-walk_example.json`, which HERMES ships as an example
+shared curve. New photon-reconstruction runs leave correction off and use the
+arithmetic average of the source-hit times.
+
+To use the fitted correction, put these timing fields under
+`analysis.photon_reconstruction.clustering_algorithm.settings` in your analysis
+config, keeping the other clustering settings:
+
+```yaml
+photon_time_estimator: average
+timewalk:
+  method: calibration
+  calibration_file: data/examples/analysis/timewalk_calibration/analysis/logs/timewalk-calibration-correction.json
+```
+
+That path assumes the default example directories and that HERMES is started
+from the repository root. Change it to the correction file you generated, or
+use `calibration_file: default` to explicitly select the shipped example curve.
+The shared curve is applied to every source hit according to its raw ToT before
+calculating photon time. It aligns relative hit times, without determining an
+absolute photon-arrival offset. See [photon timing](../../../docs/photon-timing.md)
+for other estimators and how to regenerate existing photon and event results.

@@ -44,10 +44,11 @@ pixi run python examples/analysis/end_to_end/raw-to-events.py \
 
 - `analysis.unpacking` selects the unpacker and the raw TPX3 file to unpack.
 - `analysis.photon_reconstruction` selects the photon clusterer, its settings,
-  and the time-walk calibration file (`timewalk_calibration_file: default`, the
-  calibration that ships with HERMES), using leading-edge photon time. Set that
-  field to `null` for no correction, `default` for the shipped calibration, or a
-  path to your own file.
+  and optional time-walk correction. The checked-in config uses
+  `photon_time_estimator: average` and `timewalk: {method: none}`: each photon's
+  time is the arithmetic average of all its source-hit times, without correction.
+  See [photon timing](../../../docs/photon-timing.md) for calibrated timing,
+  brightest-hit timing, and explicit leading-edge timing.
 - `analysis.event_reconstruction` selects the event reconstructor and its
   connected-components settings (10-pixel linking radius, 5-cell-per-axis lookup
   grid, 10 µs maximum time difference, 30 µs maximum event duration).
@@ -84,3 +85,7 @@ data/examples/analysis/end_to_end/
 Each stage writes its own Parquet files and a summary JSON. Running the example
 again validates the existing summaries, skips complete work, and refreshes
 `hermes-record_final.yaml`.
+After changing photon timing, enable
+`analysis.photon_reconstruction.runtime_options.overwrite: true` or use a fresh
+analysis directory. Photon overwrite also regenerates downstream events when
+both stages run together.

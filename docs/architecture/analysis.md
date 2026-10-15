@@ -390,8 +390,12 @@ sorted pixel-data files, clusters them chip-locally, and fits how a pixel's
 arrival time depends on its time-over-threshold using both a linear and an
 inverse model. It selects the better model and writes a calibration report, a
 comparison plot, and a small correction file. Photon reconstruction later
-consumes that correction file through the calibration path saved in its
-clustering settings. The example under
+consumes that global correction file through
+`clustering_algorithm.settings.timewalk: {method: calibration, calibration_file: <path>}`.
+It applies the same curve to every pixel according to ToT, then calculates
+photon time using `average` (default), `leading_edge`, or `brightest`. New runs
+default to `timewalk.method: none`; enabling calibration is explicit.
+The example under
 `examples/analysis/timewalk_calibration/` shows it running after unpacking.
 
 ## EMPIR Analysis

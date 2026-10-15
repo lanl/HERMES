@@ -34,6 +34,9 @@ struct TimewalkCorrection {
 // time_unit other than "canonical_ticks".
 TimewalkCorrection loadTimewalkCorrection(const std::string& path);
 
+double timewalkDelay(std::uint16_t tot_raw,
+                     const TimewalkCorrection& correction);
+
 // Corrected leading-edge time for a single pixel, in fractional canonical ticks.
 double correctedToa(std::uint64_t raw_toa,
                     std::uint16_t tot_raw,

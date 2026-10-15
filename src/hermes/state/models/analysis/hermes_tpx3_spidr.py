@@ -4,11 +4,13 @@ import json
 from pathlib import Path
 from typing import Literal
 
+from loguru import logger
 from pydantic import Field, field_validator, model_validator
 
 from hermes.state.models.shared_models import (
     BinaryProgram,
     FileReference,
+    JsonObject,
     ResultStatus,
     StrictBaseModel,
 )
@@ -26,6 +28,7 @@ TPX3_PARQUET_CATEGORY_DIRECTORIES = {
 SortingStrategy = Literal["in_memory", "external_merge"]
 ClusteringAlgorithm = Literal["connected_components", "dbscan"]
 PhotonTimeEstimator = Literal[
+    "average",
     "leading_edge",
     "brightest",
     "mean",
@@ -115,6 +118,34 @@ def _expand_results_list(value: object) -> object:
     return entries
 
 
+class HermesTpx3TimewalkSettings(StrictBaseModel):
+    method: Literal["none", "calibration"] = Field(
+        default="none",
+        description="Leave pixel times unchanged or apply one global ToT correction.",
+    )
+    calibration_file: Literal["default"] | Path | None = Field(
+        default=None,
+        description='Global correction JSON file, or "default" for the shipped '
+        "curve. Required only when method is calibration.",
+    )
+
+    @field_validator("calibration_file", mode="before")
+    @classmethod
+    def reject_blank_file(cls, value: object) -> object:
+        if isinstance(value, str) and not value.strip():
+            raise ValueError("calibration_file must not be blank")
+        return value
+
+    @model_validator(mode="after")
+    def require_calibration_file(self) -> HermesTpx3TimewalkSettings:
+        if (self.method == "calibration") != (self.calibration_file is not None):
+            raise ValueError(
+                "calibration_file is required for method='calibration' "
+                "and must be null for method='none'"
+            )
+        return self
+
+
 class HermesTpx3PhotonClusteringSettings(StrictBaseModel):
     max_time_spread_ticks: int = Field(
         gt=0,
@@ -161,16 +192,35 @@ class HermesTpx3PhotonClusteringSettings(StrictBaseModel):
         "its pixels for now.",
     )
     photon_time_estimator: PhotonTimeEstimator = Field(
-        default="leading_edge",
-        description="How a photon's time is found; only leading_edge (its "
-        "earliest pixel) runs for now.",
+        default="average",
+        description="average: plain mean of all hit times; leading_edge: earliest "
+        "hit time; brightest: time of the largest-ToT hit. Applied after optional "
+        "global time-walk correction.",
     )
-    timewalk_calibration_file: Literal["default"] | Path | None = Field(
-        default=None,
-        description='Time-walk correction of photon times: "default" uses the '
-        "calibration shipped with HERMES, a path uses that JSON file, and null "
-        "turns the correction off.",
+    timewalk: HermesTpx3TimewalkSettings = Field(
+        default_factory=HermesTpx3TimewalkSettings,
+        description="Optional global time-walk correction of source-hit times.",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def migrate_timewalk_file(cls, value: object) -> object:
+        if not isinstance(value, dict) or "timewalk_calibration_file" not in value:
+            return value
+        if "timewalk" in value:
+            raise ValueError("use timewalk or timewalk_calibration_file, not both")
+        migrated = dict(value)
+        calibration_file = migrated.pop("timewalk_calibration_file")
+        migrated["timewalk"] = {
+            "method": "none" if calibration_file is None else "calibration",
+            "calibration_file": calibration_file,
+        }
+        logger.warning(
+            "timewalk_calibration_file is deprecated; use "
+            "timewalk.method and timewalk.calibration_file",
+            event_type="analysis.photon_timing.deprecated_setting",
+        )
+        return migrated
 
     @field_validator("photon_time_estimator")
     @classmethod
@@ -178,7 +228,7 @@ class HermesTpx3PhotonClusteringSettings(StrictBaseModel):
         cls,
         value: PhotonTimeEstimator,
     ) -> PhotonTimeEstimator:
-        if value != "leading_edge":
+        if value not in ("average", "leading_edge", "brightest"):
             raise ValueError(
                 f"photon_time_estimator={value!r} is reserved and not implemented"
             )
@@ -456,7 +506,7 @@ class HermesTpx3PhotonClusteringEchoSummary(StrictBaseModel):
     # the binary. The binary owns the settings shape and renders it verbatim, so
     # it is kept as a plain mapping rather than re-validated field by field.
     algorithm: ClusteringAlgorithm
-    settings: dict[str, float | int | bool | str | None]
+    settings: JsonObject
 
 
 class HermesTpx3PhotonTimingSummary(StrictBaseModel):

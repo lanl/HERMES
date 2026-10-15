@@ -39,6 +39,8 @@ std::shared_ptr<arrow::KeyValueMetadata> buildFileMetadata(
         "clustering_settings",
         "position_averaging",
         "photon_time_estimator",
+        "timewalk_method",
+        "calibration_file",
         "correction_model",
     };
     std::vector<std::string> values = {
@@ -51,6 +53,8 @@ std::shared_ptr<arrow::KeyValueMetadata> buildFileMetadata(
         metadata.clustering_settings_json,
         metadata.position_averaging,
         metadata.photon_time_estimator,
+        metadata.timewalk_method,
+        metadata.calibration_file,
         metadata.correction_model,
     };
     if (metadata.correction_model != "none") {

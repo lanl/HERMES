@@ -1,5 +1,6 @@
 #include "timewalk.h"
 
+#include <cmath>
 #include <fstream>
 #include <stdexcept>
 #include <string>
@@ -19,7 +20,11 @@ double requiredParameter(const nlohmann::json& parameters,
                                  " model requires numeric parameter '" + key +
                                  "'");
     }
-    return entry->get<double>();
+    const double value = entry->get<double>();
+    if (!std::isfinite(value)) {
+        throw std::runtime_error("time-walk parameter '" + key + "' must be finite");
+    }
+    return value;
 }
 
 }  // namespace
@@ -71,11 +76,19 @@ TimewalkCorrection loadTimewalkCorrection(const std::string& path) {
 
     TimewalkCorrection correction;
     correction.high_tot_anchor = document["high_tot_anchor"].get<double>();
+    if (!std::isfinite(correction.high_tot_anchor) ||
+        correction.high_tot_anchor < 0.0 || correction.high_tot_anchor > 1023.0) {
+        throw std::runtime_error("time-walk high_tot_anchor must be finite and in 0-1023");
+    }
 
     if (model == "inverse") {
         correction.model = TimewalkCorrection::Model::kInverse;
         correction.a = requiredParameter(parameters, "a", "inverse");
         correction.b = requiredParameter(parameters, "b", "inverse");
+        if (correction.b <= 0.0 && correction.b >= -1023.0) {
+            throw std::runtime_error(
+                "inverse time-walk curve has a pole in ToT range 0-1023");
+        }
     } else if (model == "linear") {
         correction.model = TimewalkCorrection::Model::kLinear;
         correction.m = requiredParameter(parameters, "m", "linear");
@@ -85,12 +98,17 @@ TimewalkCorrection loadTimewalkCorrection(const std::string& path) {
             "' (expected 'inverse' or 'linear')");
     }
 
+    for (std::uint16_t tot = 0; tot <= 1023; ++tot) {
+        timewalkDelay(tot, correction);
+    }
     return correction;
 }
 
-double correctedToa(std::uint64_t raw_toa,
-                    std::uint16_t tot_raw,
-                    const TimewalkCorrection& correction) {
+double timewalkDelay(std::uint16_t tot_raw,
+                     const TimewalkCorrection& correction) {
+    if (tot_raw > 1023) {
+        throw std::runtime_error("time-walk ToT must be in 0-1023");
+    }
     const double tot = static_cast<double>(tot_raw);
     const double anchor = correction.high_tot_anchor;
     double delta_t = 0.0;
@@ -100,7 +118,16 @@ double correctedToa(std::uint64_t raw_toa,
     } else {
         delta_t = correction.m * (tot - anchor);
     }
-    return static_cast<double>(raw_toa) - delta_t;
+    if (!std::isfinite(delta_t)) {
+        throw std::runtime_error("time-walk correction must be finite");
+    }
+    return delta_t;
+}
+
+double correctedToa(std::uint64_t raw_toa,
+                    std::uint16_t tot_raw,
+                    const TimewalkCorrection& correction) {
+    return static_cast<double>(raw_toa) - timewalkDelay(tot_raw, correction);
 }
 
 double earliestCorrectedToa(const PixelCluster& cluster,

@@ -75,30 +75,6 @@ void printVersion() {
     std::cout << "C++17 connected-components photon reconstruction\n";
 }
 
-// Serializes the clustering settings to the JSON object stored verbatim in the
-// photon file metadata.
-json settingsToJson(const hermes_photon_clusterer::ClusteringSettings& s) {
-    json j;
-    j["max_time_spread_ticks"] = s.max_time_spread_ticks;
-    j["min_cluster_size"] = s.min_cluster_size;
-    j["max_cluster_size"] = s.max_cluster_size;
-    j["min_pixel_tot_raw"] = s.min_pixel_tot_raw;
-    j["min_cluster_tot_raw"] = s.min_cluster_tot_raw;
-    j["max_cluster_tot_raw"] = s.max_cluster_tot_raw;
-    j["max_aspect_ratio"] = s.max_aspect_ratio;
-    j["min_filled_fraction"] = s.min_filled_fraction;
-    j["adjacency"] = s.adjacency;
-    j["position_averaging"] = s.position_averaging;
-    j["photon_time_estimator"] = s.photon_time_estimator;
-    j["timewalk_calibration_file"] =
-        s.timewalk_calibration_file.empty()
-            ? json(nullptr)
-            : json(s.timewalk_calibration_file);
-    j["save_photon_pixels"] = s.save_photon_pixels;
-    j["detector_layout"] = s.detector_layout;
-    return j;
-}
-
 // Model name written into metadata and the summary.
 std::string correctionModelName(
     const hermes_photon_clusterer::TimewalkCorrection& c) {
@@ -255,7 +231,7 @@ int main(const int argc, char* argv[]) {
     }
 
     // Load the time-walk correction now so a malformed calibration fails before
-    // any output is written. An empty path means the uncorrected leading edge.
+    // any output is written. An empty path means uncorrected source-hit times.
     bool has_correction = false;
     hermes_photon_clusterer::TimewalkCorrection correction;
     if (!settings.timewalk_calibration_file.empty()) {
@@ -339,9 +315,12 @@ int main(const int argc, char* argv[]) {
     }
     metadata.canonical_tick_seconds = kCanonicalTickSeconds;
     metadata.clustering_algorithm = "connected_components";
-    metadata.clustering_settings_json = settingsToJson(settings).dump();
+    metadata.clustering_settings_json =
+        hermes_photon_clusterer::clusteringSettingsJson(settings).dump();
     metadata.position_averaging = settings.position_averaging;
     metadata.photon_time_estimator = settings.photon_time_estimator;
+    metadata.timewalk_method = settings.timewalk_method;
+    metadata.calibration_file = settings.timewalk_calibration_file;
     metadata.correction_model =
         has_correction ? correctionModelName(correction) : "none";
     if (has_correction) {
@@ -399,8 +378,14 @@ int main(const int argc, char* argv[]) {
         return true;
     };
     const auto cluster_start = Clock::now();
-    auto result = hermes_photon_clusterer::reconstructPhotons(
-        next_hit, settings, correction_ptr, settings.save_photon_pixels);
+    hermes_photon_clusterer::PhotonReconstruction result;
+    try {
+        result = hermes_photon_clusterer::reconstructPhotons(
+            next_hit, settings, correction_ptr, settings.save_photon_pixels);
+    } catch (const std::exception& error) {
+        std::cerr << "Error: " << error.what() << "\n";
+        return 1;
+    }
     summary.clustering_and_filtering_seconds = secondsSince(cluster_start);
 
     summary.pixels_read = result.counts.pixel_rows_read;

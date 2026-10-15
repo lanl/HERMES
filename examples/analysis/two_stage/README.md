@@ -63,13 +63,20 @@ pixel input directory, photon output directory, clustering settings, and
 time-walk calibration file. Edit those YAML values for the detector data being
 analyzed.
 
-The checked-in configuration uses connected components, leading-edge photon
-time, and `timewalk_calibration_file: default`. `default` uses the time-walk
-calibration that ships with HERMES, so this example runs whether HERMES is
-installed or run from a git checkout. The three cases for that field are: omit it
-(or `null`) for no time-walk correction, `default` for the shipped calibration,
-or a path to your own calibration file. It also enables `save_photon_pixels` so
-the source pixels for each reconstructed photon are written.
+The checked-in configuration uses connected components and the arithmetic
+average of the source-hit times, with time-walk correction off:
+
+```yaml
+photon_time_estimator: average
+timewalk:
+  method: none
+```
+
+These fields belong under `clustering_algorithm.settings`. The config also
+enables `save_photon_pixels` so the source pixels for each reconstructed photon
+are written. See [photon timing](../../../docs/photon-timing.md) for explicit
+calibration, brightest-hit, and leading-edge examples. Correction and the
+estimator can be selected independently.
 
 ## Output
 
@@ -90,7 +97,7 @@ data/examples/analysis/two_stage/
 ```
 
 The photon-events file contains each reconstructed photon's position, summed
-ToT, leading-edge time, and quality flags. The optional photon-pixels file
+ToT, average source-hit time, and quality flags. The optional photon-pixels file
 contains the source pixels for each photon. The reconstruction summary contains
 the settings, photon and rejected-cluster counts, rejection reasons, output
 filenames, warnings, errors, and processing times.
@@ -101,3 +108,6 @@ accepted photons.
 
 Running the example again validates the existing summary JSON and Parquet
 files, skips complete work, and refreshes `hermes-record_final.yaml`.
+Changing timing requires
+`analysis.photon_reconstruction.runtime_options.overwrite: true` or a fresh
+analysis directory; previous photon results with different timing are not reused.

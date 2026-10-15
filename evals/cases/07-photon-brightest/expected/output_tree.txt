@@ -1,0 +1,17 @@
+data/07-photon-brightest/timing/
+├── analysis/
+│   ├── pixel_hits/
+│   │   └── timing_chip_0_pixels_00000.parquet
+│   ├── photons/
+│   │   └── timing_chip_0_photon_00000.parquet
+│   ├── pixel_clusters/
+│   │   └── timing_chip_0_pixel_clusters_00000.parquet
+│   └── logs/
+│       └── photon_reconstruction/
+│           └── timing_chip_0_photon_reconstruction_summary_00000.json
+├── logs/
+│   ├── acquisition.serval.jsonl
+│   ├── analysis.jsonl
+│   ├── state.jsonl
+│   └── HERMES-workflow.jsonl
+└── HERMES_record.yaml

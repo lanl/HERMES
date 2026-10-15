@@ -36,6 +36,7 @@ from hermes.runner.analysis.hermes.photon_reconstruction import (
     check_previous_reconstructed_file,
     derive_output_path,
     execute_reconstruction,
+    load_photon_timing,
     resolve_pixel_files,
     validate_program_and_algorithm,
 )
@@ -408,7 +409,16 @@ def run_hermes_analysis(
         current_analysis = _current_hermes_analysis(state_manager)
         if current_analysis.event_reconstruction is not None:
             _run_event_reconstruction(
-                state_manager, current_analysis, analysis_root, overwrite=overwrite
+                state_manager,
+                current_analysis,
+                analysis_root,
+                overwrite=(
+                    overwrite
+                    or (
+                        current_analysis.photon_reconstruction is not None
+                        and current_analysis.photon_reconstruction.runtime_options.overwrite
+                    )
+                ),
             )
 
         return unpacked_files
@@ -508,14 +518,26 @@ def _run_photon_reconstruction(
     }
     files_to_run: list[FileReference] = []
     done_results: list[HermesTpx3PhotonReconstructionResult] = []
+    # A restart conflict must leave every previous result intact. Finish these
+    # checks before entering the execution error handler that updates results.
+    try:
+        pixel_files = resolve_pixel_files(analysis, analysis_root)
+        expected_timing = load_photon_timing(analysis)
+        previously_reconstructed = {
+            input_file.path
+            for input_file in pixel_files
+            if not recon_overwrite
+            and check_previous_reconstructed_file(
+                analysis_root, input_file, expected_timing=expected_timing
+            )
+        }
+    except HermesPhotonReconstructionError as exc:
+        log_reconstruction_failure(exc)
+        raise
     try:
         validate_program_and_algorithm(reconstruction)
-        pixel_files = resolve_pixel_files(analysis, analysis_root)
         for input_file in pixel_files:
-            already_reconstructed = check_previous_reconstructed_file(
-                analysis_root, input_file
-            )
-            if not recon_overwrite and already_reconstructed:
+            if input_file.path in previously_reconstructed:
                 # A file this record already lists keeps its result and is not
                 # reported as skipped again.
                 earlier_result = earlier_results.get(input_file.path)

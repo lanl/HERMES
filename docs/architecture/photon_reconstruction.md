@@ -147,22 +147,72 @@ The calibration also writes a comparison plot beside the JSON file using
 relative-delay-versus-ToT distribution, both fitted curves, and their residuals
 so the model choice can be reviewed before reconstruction is implemented.
 
-`photon_time_estimator="leading_edge"` is the first implemented timing rule.
-When a calibration file is supplied, the program subtracts the selected
-normalized correction `correction(q) = f(q) - f(high_tot_anchor)` from every
-source-pixel timestamp and takes the earliest corrected timestamp. That
-correction is fractional, so the corrected leading edge is written as a
-floating-point value in canonical ticks to preserve sub-tick precision; it is
-not rounded to an integer. When no calibration file is supplied, the correction is zero, the
-earliest source-pixel timestamp is written unchanged (an integer value in the
-float column), and the program records that it used the uncorrected leading
-edge. It must not use guessed correction parameters.
+## Photon Timing Options
 
-Reconstruction timing is the one place floating-point time is allowed:
-unpacking still works only in canonical integer ticks, but the time-walk
-correction produces sub-tick offsets, so the reconstructed photon time is a
-float64 canonical-tick value. `"brightest"`, `"mean"`, and `"tot_weighted"` are
-reserved timing values and must be rejected until implemented.
+Time-walk correction and photon-time calculation are independent settings under
+`photon_reconstruction.clustering_algorithm.settings`. Their defaults are:
+
+```yaml
+timewalk:
+  method: none
+photon_time_estimator: average
+```
+
+`timewalk.method` accepts `none` or `calibration`. With `none`, source-hit times
+are unchanged and no calibration file is allowed. With `calibration`, a
+`calibration_file` is required: a JSON path or the opt-in keyword `default` for
+the shared curve shipped with HERMES. The saved record keeps that keyword;
+the runner resolves it to a real path for the binary.
+Omitted or null files are allowed only with `none`. Empty and whitespace-only
+filenames are rejected before path conversion in both Python and C++.
+
+The calibration is **one global curve**, fitted using hits pooled from many
+pixels and applied to every hit according to its raw ToT. Separate per-pixel
+curves are not supported. Keep the existing linear/inverse correction JSON
+format with `time_unit: canonical_ticks`, numeric parameters, and a
+`high_tot_anchor` within 0-1023. Subtract
+`correction(q) = f(q) - f(high_tot_anchor)` from each hit's ToA. Validate that
+parameters and corrections are finite and that an inverse curve has no pole
+over the native ToT range 0-1023. Saturated hits retain their existing quality
+flag and use the curve at 1023; this does not recover their unknown amplitude.
+Do not guess a correction or silently replace a broken calibration with zero.
+
+After clustering and filtering on the **original integer timestamps**, calculate
+each accepted photon's time from its raw or corrected source-hit times:
+
+| `photon_time_estimator` | Rule |
+| --- | --- |
+| `average` (default) | Arithmetic mean of all hit times, counting repeated hits at the same coordinate separately. Not ToT-weighted. |
+| `leading_edge` | Minimum hit time; correction can change which hit is earliest. |
+| `brightest` | Time of the hit with the largest raw ToT. Ties use earliest raw ToA, then stable source order. If enabled, correct the selected hit's time. |
+
+For example, `timewalk: {method: calibration, calibration_file: my-curve.json}`
+can be combined with any of the three estimators. Calculate the average using
+offsets from a nearby integer timestamp, avoiding integer-sum overflow and
+unnecessary precision loss. The final addition uses an integer anchor that is
+exactly representable in float64, with its remaining low bits included in the
+small average offset. Do not rely on `long double` having extra precision;
+on some platforms it has the same precision as `double`.
+Photon time remains a float64 canonical-tick value
+to preserve fractional means and corrections. Unpacked timestamps, cluster
+membership, photon positions, summed ToT, and quality flags do not change.
+`mean` and `tot_weighted` remain unsupported; use `average` for the plain mean.
+
+The old `timewalk_calibration_file` input is accepted with a deprecation warning
+and translated into the nested `timewalk` setting. Supplying both forms is an
+error. Newly saved records and binary summaries use only the nested form.
+Explicit `leading_edge` settings retain their numerical behavior. An omitted
+estimator now selects `average`, even in an old configuration; select
+`leading_edge` explicitly to reproduce the previous result.
+
+On restart, validate the requested calibration and compare timing settings and
+the fitted curve in every completed input's summary before reconstructing any
+input. Reject boolean or non-finite calibration numbers using the same rules
+as the C++ loader. If validation fails or timing differs, preserve all previous
+per-file results and stop with an
+instruction to enable `photon_reconstruction.runtime_options.overwrite` or use
+a fresh analysis directory. After changing photon times, regenerate downstream
+events too; photon overwrite also enables event overwrite when both stages run.
 
 ## Sensor Coordinate Frame
 
@@ -221,7 +271,7 @@ empty table has zero files and a zero row count in the summary.
 | `photon_id` | `uint64` | no | Zero-based photon number within this pixel file (one chip, one part) |
 | `x` | `float64` | no | Arithmetic mean source-pixel x coordinate, in the sensor frame |
 | `y` | `float64` | no | Arithmetic mean source-pixel y coordinate, in the sensor frame |
-| `timestamp_canonical` | `float64` | no | Time-walk-corrected leading-edge photon time in canonical ticks (fractional; equals the earliest source-pixel timestamp when no calibration is applied) |
+| `timestamp_canonical` | `float64` | no | Photon time in canonical ticks using the selected estimator and optional global time-walk correction; fractional values are retained |
 | `tot` | `uint64` | no | Sum of source-pixel `tot_raw` values |
 | `quality_flags` | `uint16` | no | Accepted-photon flag bit mask |
 
@@ -302,7 +352,7 @@ clustering:
   settings: {}
 
 photon_timing:
-  estimator: leading_edge
+  estimator: average
   correction_model: none
   calibration_file: null
   parameters: {}

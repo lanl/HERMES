@@ -61,10 +61,10 @@ def test_checked_in_yaml_configures_both_analysis_stages(
     )
     assert reconstruction.clustering_algorithm.name == "connected_components"
     assert reconstruction.pixel_files == "auto"
-    assert (
-        reconstruction.clustering_algorithm.settings.timewalk_calibration_file
-        == "default"
-    )
+    settings = reconstruction.clustering_algorithm.settings
+    assert settings.photon_time_estimator == "average"
+    assert settings.timewalk.method == "none"
+    assert settings.timewalk.calibration_file is None
     assert reconstruction.clustering_algorithm.save_photon_pixels is True
 
 

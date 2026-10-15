@@ -38,7 +38,7 @@ def _frontmatter() -> dict:
         ("unpacking", ["tpx3_files", "delete_raw_after_unpack"]),
         (
             "photon_reconstruction",
-            ["max_time_spread_ticks", "adjacency", "timewalk_calibration_file"],
+            ["max_time_spread_ticks", "adjacency", "timewalk"],
         ),
         ("event_reconstruction", ["spatial_link_radius_pixels", "min_photon_count"]),
     ],
