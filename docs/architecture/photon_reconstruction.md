@@ -193,6 +193,9 @@ unnecessary precision loss. The final addition uses an integer anchor that is
 exactly representable in float64, with its remaining low bits included in the
 small average offset. Do not rely on `long double` having extra precision;
 on some platforms it has the same precision as `double`.
+On platforms with a wider `long double`, retain the final addition's rounding
+residual to avoid rounding twice at a float64 midpoint. Use the same integer
+conversion for calibrated `brightest` and `leading_edge` times.
 Photon time remains a float64 canonical-tick value
 to preserve fractional means and corrections. Unpacked timestamps, cluster
 membership, photon positions, summed ToT, and quality flags do not change.
@@ -213,6 +216,8 @@ per-file results and stop with an
 instruction to enable `photon_reconstruction.runtime_options.overwrite` or use
 a fresh analysis directory. After changing photon times, regenerate downstream
 events too; photon overwrite also enables event overwrite when both stages run.
+If any photon input fails, defer the event stage and preserve its previous files
+and results. A successful retry can then regenerate events from refreshed photons.
 
 ## Sensor Coordinate Frame
 

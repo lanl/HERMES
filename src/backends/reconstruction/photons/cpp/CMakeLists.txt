@@ -76,6 +76,13 @@ add_executable(hermes-photon-clusterer
 target_link_libraries(hermes-photon-clusterer PRIVATE hermes_photon_clusterer)
 
 if(BUILD_TESTING)
+    # Keep timestamp arithmetic independently testable across floating-point
+    # formats without needing an Arrow/Parquet build for each architecture.
+    add_executable(timestamp_tests tests/timestamp_tests.cpp)
+    target_compile_features(timestamp_tests PRIVATE cxx_std_17)
+    target_include_directories(timestamp_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/inc)
+    add_test(NAME timestamp_tests COMMAND timestamp_tests)
+
     add_executable(clusterer_tests tests/clusterer_tests.cpp)
     target_link_libraries(clusterer_tests PRIVATE hermes_photon_clusterer)
     add_test(NAME clusterer_tests COMMAND clusterer_tests)

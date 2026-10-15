@@ -1,4 +1,5 @@
 #include "timewalk.h"
+#include "timestamp.h"
 
 #include <cmath>
 #include <fstream>
@@ -127,7 +128,8 @@ double timewalkDelay(std::uint16_t tot_raw,
 double correctedToa(std::uint64_t raw_toa,
                     std::uint16_t tot_raw,
                     const TimewalkCorrection& correction) {
-    return static_cast<double>(raw_toa) - timewalkDelay(tot_raw, correction);
+    return timestampWithOffset(raw_toa, -static_cast<long double>(
+        timewalkDelay(tot_raw, correction)));
 }
 
 double earliestCorrectedToa(const PixelCluster& cluster,

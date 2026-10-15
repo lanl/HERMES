@@ -102,4 +102,7 @@ runtime_options:
 When photon and event reconstruction run together, photon overwrite also
 regenerates downstream events. If you run the event stage separately, set
 `analysis.event_reconstruction.runtime_options.overwrite: true` for that run.
+If any photon file fails during a combined run, event reconstruction waits and
+keeps its previous outputs and results. Retry photon reconstruction successfully
+before rebuilding events.
 You can also use a fresh analysis directory for the new results.

@@ -223,6 +223,48 @@ int main() {
                          "averaging near uint64 maximum does not overflow");
     }
 
+    // Correct the selected integer time before the final float64 rounding.
+    // At 2^63, even a long-double intermediate can land on a false midpoint.
+    {
+        PixelCluster cluster;
+        ClusterEvaluation evaluation;
+        TimewalkCorrection correction;
+        correction.model = TimewalkCorrection::Model::kLinear;
+        correction.m = 1.0;
+        correction.high_tot_anchor = 30;
+        const std::uint64_t base = std::uint64_t{1} << 53;
+        cluster.hits = {PixelHit{0, 0, 31, base + 1}};
+        for (const auto& estimator : {"average", "brightest", "leading_edge"}) {
+            test.expectEqual(
+                buildPhoton(cluster, evaluation, &correction, estimator).timestamp_canonical,
+                static_cast<double>(base),
+                "calibrated single-hit timing retains odd raw ticks");
+        }
+        const std::uint64_t large_base = std::uint64_t{1} << 63;
+        correction.m = 0.5;
+        cluster.hits = {PixelHit{0, 0, 31, large_base + 1025}};
+        for (const auto& estimator : {"average", "brightest", "leading_edge"}) {
+            test.expectEqual(
+                buildPhoton(cluster, evaluation, &correction, estimator).timestamp_canonical -
+                    static_cast<double>(large_base),
+                2048.0, "calibrated time above a midpoint rounds upward only once");
+        }
+        cluster.hits = {PixelHit{0, 0, 31, large_base + 3072}};
+        for (const auto& estimator : {"average", "brightest", "leading_edge"}) {
+            test.expectEqual(
+                buildPhoton(cluster, evaluation, &correction, estimator).timestamp_canonical -
+                    static_cast<double>(large_base),
+                2048.0, "calibrated time below a midpoint rounds downward only once");
+        }
+        correction.m = static_cast<double>(large_base);
+        cluster.hits = {PixelHit{0, 0, 31, large_base + 1025}};
+        for (const auto& estimator : {"average", "brightest", "leading_edge"}) {
+            test.expectEqual(
+                buildPhoton(cluster, evaluation, &correction, estimator).timestamp_canonical,
+                1025.0, "large correction cancellation retains the selected integer time");
+        }
+    }
+
     // The native-range correction is finite at every ToT, but two saturated
     // hits overflow an unscaled float64 sum. Their mean remains finite.
     {

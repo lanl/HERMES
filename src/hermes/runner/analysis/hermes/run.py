@@ -408,6 +408,21 @@ def run_hermes_analysis(
 
         current_analysis = _current_hermes_analysis(state_manager)
         if current_analysis.event_reconstruction is not None:
+            reconstruction = current_analysis.photon_reconstruction
+            failed_inputs = [
+                str(result.input_file.path)
+                for result in reconstruction.results
+                if result.status == "failed"
+            ] if reconstruction is not None else []
+            if failed_inputs:
+                _ANALYSIS_LOGGER.warning(
+                    "Deferring event reconstruction after {count} photon input(s) failed; "
+                    "previous events are kept until photon reconstruction succeeds",
+                    event_type="analysis.event_reconstruction.waiting_for_photons",
+                    count=len(failed_inputs),
+                    failed_inputs=failed_inputs,
+                )
+                return unpacked_files
             _run_event_reconstruction(
                 state_manager,
                 current_analysis,

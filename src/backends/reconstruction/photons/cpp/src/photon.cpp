@@ -2,8 +2,9 @@
 
 #include <cmath>
 #include <cstdint>
-#include <limits>
 #include <stdexcept>
+
+#include "timestamp.h"
 
 namespace hermes_photon_clusterer {
 
@@ -86,17 +87,7 @@ Photon buildPhoton(const PixelCluster& cluster,
             mean_offset =
                 (scaled_sum / static_cast<long double>(cluster.hits.size())) * scale;
         }
-        // A uint64 timestamp can have 11 more bits than float64 can represent.
-        // Clear those low bits so the final anchor conversion is exact even
-        // when long double is no wider than double (as on Apple Silicon).
-        // Add the discarded bits to the small mean BEFORE adding the anchor.
-        constexpr int low_bits = std::numeric_limits<std::uint64_t>::digits -
-                                 std::numeric_limits<double>::digits;
-        constexpr std::uint64_t low_mask = (std::uint64_t{1} << low_bits) - 1;
-        const std::uint64_t anchor = earliest_raw & ~low_mask;
-        mean_offset += static_cast<long double>(earliest_raw - anchor);
-        photon.timestamp_canonical = static_cast<double>(
-            static_cast<long double>(anchor) + mean_offset);
+        photon.timestamp_canonical = timestampWithOffset(earliest_raw, mean_offset);
     }
     return photon;
 }
