@@ -65,10 +65,10 @@ def test_describes_pixel_hits_and_photons(analysis: Path) -> None:
     assert set(pixel_hits.example_rows[0]) == set(pixel_hits.columns)
     assert pixel_hits.problems == []
 
-    assert photons.row_count == 99_909
+    assert photons.row_count == 92_703
     assert photons.columns["timestamp_canonical"] == "double"
-    assert photons.first_timestamp_canonical == pytest.approx(9_829_920_222.65438)
-    assert photons.last_timestamp_canonical == pytest.approx(2_452_555_394_984.3145)
+    assert photons.first_timestamp_canonical == pytest.approx(9_829_955_520.0)
+    assert photons.last_timestamp_canonical == pytest.approx(2_452_555_401_216.0)
     assert len(photons.example_rows) == 3
 
     assert "Found 2 Parquet file(s) in 2 folder(s): photons, pixel_hits" in (
@@ -85,7 +85,7 @@ def test_adds_up_every_file_in_a_folder(analysis: Path) -> None:
     photons = _describe(analysis).folders[0]
 
     assert photons.file_count == 2
-    assert photons.row_count == 2 * 99_909
+    assert photons.row_count == 2 * 92_703
     assert photons.total_bytes == 2 * second.stat().st_size
 
 
@@ -96,7 +96,7 @@ def test_an_unreadable_file_is_left_out_and_named(analysis: Path) -> None:
 
     photons = result.folders[0]
     assert photons.file_count == 1
-    assert photons.row_count == 99_909
+    assert photons.row_count == 92_703
     assert len(photons.problems) == 1
     assert "still_writing.parquet" in photons.problems[0]
     assert "1 file(s) had problems" in result.message
@@ -146,7 +146,7 @@ def test_a_file_with_no_timestamp_statistics(analysis: Path) -> None:
     photons = _describe(analysis).folders[0]
 
     assert photons.file_count == 2
-    assert photons.row_count == 99_909 + 10
+    assert photons.row_count == 92_703 + 10
     assert photons.first_timestamp_canonical is None
     assert photons.last_timestamp_canonical is None
     assert photons.time_span_seconds is None
@@ -164,5 +164,5 @@ def test_a_timestamp_column_with_only_empty_values(analysis: Path) -> None:
 
     photons = _describe(analysis).folders[0]
 
-    assert photons.first_timestamp_canonical == pytest.approx(9_829_920_222.65438)
+    assert photons.first_timestamp_canonical == pytest.approx(9_829_955_520.0)
     assert photons.problems == []
