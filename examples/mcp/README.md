@@ -11,8 +11,9 @@ There is no network listener and no login.
 
 ## Before you start
 
-Install HERMES in your own pixi project (see "Use HERMES in your own pixi
-project" in the top-level [README](../../README.md)). Installing HERMES puts the
+Install HERMES in your own pixi project (see
+[Option 1: In your own project](../../README.md#option-1-in-your-own-project) in
+the top-level README). Installing HERMES puts the
 `hermes-mcp` command on `PATH` in your environment, so there is nothing else to
 install.
 
