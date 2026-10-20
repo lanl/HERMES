@@ -4,6 +4,8 @@ import shutil
 import sys
 from pathlib import Path
 
+import pyarrow.parquet as pq
+
 from hermes.state_service.state_io import (
     load_hermes_record_from_yaml,
     save_hermes_record_to_yaml,
@@ -40,10 +42,15 @@ def main(input_yaml_path: Path = DEFAULT_INPUT_YAML_PATH) -> None:
     final_record = workflow.record
     save_hermes_record_to_yaml(final_record, final_record_path)
 
-    # Step 6: Display the event reconstruction results
+    # Step 6: Display the event reconstruction results. The event count is read
+    # from the event file, so a rerun that skipped the file still reports it.
     event_results = final_record.analysis.event_reconstruction.results
     for result in event_results:
-        event_count = result.counts.event_count if result.counts else 0
+        event_count = (
+            pq.ParquetFile(result.output_file).metadata.num_rows
+            if result.output_file.is_file()
+            else 0
+        )
         print(f"{result.raw_file_stem}: {result.status}, {event_count} events")
     print(f"Event output directory: {analysis_directory / 'events'}")
     print(f"HERMES state file: {final_record_path}")

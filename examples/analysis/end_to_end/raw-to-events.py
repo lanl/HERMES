@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import sys
+from collections.abc import Iterable
 from pathlib import Path
+
+import pyarrow.parquet as pq
 
 from hermes.state_service.state_io import (
     load_hermes_record_from_yaml,
@@ -10,6 +13,15 @@ from hermes.state_service.state_io import (
 from hermes.workflows.workflow import Workflow
 
 DEFAULT_INPUT_YAML_PATH = Path(__file__).with_name("raw-to-events.yaml")
+
+
+def count_rows(parquet_files: Iterable[Path]) -> int:
+    # A stage writes no file when it has no rows, so a missing file counts as 0
+    return sum(
+        pq.ParquetFile(path).metadata.num_rows
+        for path in parquet_files
+        if path.is_file()
+    )
 
 
 def main(input_yaml_path: Path = DEFAULT_INPUT_YAML_PATH) -> None:
@@ -29,21 +41,24 @@ def main(input_yaml_path: Path = DEFAULT_INPUT_YAML_PATH) -> None:
     final_analysis = final_record.analysis
     save_hermes_record_to_yaml(final_record, final_record_path)
 
-    # Step 5: Display the results of each stage
-    photon_count = sum(
-        result.counts.total_photons
+    # Step 5: Count the rows in the photon and event files. Reading the files
+    # also counts outputs that a rerun skipped, which carry no counts in the
+    # record.
+    photon_count = count_rows(
+        result.output_file
         for result in final_analysis.photon_reconstruction.results
-        if result.counts is not None
     )
-    event_count = sum(
-        result.counts.event_count
+    event_count = count_rows(
+        result.output_file
         for result in final_analysis.event_reconstruction.results
-        if result.counts is not None
     )
-    raw_tpx3_files = final_analysis.unpacking.tpx3_files
-    print(f"Raw TPX3 files: {len(raw_tpx3_files)}")
-    for raw_tpx3_file in raw_tpx3_files:
-        print(f"  - {raw_tpx3_file.path}")
+
+    # Step 6: Display the results of each stage. The unpacking results list
+    # every raw file, also when tpx3_files is "auto".
+    unpacking_results = final_analysis.unpacking.results
+    print(f"Raw TPX3 files: {len(unpacking_results)}")
+    for result in unpacking_results:
+        print(f"  - {result.input_file.path} ({result.status})")
     print(f"Unpacked this run: {len(unpacked_raw_files)}")
     print(f"Photons: {photon_count}")
     print(f"Events: {event_count}")
