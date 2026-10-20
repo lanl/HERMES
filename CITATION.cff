@@ -4,6 +4,7 @@ title: "HERMES: High-speed Event Retrieval and Management for Enhanced Spectral 
 type: software
 version: 3.3.8
 license: MIT
+doi: 10.5281/zenodo.23510278
 
 authors:
   - given-names: Alexander M.

@@ -1,5 +1,7 @@
 # HERMES
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23510278.svg)](https://doi.org/10.5281/zenodo.23510278)
+
 HERMES processes data from a TPX3Cam read out by a SPIDR board. It turns raw
 `.tpx3` files into Parquet tables in three steps:
 
@@ -350,8 +352,12 @@ workflow code, and fix any difference before finishing.
 
 ## Citing HERMES
 
-If you use HERMES in your research, please cite it. Use the "Cite this
-repository" button on the GitHub page, or see [`CITATION.cff`](CITATION.cff).
+If you use HERMES in your research, please cite it. Every release is archived
+on Zenodo, and this DOI always points to the newest one:
+[10.5281/zenodo.23510278](https://doi.org/10.5281/zenodo.23510278). To cite one
+exact version, use the DOI shown on that version's Zenodo page. You can also use
+the "Cite this repository" button on the GitHub page, or see
+[`CITATION.cff`](CITATION.cff).
 
 ## Copyright
 
