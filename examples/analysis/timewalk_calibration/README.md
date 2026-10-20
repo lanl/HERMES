@@ -19,23 +19,12 @@ report their own errors.
 - `clustering_settings.yaml` — the `HermesTpx3PhotonClusteringSettings` used to select
   in-cluster pixel pairs for the fit.
 
-By default the example unpacks `tests/data/Example_1kHz_5frames.tpx3`.
+By default the example unpacks the sample `tests/data/tpx3/Tantalum_IronPowder.tpx3`,
+which has enough multi-pixel photons for a fit. To calibrate your own camera,
+edit `tpx3_files` in `timewalk_config.yaml` to point at your TPX3 files.
 
-> **Substitute your own data.** The bundled fixture does **not** contain
-> photon-like phosphor blobs, so it yields no in-cluster pixel pairs and
-> `calibrate_timewalk` raises a `ValueError`. To produce a real calibration,
-> edit `tpx3_files` in `timewalk_config.yaml` to point at TPX3 files that
-> contain phosphor clusters.
-
-## Building the Unpacker
-
-Before running the example, build the C++ unpacker:
-
-```bash
-pixi run build-cpp-unpacker
-```
-
-This creates the executable at `build/backends/tpx3-spidr/hermes-tpx3-spidr`.
+`pixi install` already builds the C++ unpacker. After changing C++ code, run
+`pixi reinstall hermes` so the example uses your changes.
 
 ## Running the Example
 
@@ -69,14 +58,18 @@ This will:
 ```text
 data/examples/analysis/timewalk_calibration/
 ├── hermes-record_final.yaml
-└── analysis/
-    ├── pixel_hits/
-    │   └── Example_1kHz_5frames-chip-0-part-00000.parquet
-    └── logs/
-        ├── timewalk-calibration.json              # detailed fit diagnostics
-        ├── timewalk-calibration-comparison.png    # linear vs inverse plot
-        └── timewalk-calibration-correction.json   # small correction file
+└── timewalk-cal/
+    └── analysis/
+        ├── pixel_hits/
+        │   └── Tantalum_IronPowder_chip_0_pixels_00000.parquet
+        └── logs/
+            ├── timewalk-calibration.json              # detailed fit diagnostics
+            ├── timewalk-calibration-comparison.png    # linear vs inverse plot
+            └── timewalk-calibration-correction.json   # small correction file
 ```
+
+For the sample file, the fit uses 92,682 photons (389,591 pixel pairs) and
+keeps the linear model.
 
 The correction file (`model`, `parameters`, `high_tot_anchor`, `time_unit`,
 `date_created`, `note`) is the file the photon reconstruction clusterer reads.
@@ -93,7 +86,7 @@ config, keeping the other clustering settings:
 photon_time_estimator: average
 timewalk:
   method: calibration
-  calibration_file: data/examples/analysis/timewalk_calibration/analysis/logs/timewalk-calibration-correction.json
+  calibration_file: data/examples/analysis/timewalk_calibration/timewalk-cal/analysis/logs/timewalk-calibration-correction.json
 ```
 
 That path assumes the default example directories and that HERMES is started
