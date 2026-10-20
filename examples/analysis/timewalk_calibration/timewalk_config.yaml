@@ -13,4 +13,4 @@ analysis:
       name: tpx3-spidr-cpp
       executable_path: hermes-tpx3-spidr
     tpx3_files:
-      - path: tests/data/tpx3/Example_1kHz_5frames.tpx3
+      - path: tests/data/tpx3/Tantalum_IronPowder.tpx3

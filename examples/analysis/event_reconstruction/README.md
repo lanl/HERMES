@@ -9,18 +9,13 @@ photon-event Parquet file
 ```
 
 Unpacking and photon reconstruction are already done for this dataset, so only
-the event stage executes. The starting photon file
-(`tests/data/photons/Tantalum_IronPowder.parquet`, 99,909 photons) is copied
-into the analysis `photons/` directory and grouped into events by connected
-components over space and time.
+the event stage runs. The script copies the sample photon file
+(`tests/data/photons/Tantalum_IronPowder.parquet`, 92,703 photons) into the
+analysis `photons/` folder, named the way the photon stage names its files, and
+groups the photons into events by connected components over space and time.
 
-## Build the C++ program
-
-Run this command from the repository root:
-
-```bash
-pixi run build-cpp-event-reconstructor
-```
+`pixi install` already builds the C++ event reconstructor. After changing C++
+code, run `pixi reinstall hermes` so the example uses your changes.
 
 ## Run the example
 
@@ -53,15 +48,18 @@ The checked-in configuration writes ignored development output under:
 ```text
 data/examples/analysis/event_reconstruction/
 ├── hermes-record_final.yaml
-└── analysis/
-    ├── photons/
-    │   └── Tantalum_IronPowder.parquet
-    ├── events/
-    │   └── Tantalum_IronPowder.parquet
-    └── logs/
-        └── events/
-            └── Tantalum_IronPowder-reconstruction-summary.json
+└── photon-to-event/
+    └── analysis/
+        ├── photons/
+        │   └── Tantalum_IronPowder_chip_0_photon_00000.parquet
+        ├── events/
+        │   └── Tantalum_IronPowder_event_candidates.parquet
+        └── logs/
+            └── event_reconstruction/
+                └── Tantalum_IronPowder_event_reconstruction_summary.json
 ```
+
+For the sample file, the script prints `Tantalum_IronPowder: completed, 45122 events`.
 
 The event file contains each reconstructed event's centroid position, earliest
 photon time, photon count, and quality flags. The reconstruction summary

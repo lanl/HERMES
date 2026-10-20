@@ -13,7 +13,7 @@ analysis:
       name: tpx3-spidr-cpp
       executable_path: hermes-tpx3-spidr
     tpx3_files:
-      - path: data/examples/analysis/end_to_end/rawTpx3/Tantalum_IronPowder.tpx3
+      - path: tests/data/tpx3/Tantalum_IronPowder.tpx3
   photon_reconstruction:
     program:
       name: photon-clusterer-cpp

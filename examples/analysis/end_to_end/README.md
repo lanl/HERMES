@@ -10,20 +10,13 @@ raw TPX3 file
   -> event Parquet file        (analysis/events/, from event reconstruction)
 ```
 
-The starting raw file (`tests/data/tpx3/Tantalum_IronPowder.tpx3`) is copied
-into the working directory's `rawTpx3/` sub-directory, then unpacking, photon
-reconstruction, and event reconstruction run in sequence. The completed HERMES
-state is saved separately once all three stages finish.
+The raw file is the sample `tests/data/tpx3/Tantalum_IronPowder.tpx3`, read
+where it is. Unpacking, photon reconstruction and event reconstruction run in
+order, and the completed HERMES record is saved separately once all three
+finish.
 
-## Build the C++ programs
-
-Run these commands from the repository root:
-
-```bash
-pixi run build-cpp-unpacker
-pixi run build-cpp-photon-clusterer
-pixi run build-cpp-event-reconstructor
-```
+`pixi install` already builds the three C++ programs. After changing C++ code,
+run `pixi reinstall hermes` so the example uses your changes.
 
 ## Run the example
 
@@ -60,27 +53,30 @@ The checked-in configuration writes ignored development output under:
 ```text
 data/examples/analysis/end_to_end/
 ├── hermes-record_final.yaml
-├── rawTpx3/
-│   └── Tantalum_IronPowder.tpx3
-└── analysis/
-    ├── pixel_hits/
-    │   └── Tantalum_IronPowder-chip-0-part-00000.parquet
-    ├── photons/
-    │   ├── Tantalum_IronPowder-chip-0-part-00000.parquet
-    │   └── Tantalum_IronPowder-chip-0-part-00000-photon-pixels.parquet
-    ├── events/
-    │   └── Tantalum_IronPowder-chip-0-part-00000.parquet
-    └── logs/
-        ├── unpacker/
-        │   └── Tantalum_IronPowder-unpacker-summary.json
+└── raw-to-events/
+    └── analysis/
+        ├── pixel_hits/
+        │   └── Tantalum_IronPowder_chip_0_pixels_00000.parquet
         ├── photons/
-        │   └── Tantalum_IronPowder-chip-0-part-00000-reconstruction-summary.json
-        └── events/
-            └── Tantalum_IronPowder-chip-0-part-00000-reconstruction-summary.json
+        │   └── Tantalum_IronPowder_chip_0_photon_00000.parquet
+        ├── pixel_clusters/
+        │   └── Tantalum_IronPowder_chip_0_pixel_clusters_00000.parquet
+        ├── events/
+        │   └── Tantalum_IronPowder_event_candidates.parquet
+        └── logs/
+            ├── unpacking/
+            │   └── Tantalum_IronPowder_unpacker_summary.json
+            ├── photon_reconstruction/
+            │   └── Tantalum_IronPowder_chip_0_photon_reconstruction_summary_00000.json
+            └── event_reconstruction/
+                └── Tantalum_IronPowder_event_reconstruction_summary.json
 ```
 
-(The unpacker also writes `control_packets/`, `global_timestamps/`, and
-`tdc_triggers/` Parquet files under `analysis/`, omitted here for brevity.)
+(The unpacker also writes `control_packets/`, `global_timestamps/` and
+`tdc_triggers/` Parquet files under `analysis/`, left out here.)
+
+The script prints the photon and event counts: 92,703 photons and 45,122 events
+for the sample file.
 
 Each stage writes its own Parquet files and a summary JSON. Running the example
 again validates the existing summaries, skips complete work, and refreshes

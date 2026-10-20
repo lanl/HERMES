@@ -46,7 +46,7 @@ for each cluster.
 
 ### `Tantalum_IronPowder.parquet`
 
-Photons reconstructed from `pixel_hits/Tantalum_IronPowder.parquet` (99,909 rows),
+Photons reconstructed from `pixel_hits/Tantalum_IronPowder.parquet` (92,703 rows),
 which in turn comes from `tpx3/Tantalum_IronPowder.tpx3`. Columns:
 
 - `photon_id` — unique identifier for the photon.
@@ -57,5 +57,8 @@ which in turn comes from `tpx3/Tantalum_IronPowder.tpx3`. Columns:
 - `quality_flags` — bit flags describing reconstruction quality.
 
 Reconstruction settings are stored in the file's schema metadata. This file was
-produced with the `connected_components` clustering algorithm (8-way adjacency),
-arithmetic position averaging, and a leading-edge time estimator.
+produced by HERMES 3.3.8 with the settings in
+`examples/analysis/end_to_end/raw-to-events.yaml`: the `connected_components`
+clustering algorithm (8-way adjacency), arithmetic position averaging, the
+`average` photon time and no time-walk correction. Its metadata also records
+`detector_layout`, which event reconstruction requires.

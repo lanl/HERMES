@@ -1,0 +1,25 @@
+cff-version: 1.2.0
+message: "If you use HERMES in your research, please cite it using the following metadata."
+title: "HERMES: High-speed Event Retrieval and Management for Enhanced Spectral neutron imaging with TPX3Cams"
+type: software
+version: 3.3.8
+license: MIT
+
+authors:
+  - given-names: Alexander M.
+    family-names: Long
+    affiliation: Los Alamos National Laboratory
+
+abstract: >
+  HERMES processes data from a TPX3Cam read out by a SPIDR board. It unpacks raw .tpx3 files into Parquet, groups pixel hits into photons, and groups photons into events, writing one Parquet file per stage so times from different signals stay on one comparable clock. A Python package loads a YAML config, runs the workflow, and records what happened, calling C++ programs for unpacking, photon reconstruction, and event reconstruction.
+
+repository-code: "https://github.com/lanl/HERMES"
+
+keywords:
+  - Timepix3
+  - TPX3Cam
+  - SPIDR
+  - neutron imaging
+  - energy-resolved neutron imaging
+  - event reconstruction
+  - photon counting
